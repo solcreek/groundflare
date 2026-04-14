@@ -6,6 +6,21 @@ export {
   stripJsonComments,
 } from './reader.js'
 
+export {
+  BINDING_DEFAULTS,
+  STATE_DIR,
+  STATIC_DEFAULTS,
+  d1StatePath,
+  defaultRuntimeLimits,
+  doStatePath,
+  kvStatePath,
+  queueStatePath,
+} from './defaults.js'
+
+export { deepMerge, extractEnvOverrides, resolveConfig } from './resolve.js'
+
+export type { ResolveOptions, ResolvedConfig } from './resolve.js'
+
 export type {
   ConfigFormat,
   ConfigSource,
