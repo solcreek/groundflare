@@ -10,6 +10,7 @@ Internal design documents for groundflare. These are working specs that define p
 | [provider.md](provider.md) | ADR + interface for VPS provider abstraction (Hetzner, DigitalOcean, ...); why not Pulumi |
 | [benchmarks.md](benchmarks.md) | Runtime benchmarks + architectural decisions; why workerd standalone over Miniflare, why no Docker |
 | [tracks.md](tracks.md) | Dual-track runtime strategy: Mirror (workerd, zero changes) + Bun track (LLM-assisted migration, 3-4× throughput) |
+| [testing.md](testing.md) | Test pyramid (unit / conformance / Docker-VPS / live smoke), coverage targets per subsystem, Docker's role (CI simulator only, not production) |
 
 ## Conventions
 
