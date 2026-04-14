@@ -9,6 +9,7 @@ Internal design documents for groundflare. These are working specs that define p
 | [cost-estimate.md](cost-estimate.md) | The `groundflare estimate` CLI: read CF usage, output savings vs Hetzner |
 | [provider.md](provider.md) | ADR + interface for VPS provider abstraction (Hetzner, DigitalOcean, ...); why not Pulumi |
 | [benchmarks.md](benchmarks.md) | Runtime benchmarks + architectural decisions; why workerd standalone over Miniflare, why no Docker |
+| [remix.md](remix.md) | Dual-track runtime strategy: Mirror (workerd, zero changes) + Remix (Bun, LLM-assisted migration, 3-4× throughput) |
 
 ## Conventions
 
