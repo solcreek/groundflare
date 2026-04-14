@@ -90,7 +90,7 @@ Docker adds roughly **80-100 MB RAM daemon overhead**, complicates debugging (an
 Exceptions (Docker still useful):
 - User-supplied sidecars (custom cron containers, self-hosted Grafana). Available via `groundflare sidecar add` in v1.5+.
 
-Not using Docker means [`design/bootstrap.md`](bootstrap.md) Stage 6 simplifies to: download workerd binary, install Redis + Caddy via apt, write systemd units.
+Not using Docker means [`design/bootstrap.md`](bootstrap.md) Stage 6 simplifies to: download workerd binary, install Caddy via apt, write systemd units. KV/Queues state lives in embedded SQLite files — no additional daemon.
 
 ## Stage 2a: idle-recovery latency
 
@@ -182,7 +182,7 @@ groundflare's contract is "take any existing Cloudflare Worker and run it unchan
 | Stage 2a | ✅ Done | Idle-recovery latency (30s) |
 | **Stage 2b** | Pending | Longer idle windows (5 min, 1h, 24h) |
 | Stage 2c | ✅ Done | workerd vs Bun.serve vs Bun+bun:sqlite |
-| **Stage 2d** | Pending | Worker with bindings (KV/Redis, D1/libSQL) |
+| **Stage 2d** | Pending | Worker with bindings (KV/SQLite, D1/libSQL) |
 | **Stage 3a** | Pending | Same benchmark on a Hetzner CX22 |
 | **Stage 3b** | Pending | vs real CF Workers edge |
 | **Stage 4** | Pending | Pathological (long queries, large responses, burst) |
