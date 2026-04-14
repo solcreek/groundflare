@@ -28,13 +28,16 @@
     "node": ">=20"
   },
   "scripts": {
-    "poc:validate": "tsx src/poc/validate-miniflare.ts"
+    "poc:validate": "tsx src/poc/validate-miniflare.ts",
+    "poc:bench": "tsx src/poc/bench.ts"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
+    "autocannon": "^8.0.0",
     "miniflare": "^3.20240909.0",
     "tsx": "^4.19.0",
     "typescript": "^5.6.0",
+    "workerd": "^1.20260414.1",
     "wrangler": "^3.78.0"
   },
   "publishConfig": {
