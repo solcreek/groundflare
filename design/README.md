@@ -7,6 +7,7 @@ Internal design documents for groundflare. These are working specs that define p
 | [bootstrap.md](bootstrap.md) | Day-0 automation: provisioning + hardening + observability stack the user never has to touch |
 | [config.md](config.md) | How `wrangler.toml` becomes a deployable groundflare config; 3-layer resolution model |
 | [cost-estimate.md](cost-estimate.md) | The `groundflare estimate` CLI: read CF usage, output savings vs Hetzner |
+| [provider.md](provider.md) | ADR + interface for VPS provider abstraction (Hetzner, DigitalOcean, ...); why not Pulumi |
 
 ## Conventions
 
