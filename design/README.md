@@ -12,6 +12,7 @@ Internal design documents for groundflare. These are working specs that define p
 | [tracks.md](tracks.md) | Dual-track runtime strategy: Mirror (workerd, zero changes) + Bun track (LLM-assisted migration, 3-4× throughput) |
 | [testing.md](testing.md) | Test pyramid (unit / conformance / Docker-VPS / live smoke), coverage targets per subsystem, Docker's role (CI simulator only, not production) |
 | [observability.md](observability.md) | `/metrics` (Prometheus) + `/health` + journald JSON log contract; metric taxonomy per subsystem; CLI observation commands (`tail`, `status`, `logs`, `metrics`); alert events |
+| [workspaces.md](workspaces.md) | Multi-tenant Workers on one VPS (v0.2 target): single workerd + N isolates + Router Worker; per-tenant state isolation via filesystem; deploy atomicity; cross-tenant service bindings; per-tier testing matrix + stress suite + SLOs |
 
 ## Conventions
 
