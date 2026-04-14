@@ -12,7 +12,7 @@ This is not condescending — it is empirical. CF Workers explicitly removed dev
 
 **Every decision in this doc follows from that one constraint.**
 
-If experienced sysadmins want the levers, they can SSH in and override after the fact — groundflare uses standard tools (Caddy, systemd, UFW, apt packages), not a closed system. The **production runtime is native** — workerd, Caddy, and Redis all run as systemd services, not in containers. Docker is used only for local VPS simulation during development and CI (see [§ Local testing](#local-testing-via-docker)). But the **default path requires zero knowledge**.
+If experienced sysadmins want the levers, they can SSH in and override after the fact — groundflare uses standard tools (Caddy, systemd, UFW, apt packages), not a closed system. The **production runtime is native** — workerd and Caddy run as systemd services, not in containers; KV/Queues storage is embedded SQLite files managed by the runtime; cron triggers are systemd `.timer` units. Docker is used only for local VPS simulation during development and CI (see [§ Local testing](#local-testing-via-docker)). But the **default path requires zero knowledge**.
 
 ## The contract
 
@@ -24,7 +24,8 @@ After `groundflare up` completes (target: 3-5 minutes from zero), the VPS has:
 - ✅ workerd binary installed at `/usr/local/bin/workerd` (Mirror) or Bun at `/usr/local/bin/bun` (Bun track)
 - ✅ Caddy reverse proxy with auto-SSL via Let's Encrypt
 - ✅ systemd units supervising the Worker runtime and adapters
-- ✅ Adapter services running as needed (Redis for KV, libSQL embedded, MinIO for R2 if not on CF)
+- ✅ SQLite files provisioned for bindings used (`/var/lib/groundflare/{d1,kv,queues,do}/*.sqlite`); MinIO systemd unit only if user opts out of CF R2
+- ✅ systemd `.timer` + `.service` pair generated per `[triggers] crons` entry
 - ✅ restic backups configured (B2/R2 destination, nightly)
 - ✅ Auto unattended-upgrades for security patches
 - ✅ Swap file sized to RAM
@@ -128,7 +129,6 @@ Token stored in OS keychain (macOS Keychain / Windows Credential Manager / libse
    package_upgrade: true
    packages:
      - caddy
-     - redis-server
      - ufw
      - fail2ban
      - unattended-upgrades
@@ -238,8 +238,7 @@ fs.inotify.max_user_watches = 524288
 ```ini
 [Unit]
 Description=groundflare worker runtime
-After=network.target redis-server.service
-Requires=redis-server.service
+After=network.target
 
 [Service]
 Type=simple
@@ -287,9 +286,40 @@ Caddy is installed via the official apt repository; the unit file ships with the
 - Wildcard SSL via Let's Encrypt DNS-01 (Caddy plugin)
 
 **Adapter services (only if used):**
-- Redis (`redis-server` apt package, systemd-managed): KV adapter target, bound to `127.0.0.1:6379`
-- libSQL: linked into workerd (D1 adapter), no separate service
-- MinIO (optional, single-binary install + systemd unit): R2 adapter target when user opts out of CF R2
+- SQLite (embedded in workerd/runtime process): D1, KV, DO, and Queues all share this path. Files live under `/var/lib/groundflare/{d1,kv,do,queues}/*.sqlite`, opened with the [standard PRAGMAs](config.md#standard-sqlite-pragmas). No separate daemon.
+- MinIO (optional, single-binary install + systemd unit): R2 adapter target when user opts out of CF R2.
+- Redis (`redis-server` apt package, systemd-managed): **opt-in only** — installed when `[groundflare.bindings.*.adapter] = "redis"` or `[groundflare.queues.*.adapter] = "redis-streams"` is explicit in config. Not part of the default install.
+
+**Cron triggers (generated at deploy, one pair per `[triggers] crons` entry):**
+```ini
+# /etc/systemd/system/groundflare-cron-<hash>.timer
+[Unit]
+Description=groundflare cron: <expr>
+
+[Timer]
+OnCalendar=<expr-converted-to-systemd-calendar>
+AccuracySec=1s
+Persistent=true
+
+[Install]
+WantedBy=timers.target
+```
+```ini
+# /etc/systemd/system/groundflare-cron-<hash>.service
+[Unit]
+Description=groundflare cron dispatch: <expr>
+Requires=groundflare-worker.service
+After=groundflare-worker.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/curl -sf -X POST \
+  -H 'X-Groundflare-Scheduled: 1' \
+  -H 'X-Cron: <expr>' \
+  http://127.0.0.1:8080/__scheduled
+```
+
+The runtime recognizes `X-Groundflare-Scheduled` on the `__scheduled` endpoint and dispatches to the Worker's `scheduled()` handler. `Persistent=true` means a trigger missed during downtime fires immediately on next boot.
 
 No Docker daemon, no containers, no compose files. Each service is a first-class systemd unit with its own logs in journald.
 
@@ -306,10 +336,14 @@ RESTIC_PASSWORD=<generated, stored in keychain locally + /etc/groundflare/secret
 ```
 
 **What gets backed up:**
-- `/var/lib/groundflare/d1/*.sqlite` (databases)
-- `/var/lib/groundflare/kv/dump.rdb` (Redis snapshot)
+- `/var/lib/groundflare/d1/*.sqlite` (D1 databases)
+- `/var/lib/groundflare/kv/*.sqlite` (KV namespaces)
+- `/var/lib/groundflare/queues/*.sqlite` (Queue state — v0.4+)
+- `/var/lib/groundflare/do/**/*.sqlite` (Durable Object state)
 - `/etc/groundflare/config.toml` (system config)
 - `/etc/caddy/Caddyfile` (proxy config)
+
+SQLite files are captured via `sqlite3 ... '.backup'` (WAL-safe online backup) before restic snapshots them — not `cp`, which could capture a partial WAL state.
 
 **What does NOT get backed up:**
 - R2 buckets (already replicated by S3-compatible store)
@@ -341,7 +375,7 @@ Unattended-Upgrade::MailReport "on-change";
 
 **Worker container updates:** Separate cadence — user runs `groundflare upgrade` explicitly. Never auto-updated, because it's the user's app code.
 
-**Adapter containers (Redis / MinIO):** Pinned tags, updated only when user runs `groundflare upgrade --adapters`.
+**Opt-in adapter services (Redis / MinIO):** Pinned versions, updated only when user runs `groundflare upgrade --adapters`.
 
 **workerd version:** Tracks user's `compatibility_date` in `wrangler.toml` (matches CF behavior).
 
@@ -389,7 +423,7 @@ Unattended-Upgrade::MailReport "on-change";
 ```
 ✓ VPS provisioned (Hetzner CX22, hel1)             [42s]
 ✓ OS bootstrapped + hardened                       [78s]
-✓ workerd + Caddy + Redis installed                [54s]
+✓ workerd + Caddy installed                        [42s]
 ✓ Backups configured (B2)                          [12s]
 ✓ Worker deployed                                  [8s]
 ✓ Health check passed
