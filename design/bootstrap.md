@@ -289,9 +289,10 @@ Caddy is installed via the official apt repository; the unit file ships with the
 - SQLite (embedded in workerd/runtime process): D1, KV, DO, and Queues all share this path. Files live under `/var/lib/groundflare/{d1,kv,do,queues}/*.sqlite`, opened with the [standard PRAGMAs](config.md#standard-sqlite-pragmas). No separate daemon.
 - S3-compatible backend (only installed when `[groundflare.bindings.*.adapter] = "s3"` is set):
   - **SeaweedFS** (default, Apache-2.0, `weed` single binary via systemd unit)
-  - MinIO (opt-in, AGPL-3.0 caveat)
   - rustfs (experimental, Apache-2.0, pre-1.0 alpha — not recommended for production data)
   - Managed (AWS S3, Backblaze B2) — no local install, endpoint only
+
+groundflare only ships permissively-licensed (Apache-2.0 / MIT / BSD) backends. AGPL-licensed storage (MinIO, Garage) is intentionally excluded to avoid license ambiguity for users who may redistribute or commercialize their deployments.
 - Redis (`redis-server` apt package, systemd-managed): **opt-in only** — installed when `[groundflare.bindings.*.adapter] = "redis"` or `[groundflare.queues.*.adapter] = "redis-streams"` is explicit in config. Not part of the default install.
 
 **Cron triggers (generated at deploy, one pair per `[triggers] crons` entry):**

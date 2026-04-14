@@ -91,7 +91,7 @@ adapter = "sqlite"             # sqlite (default) | redis | memory
 path    = "/var/lib/groundflare/kv/CACHE.sqlite"  # default: per-binding sqlite file
 
 [groundflare.bindings.ASSETS]
-adapter = "passthrough"        # passthrough (keep on CF R2) | s3 | minio
+adapter = "passthrough"        # passthrough (keep on CF R2) | s3
                                # passthrough = use real CF R2, free egress
                                # default for R2 = passthrough (don't move what works)
 
@@ -284,7 +284,7 @@ R2 is implemented as a **pluggable S3-API adapter**. The client side (the Worker
 [groundflare.bindings.ASSETS]
 adapter = "passthrough"       # passthrough (default) | s3
 # When adapter = "s3":
-backend = "seaweedfs"          # seaweedfs (default) | aws-s3 | b2 | minio | rustfs | custom
+backend = "seaweedfs"          # seaweedfs (default) | aws-s3 | b2 | rustfs | custom
 endpoint = "http://127.0.0.1:8333"   # for self-hosted; managed services autofill
 ```
 
@@ -304,9 +304,10 @@ On the Bun track, the `s3` adapter is ~30 LOC using [`Bun.s3`](https://bun.com/d
 | `aws-s3` | — (managed) | GA | Production-grade, pay AWS |
 | `b2` | — (managed) | GA | Cheapest managed S3-compatible ($6/TB/mo) |
 | **`seaweedfs`** (self-host default) | Apache-2.0 | **v4.x,10+ years** | **Recommended self-hosted backend.** Single-binary Go, `weed server` as systemd unit. Mature, stable, boring in a good way. |
-| `minio` (self-host) | AGPL-3.0 | GA | Widely deployed, but AGPL-3.0 since 2021 — caveat for users who care about license downstream. |
 | `rustfs` (experimental self-host) | Apache-2.0 | **Pre-1.0 alpha** | Rust single-binary, Apache-2.0. Once GA-stable, the cleanest license + performance fit for groundflare's philosophy. **Not recommended for production data until 1.0 GA + 3–6 months of field validation.** See [Roadmap: rustfs promotion](#rustfs-promotion-roadmap). |
 | `custom` | — | — | User-supplied endpoint (any S3-compatible service) |
+
+**License policy:** groundflare only ships permissively-licensed (Apache-2.0 / MIT / BSD) self-hosted backends. AGPL-licensed storage (MinIO, Garage) is intentionally excluded — the license boundary between "use" and "convey" is ambiguous for a product that spawns third-party software on users' infrastructure, and we'd rather not make users read a license FAQ before `groundflare up`. Users who specifically want MinIO or Garage can still point `backend = "custom"` at their own instance.
 
 #### Why passthrough is the default
 
