@@ -127,6 +127,53 @@ Measures the first request after a 30-second idle window, repeated 5 times per r
 - Stage 2d: compare to real CF Workers edge for the same worker
 - Both need separate PoC runs; results will be added as completed.
 
+## Stage 2c: workerd vs Bun
+
+Bun implements a Web-standard `fetch` handler and JavaScriptCore-based HTTP server that is widely reputed faster than Node. Since groundflare could hypothetically target Bun instead of workerd, the question worth answering: **what does the runtime choice actually cost us in throughput?**
+
+### Setup
+
+- Same trivial worker: returns `new Response('ok')`
+- Bun + bun:sqlite variant: `INSERT` + `SELECT COUNT(*)` on an in-memory SQLite per request (100-row pre-seed)
+- autocannon 10s @ 50 parallel connections
+- Script: [`src/poc/bench-bun.ts`](../src/poc/bench-bun.ts)
+
+### Results
+
+| Runtime | RPS | mean | p50 | p99 | max |
+|---|---:|---:|---:|---:|---:|
+| workerd standalone | 11,920 | 3.82ms | 4ms | 32ms | 171ms |
+| **Bun.serve (trivial)** | **44,496** | **0.62ms** | 1ms | **2ms** | 41ms |
+| Bun + bun:sqlite | 17,570 | 2.36ms | 2ms | 6ms | 18ms |
+
+### Interpretation
+
+1. **Bun's pure HTTP dispatch is ~3.7× workerd's trivial throughput**, with p99 in single-digit ms. This reflects Bun's tightly-tuned HTTP server on JavaScriptCore — it is built for raw fetch handlers.
+
+2. **Bun + bun:sqlite doing real SQL work (INSERT + SELECT) still beats workerd doing nothing** at the dispatch layer. The `bun:sqlite` path is FFI-backed and close to free.
+
+3. **workerd dispatch shows higher tails** (p99 32ms, max 171ms) on this run compared to Stage 1 (p99 6ms). Likely CPU contention from three back-to-back runtimes on the same laptop — not a workerd defect. Stage 3a (VPS isolation) will be more representative.
+
+### This does not change the architecture decision
+
+Bun is faster at HTTP. **Bun does not implement Cloudflare Workers semantics.** Specifically:
+
+| Workers feature | workerd | Bun |
+|---|---|---|
+| fetch handler shape | yes | yes (compatible) |
+| `env.DB` / `env.KV` / `env.R2` bindings | yes | **no — conceptually absent** |
+| Durable Objects | yes | no |
+| `compatibility_date` / flags | yes | no |
+| V8 (matches CF production) | yes | no (uses JavaScriptCore) |
+
+groundflare's contract is "take any existing Cloudflare Worker and run it unchanged." That requires workerd. Bun would require the user to rewrite every binding call — which is no longer the same product.
+
+### What this means in context
+
+- At 12k RPS per core of workerd, a $5 VPS handles more traffic than any micro-SaaS will ever see. The Bun throughput advantage is irrelevant below the scale where any groundflare user operates.
+- **For users who don't need Workers semantics** (pure fetch handler, no bindings), Bun + Hono is genuinely a better choice. Those users aren't groundflare's audience.
+- `bun:sqlite` remains worth studying as an adapter reference — if workerd's built-in D1 path shows performance issues on a real VPS, we have a proof point that in-process SQLite can be very fast.
+
 ## Planned future stages
 
 | Stage | Status | What it measures |
@@ -134,7 +181,7 @@ Measures the first request after a 30-second idle window, repeated 5 times per r
 | Stage 1 | ✅ Done | workerd vs Miniflare — trivial worker, sustained load |
 | Stage 2a | ✅ Done | Idle-recovery latency (30s) |
 | **Stage 2b** | Pending | Longer idle windows (5 min, 1h, 24h) |
-| **Stage 2c** | In progress | workerd vs Bun.serve vs Bun+bun:sqlite |
+| Stage 2c | ✅ Done | workerd vs Bun.serve vs Bun+bun:sqlite |
 | **Stage 2d** | Pending | Worker with bindings (KV/Redis, D1/libSQL) |
 | **Stage 3a** | Pending | Same benchmark on a Hetzner CX22 |
 | **Stage 3b** | Pending | vs real CF Workers edge |

@@ -115,6 +115,7 @@ for (const s of scenarios) {
   } finally {
     proc.kill('SIGTERM')
     await sleep(500)
+    if (!proc.killed) proc.kill('SIGKILL')
   }
 }
 
