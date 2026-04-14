@@ -1,10 +1,25 @@
 # groundflare
 
+[![npm version](https://img.shields.io/npm/v/groundflare.svg?color=cb0000)](https://www.npmjs.com/package/groundflare)
+[![License](https://img.shields.io/npm/l/groundflare.svg?color=blue)](./LICENSE)
+[![Node.js](https://img.shields.io/node/v/groundflare.svg)](https://nodejs.org)
+[![GitHub stars](https://img.shields.io/github/stars/solcreek/groundflare?style=flat)](https://github.com/solcreek/groundflare)
+
 > Your Cloudflare Worker, grounded.
 
 Run any Cloudflare Worker on your own hardware. Same code, your machine, no vendor lock-in.
 
 **Status:** early development — defining scope. Star to follow.
+
+## Install
+
+```bash
+npm install -g groundflare   # or pnpm add -g / yarn global add
+groundflare --help
+# short alias also installed: `gf --help`
+```
+
+Package: [`groundflare` on npm](https://www.npmjs.com/package/groundflare). Requires Node.js ≥ 20.
 
 ## What it is
 
