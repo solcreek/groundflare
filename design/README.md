@@ -8,6 +8,7 @@ Internal design documents for groundflare. These are working specs that define p
 | [config.md](config.md) | How `wrangler.toml` becomes a deployable groundflare config; 3-layer resolution model |
 | [cost-estimate.md](cost-estimate.md) | The `groundflare estimate` CLI: read CF usage, output savings vs Hetzner |
 | [provider.md](provider.md) | ADR + interface for VPS provider abstraction (Hetzner, DigitalOcean, ...); why not Pulumi |
+| [benchmarks.md](benchmarks.md) | Runtime benchmarks + architectural decisions; why workerd standalone over Miniflare, why no Docker |
 
 ## Conventions
 
