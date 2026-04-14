@@ -32,7 +32,7 @@ Both paths share the entire CLI, bootstrap, deploy, observability, backup, and c
 ├─────────────────────────────────────────────────────────────┤
 │  Mirror-specific                                             │
 │    workerd binary + capnp config generator                   │
-│    Adapter wiring (KV→SQLite, D1→libSQL, R2→S3/passthrough)  │
+│    Adapter wiring (KV→SQLite, D1→libSQL, R2→S3-pluggable)    │
 │    Miniflare as build-time config compiler                   │
 │    DO via workerd's native SQLite storage                    │
 ├─────────────────────────────────────────────────────────────┤

@@ -24,7 +24,7 @@ After `groundflare up` completes (target: 3-5 minutes from zero), the VPS has:
 - ✅ workerd binary installed at `/usr/local/bin/workerd` (Mirror) or Bun at `/usr/local/bin/bun` (Bun track)
 - ✅ Caddy reverse proxy with auto-SSL via Let's Encrypt
 - ✅ systemd units supervising the Worker runtime and adapters
-- ✅ SQLite files provisioned for bindings used (`/var/lib/groundflare/{d1,kv,queues,do}/*.sqlite`); MinIO systemd unit only if user opts out of CF R2
+- ✅ SQLite files provisioned for bindings used (`/var/lib/groundflare/{d1,kv,queues,do}/*.sqlite`); S3 backend systemd unit (default SeaweedFS) only if user opts out of CF R2 passthrough
 - ✅ systemd `.timer` + `.service` pair generated per `[triggers] crons` entry
 - ✅ restic backups configured (B2/R2 destination, nightly)
 - ✅ Auto unattended-upgrades for security patches
@@ -287,7 +287,11 @@ Caddy is installed via the official apt repository; the unit file ships with the
 
 **Adapter services (only if used):**
 - SQLite (embedded in workerd/runtime process): D1, KV, DO, and Queues all share this path. Files live under `/var/lib/groundflare/{d1,kv,do,queues}/*.sqlite`, opened with the [standard PRAGMAs](config.md#standard-sqlite-pragmas). No separate daemon.
-- MinIO (optional, single-binary install + systemd unit): R2 adapter target when user opts out of CF R2.
+- S3-compatible backend (only installed when `[groundflare.bindings.*.adapter] = "s3"` is set):
+  - **SeaweedFS** (default, Apache-2.0, `weed` single binary via systemd unit)
+  - MinIO (opt-in, AGPL-3.0 caveat)
+  - rustfs (experimental, Apache-2.0, pre-1.0 alpha — not recommended for production data)
+  - Managed (AWS S3, Backblaze B2) — no local install, endpoint only
 - Redis (`redis-server` apt package, systemd-managed): **opt-in only** — installed when `[groundflare.bindings.*.adapter] = "redis"` or `[groundflare.queues.*.adapter] = "redis-streams"` is explicit in config. Not part of the default install.
 
 **Cron triggers (generated at deploy, one pair per `[triggers] crons` entry):**
@@ -375,7 +379,7 @@ Unattended-Upgrade::MailReport "on-change";
 
 **Worker container updates:** Separate cadence — user runs `groundflare upgrade` explicitly. Never auto-updated, because it's the user's app code.
 
-**Opt-in adapter services (Redis / MinIO):** Pinned versions, updated only when user runs `groundflare upgrade --adapters`.
+**Opt-in adapter services (Redis / S3 backends):** Pinned versions, updated only when user runs `groundflare upgrade --adapters`.
 
 **workerd version:** Tracks user's `compatibility_date` in `wrangler.toml` (matches CF behavior).
 
@@ -537,7 +541,7 @@ After bootstrap, ongoing operations users can run:
 ## What we deliberately do NOT automate
 
 - **Multi-region deployment** (out of scope for v1; adds CRDT/replication complexity)
-- **Database scaling** (single-node SQLite/Redis/MinIO is the v1 promise)
+- **Database scaling** (single-node SQLite + single-node S3 backend is the v1 promise)
 - **Custom DNS providers** (we manage `*.groundflare.app` only; for custom domains, user runs `groundflare domain add` and manages their own DNS records)
 - **User-supplied OS images** (Ubuntu LTS only; supporting Alpine/Fedora/etc. multiplies hardening surface)
 - **Container orchestration** (no Kubernetes, no production Docker; if user needs k8s they're not the target)

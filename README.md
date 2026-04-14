@@ -34,7 +34,7 @@ groundflare keeps your Worker code unchanged and gives you a place to run it.
 - Durable Objects (SQLite-backed, native to workerd)
 - Service Bindings, Cache API
 - KV → SQLite (WAL-enabled, embedded)
-- R2 → S3-compatible (MinIO, Garage, AWS S3 — or keep on Cloudflare)
+- R2 → pluggable S3-compatible backend (default: passthrough to CF R2; self-host: SeaweedFS default, rustfs on roadmap once GA)
 - D1 → libSQL / SQLite
 - Queues → SQLite-backed (Redis Streams opt-in for high throughput)
 - Cron Triggers → systemd timers (OS-native, restart-resilient)

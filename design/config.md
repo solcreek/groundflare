@@ -278,14 +278,51 @@ Properties:
 
 ### R2 (object storage)
 
-| Adapter | When to use |
-|---|---|
-| `passthrough` (default) | **Recommended** — keep using real CF R2, free egress, no migration needed |
-| `s3` | AWS S3 or compatible (uses standard S3 SDK) |
-| `minio` | Self-hosted MinIO (single-binary, systemd unit) |
-| `garage` | Self-hosted Garage (CRDT-based, distributed) |
+R2 is implemented as a **pluggable S3-API adapter**. The client side (the Worker-facing `env.ASSETS.put/get/list/...` binding) is one implementation; the backend where bytes actually live is a separate choice, configured via `adapter` (client selector) + `backend` (server selector). S3 is the abstraction; adapters are backend selectors.
 
-**Why passthrough is the default:** R2 is the one CF service that's almost always cheaper to keep, especially because R2 egress is free even when accessed from a non-CF Worker. Migration off R2 only makes sense for compliance, not cost.
+```toml
+[groundflare.bindings.ASSETS]
+adapter = "passthrough"       # passthrough (default) | s3
+# When adapter = "s3":
+backend = "seaweedfs"          # seaweedfs (default) | aws-s3 | b2 | minio | rustfs | custom
+endpoint = "http://127.0.0.1:8333"   # for self-hosted; managed services autofill
+```
+
+#### Client-side adapter
+
+| `adapter` | When to use |
+|---|---|
+| `passthrough` (default) | **Recommended** — keep using real CF R2, free egress, no migration needed. Worker's `env.ASSETS` calls are proxied to CF R2 over HTTPS with SigV4 against the R2 endpoint. |
+| `s3` | Any S3-compatible backend (self-hosted or managed). Uses the same SigV4 + `fetch()` path; only the endpoint and credentials change. |
+
+On the Bun track, the `s3` adapter is ~30 LOC using [`Bun.s3`](https://bun.com/docs/runtime/s3) (built-in, zero deps). On the Mirror track (workerd), it's ~200 LOC using `fetch()` + WebCrypto-based SigV4 signing (e.g. bundled from [`aws4fetch`](https://github.com/mhart/aws4fetch)). Both speak the same wire protocol — the Worker code sees identical semantics.
+
+#### Backend selector (when `adapter = "s3"`)
+
+| `backend` | License | Maturity | Role |
+|---|---|---|---|
+| `aws-s3` | — (managed) | GA | Production-grade, pay AWS |
+| `b2` | — (managed) | GA | Cheapest managed S3-compatible ($6/TB/mo) |
+| **`seaweedfs`** (self-host default) | Apache-2.0 | **v4.x,10+ years** | **Recommended self-hosted backend.** Single-binary Go, `weed server` as systemd unit. Mature, stable, boring in a good way. |
+| `minio` (self-host) | AGPL-3.0 | GA | Widely deployed, but AGPL-3.0 since 2021 — caveat for users who care about license downstream. |
+| `rustfs` (experimental self-host) | Apache-2.0 | **Pre-1.0 alpha** | Rust single-binary, Apache-2.0. Once GA-stable, the cleanest license + performance fit for groundflare's philosophy. **Not recommended for production data until 1.0 GA + 3–6 months of field validation.** See [Roadmap: rustfs promotion](#rustfs-promotion-roadmap). |
+| `custom` | — | — | User-supplied endpoint (any S3-compatible service) |
+
+#### Why passthrough is the default
+
+R2 is the one CF service that's almost always cheaper to keep, especially because R2 egress is free even when accessed from a non-CF Worker. Migration off R2 only makes sense for **compliance/data-residency**, not cost. Users who need self-hosting explicitly opt in.
+
+#### rustfs promotion roadmap
+
+rustfs becomes an `experimental` backend option when it reaches alpha feature-completion (Lifecycle Management, KMS out of "Under Testing"). It becomes the **recommended default self-host backend** only when **all** of the following hold:
+
+1. rustfs 1.0.0 GA is released
+2. No data-loss regression reported for 3 months post-GA
+3. Lifecycle Management and KMS are marked stable
+4. At least one public production case study exists
+5. groundflare's own dogfood environment runs rustfs stably for 3+ months
+
+Until then, SeaweedFS is the default self-host backend. The `backend = "rustfs"` option is accepted but prints an experimental warning. This decoupling means users can migrate backend by changing one line in `wrangler.toml` + `groundflare migrate-r2` command (copies objects across).
 
 ### Durable Objects
 
