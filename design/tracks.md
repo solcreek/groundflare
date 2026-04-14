@@ -88,7 +88,7 @@ Explicit opt-in. `--bun` flag never applies without `bun prepare` having been ru
 | Workers feature | Mirror track | Bun track |
 |---|---|---|
 | `fetch` handler (module worker) | ✅ | ✅ |
-| `[vars]` env | ✅ | ✅ (Docker env) |
+| `[vars]` env | ✅ | ✅ (systemd Environment=) |
 | Secrets | ✅ | ✅ |
 | KV | ✅ (Redis adapter) | ✅ (direct ioredis) |
 | R2 | ✅ (passthrough / S3 adapter) | ✅ (AWS SDK / passthrough) |

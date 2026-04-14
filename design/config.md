@@ -95,7 +95,7 @@ adapter = "passthrough"        # passthrough (keep on CF R2) | s3 | minio
                                # passthrough = use real CF R2, free egress
                                # default for R2 = passthrough (don't move what works)
 
-# Resource limits per container
+# Resource limits (applied to the systemd unit)
 [groundflare.runtime]
 memory_mb = 512                # default: 50% of VPS RAM
 cpu_pct   = 80                 # default: 80% of VPS cores
@@ -165,11 +165,11 @@ This is the contract. Every supported wrangler field has a defined mapping.
 
 | wrangler field | groundflare behavior |
 |---|---|
-| `name` | Container name + default domain prefix (`<name>.groundflare.app`) |
+| `name` | systemd unit name + default domain prefix (`<name>.groundflare.app`) |
 | `main` | Entry point passed to workerd |
-| `compatibility_date` | Selects matching workerd binary version inside container |
+| `compatibility_date` | Selects matching workerd binary version |
 | `compatibility_flags` | Passed as `--compatibility-flag` to workerd |
-| `[vars]` | Injected as Docker env vars |
+| `[vars]` | Injected into the systemd unit via `Environment=` / `EnvironmentFile=` |
 | `[[d1_databases]]` | Adapter resolution (default: libSQL local file at `/var/lib/groundflare/d1/<database_name>.sqlite`) |
 | `[[kv_namespaces]]` | Adapter resolution (default: Redis with key prefix `kv:<binding>:`) |
 | `[[r2_buckets]]` | Adapter resolution (default: **passthrough to CF R2** — see rationale below) |
@@ -178,7 +178,7 @@ This is the contract. Every supported wrangler field has a defined mapping.
 | `[[services]]` | Multi-Worker dispatch — **v1.5+**, currently unsupported |
 | `[[queues.producers]]` / `[[queues.consumers]]` | Adapter resolution (default: Redis Streams) — **v0.4+** |
 | `[assets]` | Static assets served directly by Caddy (bypasses Worker for static paths) |
-| `[triggers] crons` | Configured in groundflare-runtime; uses `node-cron`-style scheduler; container restart-resilient |
+| `[triggers] crons` | Configured in groundflare-runtime; uses systemd timer or in-process `node-cron`; restart-resilient |
 | `routes` | **Ignored** — groundflare uses `[groundflare] domain` |
 | `workers_dev` | **Ignored** — `*.groundflare.app` is the default subdomain |
 | `[ai]` (Workers AI) | **Unsupported** — flagged at config-load time with migration suggestion |
@@ -211,7 +211,7 @@ For each binding type, groundflare picks a default unless overridden.
 | `redis` (default) | Persistent, fast, eventual consistency simulated |
 | `memory` | Dev/testing, lost on restart |
 
-**Default behavior:** spawn `redis:7-alpine` container, AOF persistence, key prefix `kv:<binding_name>:`.
+**Default behavior:** install `redis-server` via apt, AOF persistence enabled, bound to `127.0.0.1:6379`, key prefix `kv:<binding_name>:`.
 
 ### R2 (object storage)
 
@@ -219,7 +219,7 @@ For each binding type, groundflare picks a default unless overridden.
 |---|---|
 | `passthrough` (default) | **Recommended** — keep using real CF R2, free egress, no migration needed |
 | `s3` | AWS S3 or compatible (uses standard S3 SDK) |
-| `minio` | Self-hosted MinIO container |
+| `minio` | Self-hosted MinIO (single-binary, systemd unit) |
 | `garage` | Self-hosted Garage (CRDT-based, distributed) |
 
 **Why passthrough is the default:** R2 is the one CF service that's almost always cheaper to keep, especially because R2 egress is free even when accessed from a non-CF Worker. Migration off R2 only makes sense for compliance, not cost.
@@ -230,11 +230,11 @@ No adapter choice — workerd native, SQLite-backed storage on disk at `/var/lib
 
 ### Cache API
 
-In-memory inside workerd container. Flushed on restart. Adapter for shared cache is **out of scope for v1**.
+In-memory inside the workerd process. Flushed on restart. Adapter for shared cache is **out of scope for v1**.
 
 ### Service Bindings
 
-Local-only in v1: bound services must run in the same groundflare-runtime container. Multi-container service mesh in v1.5+.
+Local-only in v1: bound services must run in the same workerd process. Multi-process service mesh in v1.5+.
 
 ## Smart defaults — full list
 
@@ -249,7 +249,7 @@ What happens with a bare wrangler.toml and no `[groundflare]` section:
 | Email | Read from `git config user.email` |
 | Backup | Prompt (no silent default — data loss implication) |
 | D1 adapter | libSQL local file |
-| KV adapter | Redis container (auto-spawned) |
+| KV adapter | Redis via apt + systemd unit (auto-installed) |
 | R2 adapter | **Passthrough** (keep on CF R2) |
 | Runtime memory | 50% of VPS RAM |
 | Runtime CPU | 80% of VPS cores |

@@ -12,7 +12,7 @@ This is not condescending — it is empirical. CF Workers explicitly removed dev
 
 **Every decision in this doc follows from that one constraint.**
 
-If experienced sysadmins want the levers, they can SSH in and override after the fact — groundflare uses standard tools (Docker, Caddy, systemd, UFW), not a closed system. But the **default path requires zero knowledge**.
+If experienced sysadmins want the levers, they can SSH in and override after the fact — groundflare uses standard tools (Caddy, systemd, UFW, apt packages), not a closed system. The **production runtime is native** — workerd, Caddy, and Redis all run as systemd services, not in containers. Docker is used only for local VPS simulation during development and CI (see [§ Local testing](#local-testing-via-docker)). But the **default path requires zero knowledge**.
 
 ## The contract
 
@@ -21,10 +21,10 @@ After `groundflare up` completes (target: 3-5 minutes from zero), the VPS has:
 - ✅ Latest stable OS with security patches applied
 - ✅ Hardened SSH (key-only, root disabled, fail2ban active)
 - ✅ Firewall (UFW: only 22, 80, 443 inbound)
-- ✅ Docker engine + Compose plugin
+- ✅ workerd binary installed at `/usr/local/bin/workerd` (Mirror) or Bun at `/usr/local/bin/bun` (Bun track)
 - ✅ Caddy reverse proxy with auto-SSL via Let's Encrypt
-- ✅ groundflare-runtime container running the user's Worker
-- ✅ Adapter containers as needed (Redis for KV, MinIO for R2 if not on CF, libSQL for D1)
+- ✅ systemd units supervising the Worker runtime and adapters
+- ✅ Adapter services running as needed (Redis for KV, libSQL embedded, MinIO for R2 if not on CF)
 - ✅ restic backups configured (B2/R2 destination, nightly)
 - ✅ Auto unattended-upgrades for security patches
 - ✅ Swap file sized to RAM
@@ -48,7 +48,7 @@ The user did none of this — they ran one command.
 │  Stage 3:  Wait for boot, install cloud-init      │
 │  Stage 4:  Base hardening (SSH, UFW, fail2ban)    │
 │  Stage 5:  System tuning (swap, ulimits, sysctl)  │
-│  Stage 6:  Install Docker + Caddy + groundflare   │
+│  Stage 6:  Install workerd + Caddy + adapters     │
 │  Stage 7:  Configure backups (restic)             │
 │  Stage 8:  Configure auto-updates                 │
 │  Stage 9:  Configure observability                │
@@ -127,9 +127,8 @@ Token stored in OS keychain (macOS Keychain / Windows Credential Manager / libse
    package_update: true
    package_upgrade: true
    packages:
-     - docker.io
-     - docker-compose-plugin
      - caddy
+     - redis-server
      - ufw
      - fail2ban
      - unattended-upgrades
@@ -225,21 +224,43 @@ fs.inotify.max_user_watches = 524288
 
 ---
 
-### Stage 6: Install Docker + Caddy + groundflare-runtime
+### Stage 6: Install workerd + Caddy + adapters
 
-**Purpose:** Get the actual runtime in place.
+**Purpose:** Get the Worker runtime and supporting services installed as native systemd units.
 
-**Docker daemon config (`/etc/docker/daemon.json`):**
-```json
-{
-  "log-driver": "journald",
-  "log-opts": { "tag": "{{.Name}}" },
-  "storage-driver": "overlay2",
-  "default-ulimits": {
-    "nofile": { "Name": "nofile", "Hard": 65536, "Soft": 65536 }
-  }
-}
+**workerd binary:**
+- Download from npm (`workerd` package ships a platform binary) or GitHub release
+- Extract to `/usr/local/bin/workerd`
+- Version pinned by `compatibility_date` in `wrangler.toml`
+- `chmod +x`, verify signature
+
+**systemd unit (`/etc/systemd/system/groundflare-worker.service`):**
+```ini
+[Unit]
+Description=groundflare worker runtime
+After=network.target redis-server.service
+Requires=redis-server.service
+
+[Service]
+Type=simple
+User=groundflare
+Group=groundflare
+WorkingDirectory=/var/lib/groundflare/workers/current
+EnvironmentFile=/etc/groundflare/environment
+ExecStart=/usr/local/bin/workerd serve worker.capnp --verbose
+Restart=on-failure
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+LimitNOFILE=65536
+MemoryMax=80%
+CPUQuota=80%
+
+[Install]
+WantedBy=multi-user.target
 ```
+
+Vars from `[vars]` in wrangler.toml are written to `/etc/groundflare/environment` as `KEY=value` lines.
 
 **Caddy config (`/etc/caddy/Caddyfile`) — generated:**
 ```
@@ -252,28 +273,25 @@ fs.inotify.max_user_watches = 524288
   reverse_proxy localhost:8080
   encode gzip zstd
   log {
-    output journald
+    output stdout
     format json
   }
 }
 ```
+
+Caddy is installed via the official apt repository; the unit file ships with the package.
 
 **Default domain strategy:**
 - If user has DNS configured → use their domain
 - Else: assign `<worker-name>-<random>.groundflare.app` (we operate this domain, point to user's VPS via wildcard)
 - Wildcard SSL via Let's Encrypt DNS-01 (Caddy plugin)
 
-**groundflare-runtime container:**
-- Single Docker image: `solcreek/groundflare-runtime:latest`
-- Contains: workerd binary + adapter shims (KV/Redis, R2/S3, D1/libSQL)
-- Configured via `/etc/groundflare/config.toml`
-- Restart policy: `unless-stopped`
-- Resource limits: based on VPS tier
+**Adapter services (only if used):**
+- Redis (`redis-server` apt package, systemd-managed): KV adapter target, bound to `127.0.0.1:6379`
+- libSQL: linked into workerd (D1 adapter), no separate service
+- MinIO (optional, single-binary install + systemd unit): R2 adapter target when user opts out of CF R2
 
-**Adapter containers (only if used):**
-- `redis:7-alpine` for KV (if KV bindings present)
-- `minio/minio` for R2 (only if user opted out of CF R2)
-- libSQL is in-process inside groundflare-runtime (no separate container)
+No Docker daemon, no containers, no compose files. Each service is a first-class systemd unit with its own logs in journald.
 
 ---
 
@@ -343,7 +361,7 @@ Unattended-Upgrade::MailReport "on-change";
 
 **Health endpoint:** `http://localhost:9091/health` — returns 200 if Worker + DB + adapters all OK.
 
-**Logs:** Worker writes structured JSON to stdout → captured by `journald` (via Docker log driver) → rotated by systemd-journal automatically. `groundflare tail` SSHs in and streams `journalctl -fu groundflare`.
+**Logs:** Worker writes structured JSON to stdout → systemd unit's `StandardOutput=journal` captures directly into journald → rotated by `systemd-journald` automatically. `groundflare tail` SSHs in and streams `journalctl -fu groundflare-worker`.
 
 **Alerts:** Optional webhook fired by groundflare-runtime when:
 - Health check fails 3 consecutive times → POST to user's webhook
@@ -371,7 +389,7 @@ Unattended-Upgrade::MailReport "on-change";
 ```
 ✓ VPS provisioned (Hetzner CX22, hel1)             [42s]
 ✓ OS bootstrapped + hardened                       [78s]
-✓ Docker + Caddy + groundflare-runtime installed   [54s]
+✓ workerd + Caddy + Redis installed                [54s]
 ✓ Backups configured (B2)                          [12s]
 ✓ Worker deployed                                  [8s]
 ✓ Health check passed
@@ -451,7 +469,7 @@ Flow:
 4. groundflare-runtime mounts `/etc/groundflare/secrets/` read-only
 5. On rotation (`groundflare secret put`), atomic replace + container reload
 
-**No secrets in:** environment variables visible in `ps`, Docker labels, log output, or `groundflare.config.toml`.
+**No secrets in:** environment variables visible in `ps`, log output, or `groundflare.config.toml`.
 
 ## Disaster recovery
 
@@ -488,7 +506,7 @@ After bootstrap, ongoing operations users can run:
 - **Database scaling** (single-node SQLite/Redis/MinIO is the v1 promise)
 - **Custom DNS providers** (we manage `*.groundflare.app` only; for custom domains, user runs `groundflare domain add` and manages their own DNS records)
 - **User-supplied OS images** (Ubuntu LTS only; supporting Alpine/Fedora/etc. multiplies hardening surface)
-- **Container orchestration** (Docker only, no Kubernetes; if user needs k8s they're not the target)
+- **Container orchestration** (no Kubernetes, no production Docker; if user needs k8s they're not the target)
 
 These are the levers experienced sysadmins might want. We don't expose them in v1 because every option increases the surface area of "things that can go wrong without you knowing why."
 
@@ -504,6 +522,40 @@ These are the levers experienced sysadmins might want. We don't expose them in v
 | Auto-update breaks Worker | Updates are security-only, never feature; reboot at 03:00 if needed; rollback via `groundflare upgrade --rollback` |
 | User loses their SSH key | `groundflare reset-key` regenerates + re-uploads via provider API |
 | User loses access to provider account | Same — provider account is their responsibility; we document recovery |
+
+## Local testing via Docker
+
+Although the production runtime on a real VPS is pure native (systemd + binaries, no containers), **local development and CI use Docker to simulate a fresh Ubuntu 24.04 VPS**. This lets contributors iterate on bootstrap stages without provisioning real cloud machines.
+
+### Flow
+
+```bash
+groundflare test bootstrap --local
+# Starts an ubuntu:24.04 container with systemd enabled
+# Injects a generated cloud-init user-data via env
+# Runs stages 4-10 against the container over SSH (localhost:2222)
+# Deploys the examples/hello worker
+# Asserts /health returns 200
+# Tears down the container
+```
+
+### Why Docker here specifically
+
+- **Cheap**: no billing, no network flakiness, seconds to spin up vs minutes to provision a real VPS
+- **Deterministic**: same base image every run, CI-friendly
+- **Isolated**: broken bootstrap scripts don't leak into the developer's host
+- **Native-compatible**: systemd-in-Docker (via `--privileged` + `/sbin/init`) is mature enough that stages 4-9 behave identically to a real VPS
+
+### Image contract
+
+- Base: `ubuntu:24.04` (official image)
+- No groundflare bits baked in — everything comes from cloud-init + Stage 6 downloads
+- Exposed ports: 22 (SSH), 80/443 (forwarded to host for Caddy testing)
+- `tini` or `systemd-as-PID1` for proper signal handling
+
+### Not production
+
+The Docker simulation is **only** for testing groundflare's own bootstrap tooling. It is never shipped, never used for customer deployments, and never suggested as a hosting option. A real VPS from a real provider is always the production target.
 
 ## Roadmap
 
