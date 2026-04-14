@@ -1,0 +1,156 @@
+/**
+ * Data model for a workerd capnp configuration.
+ *
+ * Mirrors the subset of `workerd.capnp` (the upstream schema) that
+ * groundflare v0.1 emits. Renderer at src/runtime/workerd/capnp/render.ts
+ * serializes this to capnp text; consumers build these objects from
+ * wrangler.toml + [groundflare] + workspace.toml (future commit).
+ *
+ * Shape rules:
+ *   - All fields are readonly; the generator never mutates its input.
+ *   - Discriminated unions use a `kind` string — exhaustive switches in
+ *     the renderer keep the grammar honest.
+ *   - Strings stored unescaped; renderer handles quoting.
+ *   - `embedPath` values are relative to the capnp file's directory;
+ *     workerd resolves them at load time.
+ */
+
+// ─── Bindings ──────────────────────────────────────────────────────
+
+export type CapnpBinding =
+  | CapnpTextBinding
+  | CapnpJsonBinding
+  | CapnpDataBinding
+  | CapnpServiceBinding
+  | CapnpKvNamespaceBinding
+  | CapnpD1DatabaseBinding
+  | CapnpR2BucketBinding
+  | CapnpDurableObjectNamespaceBinding
+  | CapnpFromEnvironmentBinding
+
+export interface CapnpTextBinding {
+  readonly name: string
+  readonly kind: 'text'
+  readonly value: string
+}
+
+export interface CapnpJsonBinding {
+  readonly name: string
+  readonly kind: 'json'
+  /** Pre-stringified JSON; emitted verbatim wrapped in a string literal. */
+  readonly value: string
+}
+
+export interface CapnpDataBinding {
+  readonly name: string
+  readonly kind: 'data'
+  readonly value: Uint8Array
+}
+
+export interface CapnpServiceBinding {
+  readonly name: string
+  readonly kind: 'service'
+  /** Target service name in the same config. */
+  readonly service: string
+}
+
+export interface CapnpKvNamespaceBinding {
+  readonly name: string
+  readonly kind: 'kvNamespace'
+  readonly service: string
+}
+
+export interface CapnpD1DatabaseBinding {
+  readonly name: string
+  readonly kind: 'd1Database'
+  readonly service: string
+}
+
+export interface CapnpR2BucketBinding {
+  readonly name: string
+  readonly kind: 'r2Bucket'
+  readonly service: string
+}
+
+export interface CapnpDurableObjectNamespaceBinding {
+  readonly name: string
+  readonly kind: 'durableObjectNamespace'
+  readonly className: string
+  /** Cross-worker DO (other service exports the class). Omit for same-worker. */
+  readonly serviceName?: string
+}
+
+export interface CapnpFromEnvironmentBinding {
+  readonly name: string
+  readonly kind: 'fromEnvironment'
+  readonly envVar: string
+}
+
+// ─── Modules ───────────────────────────────────────────────────────
+
+export type CapnpModuleSource =
+  | { readonly kind: 'esModule'; readonly embedPath: string }
+  | { readonly kind: 'esModule'; readonly inline: string }
+  | { readonly kind: 'commonJsModule'; readonly embedPath: string }
+  | { readonly kind: 'text'; readonly embedPath: string }
+  | { readonly kind: 'data'; readonly embedPath: string }
+  | { readonly kind: 'json'; readonly embedPath: string }
+
+export interface CapnpModule {
+  readonly name: string
+  readonly source: CapnpModuleSource
+}
+
+// ─── Durable Objects ───────────────────────────────────────────────
+
+export interface CapnpDurableObjectNamespaceDecl {
+  readonly className: string
+  readonly uniqueKey?: string
+  readonly enableSql?: boolean
+}
+
+// ─── Workers ───────────────────────────────────────────────────────
+
+export interface CapnpWorker {
+  readonly modules: readonly CapnpModule[]
+  readonly compatibilityDate?: string
+  readonly compatibilityFlags?: readonly string[]
+  readonly bindings?: readonly CapnpBinding[]
+  readonly durableObjectNamespaces?: readonly CapnpDurableObjectNamespaceDecl[]
+  readonly durableObjectStorage?: { readonly localDiskPath: string }
+  readonly globalOutbound?: string
+}
+
+// ─── Services ──────────────────────────────────────────────────────
+
+export type CapnpService =
+  | { readonly name: string; readonly kind: 'worker'; readonly worker: CapnpWorker }
+  | {
+      readonly name: string
+      readonly kind: 'external'
+      readonly address: string
+      readonly http?: boolean
+    }
+  | {
+      readonly name: string
+      readonly kind: 'disk'
+      readonly path: string
+      readonly writable?: boolean
+    }
+  | { readonly name: string; readonly kind: 'network' }
+
+// ─── Sockets ───────────────────────────────────────────────────────
+
+export interface CapnpSocket {
+  readonly name: string
+  readonly address: string
+  readonly service: string
+  readonly protocol?: 'http' | 'https'
+}
+
+// ─── Top-level config ──────────────────────────────────────────────
+
+export interface CapnpWorkerdConfig {
+  readonly services: readonly CapnpService[]
+  readonly sockets: readonly CapnpSocket[]
+}
