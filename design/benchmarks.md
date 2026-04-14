@@ -6,7 +6,7 @@ Status: v0 — Stage 1 complete.
 
 ## TL;DR
 
-**workerd standalone is 4.5× faster than Miniflare as a runtime.** v0.1 ships workerd as the production runtime with systemd management — no Node runtime, no Docker, no Miniflare in the hot path.
+Stage 1 measures a trivial Worker (no bindings) under 50 parallel connections. workerd standalone delivers 4.5× the throughput of Miniflare's programmatic runtime, with a tighter latency distribution. Based on these numbers, v0.1 ships workerd as the production runtime with systemd management; Miniflare is retained only as a build-time config compiler.
 
 ```
 workerd standalone:  16,280 rps │ mean 2.66ms │ p50 3ms  │ p99 6ms
@@ -22,7 +22,7 @@ Two credible v0.1 architectures existed:
 | **Miniflare in container** | Simpler — one Node process, proven dev stack | Extra Node runtime, HTTP proxy hop to child workerd |
 | **workerd standalone** | Direct binary, smallest footprint | Need our own capnp config generation |
 
-Without numbers, this was religion. With numbers, it's settled.
+Stage 1 measures which one we should commit to.
 
 ## Stage 1: trivial worker (no bindings)
 
@@ -43,7 +43,7 @@ Without numbers, this was religion. With numbers, it's settled.
 
 ### Interpretation
 
-1. **Throughput: 4.5× advantage for workerd.** This is the headline number.
+1. **Throughput: 4.5× higher on workerd standalone.**
 2. **Latency distribution: workerd is much tighter.** mean ≈ p50 ≈ p99 (2.66 / 3 / 6). Miniflare is **bimodal** — p50=1ms but mean=13ms means most requests are fast but some stall badly (Node event loop contention under load).
 3. **No errors, no non-2xx either side** — both correct.
 4. **workerd p99 = 6ms** is notable. For an untuned HTTP server on a laptop, that's very close to wire-speed minus TCP overhead.
