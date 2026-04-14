@@ -29,7 +29,9 @@
   },
   "scripts": {
     "poc:validate": "tsx src/poc/validate-miniflare.ts",
-    "poc:bench": "tsx src/poc/bench.ts"
+    "poc:bench": "tsx src/poc/bench.ts",
+    "poc:bench-idle": "tsx src/poc/bench-idle.ts",
+    "poc:bench-bun": "tsx src/poc/bench-bun.ts"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
