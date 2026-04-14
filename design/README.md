@@ -11,6 +11,7 @@ Internal design documents for groundflare. These are working specs that define p
 | [benchmarks.md](benchmarks.md) | Runtime benchmarks + architectural decisions; why workerd standalone over Miniflare, why no Docker |
 | [tracks.md](tracks.md) | Dual-track runtime strategy: Mirror (workerd, zero changes) + Bun track (LLM-assisted migration, 3-4× throughput) |
 | [testing.md](testing.md) | Test pyramid (unit / conformance / Docker-VPS / live smoke), coverage targets per subsystem, Docker's role (CI simulator only, not production) |
+| [observability.md](observability.md) | `/metrics` (Prometheus) + `/health` + journald JSON log contract; metric taxonomy per subsystem; CLI observation commands (`tail`, `status`, `logs`, `metrics`); alert events |
 
 ## Conventions
 
