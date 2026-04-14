@@ -1,8 +1,8 @@
-# DESIGN: Mirror and Remix — dual-track runtime strategy
+# DESIGN: Mirror and Bun — dual-track runtime strategy
 
-> groundflare ships two runtime tracks from the same CLI and same deploy experience. **Mirror** runs your Worker unchanged on workerd. **Remix** transforms it to a Bun-native app with help from an LLM-assisted migration tool. Same home, two ways to cook.
+> groundflare ships two runtime tracks from the same CLI and same deploy experience. The **Mirror track** runs your Worker unchanged on workerd. The **Bun track** transforms it to a Bun-native app with help from an LLM-assisted migration tool. Same home, two ways to cook.
 
-Status: v0 draft. Remix track is experimental until v0.5+. Mirror is the default path through at least v1.0.
+Status: v0 draft. The Bun track is experimental until v0.5+. Mirror is the default path through at least v1.0.
 
 ## Why two tracks
 
@@ -10,8 +10,8 @@ workerd is the correct runtime for bug-for-bug Workers compatibility — but Bun
 
 Two tracks under one CLI:
 
-- **Mirror**: zero code changes, full Workers semantics, moderate performance. Default.
-- **Remix**: Bun-native code, 3-4× throughput, LLM-assisted migration, subset of Workers features. Opt-in.
+- **Mirror track**: zero code changes, full Workers semantics, moderate performance. Default.
+- **Bun track**: Bun-native code, 3-4× throughput, LLM-assisted migration, subset of Workers features. Opt-in.
 
 Both paths share the entire CLI, bootstrap, deploy, observability, backup, and cost-estimate surfaces. Only the runtime and the binding glue differ.
 
@@ -36,7 +36,7 @@ Both paths share the entire CLI, bootstrap, deploy, observability, backup, and c
 │    Miniflare as build-time config compiler                   │
 │    DO via workerd's native SQLite storage                    │
 ├─────────────────────────────────────────────────────────────┤
-│  Remix-specific                                              │
+│  Bun-specific                                                │
 │    Migration analyzer (what can transform, what can't)       │
 │    LLM-assisted code rewriter                                │
 │    Bun runtime + Bun.serve supervisor                        │
@@ -45,7 +45,7 @@ Both paths share the entire CLI, bootstrap, deploy, observability, backup, and c
 └─────────────────────────────────────────────────────────────┘
 ```
 
-The shared layer is the majority of the product. Mirror and Remix are deployment format choices, not separate products.
+The shared layer is the majority of the product. Mirror and Bun are deployment format choices, not separate products.
 
 ## CLI
 
@@ -56,10 +56,10 @@ $ cd my-worker/          # has wrangler.toml
 $ groundflare up         # provisions + bootstraps + deploys via workerd
 ```
 
-Remix flow:
+Bun flow:
 
 ```bash
-$ groundflare remix analyze
+$ groundflare bun analyze
   Analyzing wrangler.toml and src/...
   ✓ Can migrate:
     • fetch handler (1 entry)
@@ -72,20 +72,20 @@ $ groundflare remix analyze
   ✗ Cannot migrate:
     • HTMLRewriter usage at src/handler.ts:42
 
-$ groundflare remix prepare --branch=remix-migration
-  Generates src-remix/ with LLM-suggested transforms
+$ groundflare bun prepare --branch=bun-migration
+  Generates src-bun/ with LLM-suggested transforms
   Opens a review diff
 
-$ git diff main..remix-migration    # review
-$ git switch remix-migration
-$ groundflare up --remix
+$ git diff main..bun-migration    # review
+$ git switch bun-migration
+$ groundflare up --bun
 ```
 
-Explicit opt-in. `--remix` flag never applies without `remix prepare` having been run.
+Explicit opt-in. `--bun` flag never applies without `bun prepare` having been run.
 
 ## Compatibility matrix
 
-| Workers feature | Mirror | Remix |
+| Workers feature | Mirror track | Bun track |
 |---|---|---|
 | `fetch` handler (module worker) | ✅ | ✅ |
 | `[vars]` env | ✅ | ✅ (Docker env) |
@@ -124,8 +124,8 @@ src/
   config/                # wrangler.toml + [groundflare] parsing
   runtime/
     mod.ts               # Runtime interface
-    workerd/             # Mirror implementation
-    bun/                 # Remix implementation
+    workerd/             # Mirror track implementation
+    bun/                 # Bun track implementation
 ```
 
 The `Runtime` interface is the only cross-cut:
@@ -149,11 +149,11 @@ export interface Runtime {
 }
 ```
 
-CLI resolves which `Runtime` to use from `[groundflare] runtime = "workerd" | "bun"` in wrangler.toml, or `--remix` flag, or detection of a `remix-migration` branch.
+CLI resolves which `Runtime` to use from `[groundflare] runtime = "workerd" | "bun"` in wrangler.toml, or `--bun` flag, or detection of a `bun-migration` branch.
 
-## Remix migration workflow
+## Bun-track migration workflow
 
-### `groundflare remix analyze`
+### `groundflare bun analyze`
 
 Reads `wrangler.toml` + `src/**/*.{ts,js}`. For each file:
 
@@ -164,37 +164,37 @@ Reads `wrangler.toml` + `src/**/*.{ts,js}`. For each file:
 
 Output a JSON analysis + human-readable summary. Exit non-zero if blockers are present.
 
-### `groundflare remix prepare`
+### `groundflare bun prepare`
 
 Produces a migration diff:
 
-1. Copy source to `src-remix/` (or branch `remix-migration`)
+1. Copy source to `src-bun/` (or branch `bun-migration`)
 2. For each `env.DB.*` → call LLM with transformation prompt (codemod-as-prompt)
 3. For each `env.KV.*` → synthesize `redis.get/set/...`
 4. For each `env.R2.*` → synthesize S3 SDK calls
 5. Generate `server.ts`:
    ```ts
-   import handler from './src-remix/index.ts'
+   import handler from './src-bun/index.ts'
    Bun.serve({ port: 8080, fetch: (req) => handler.fetch(req, env) })
    ```
-6. Generate `remix.config.ts` capturing runtime-specific setup
+6. Generate `bun.groundflare.config.ts` capturing runtime-specific setup
 7. Update `[groundflare] runtime = "bun"` in wrangler.toml
 
-LLM prompt template lives in `src/runtime/bun/codemods/` as `.md` files. Deterministic parts (binding name → client variable) happen in code; creative parts (edge cases) go to the LLM.
+LLM prompt templates live in `src/runtime/bun/codemods/` as `.md` files. Deterministic parts (binding name → client variable) happen in code; creative parts (edge cases) go to the LLM.
 
-### `groundflare remix apply`
+### `groundflare bun apply`
 
-Moves `src-remix/*` → `src/*`, commits the transformation, updates wrangler.toml. This is a separate step so reviewers can read the diff first.
+Moves `src-bun/*` → `src/*`, commits the transformation, updates wrangler.toml. This is a separate step so reviewers can read the diff first.
 
 ### Fallback: manual mode
 
 If LLM-assisted transformation produces something the user doesn't trust, they can:
-- Skip `remix prepare` entirely
+- Skip `bun prepare` entirely
 - Write their own Bun entry point + binding clients
-- Add `[groundflare] runtime = "bun"` + `[groundflare.main] = "server.ts"`
-- Run `groundflare up --remix`
+- Add `[groundflare] runtime = "bun"` + `[groundflare.bun] main = "server.ts"`
+- Run `groundflare up --bun`
 
-Remix is a convenience, not a requirement.
+The `bun prepare` tool is a convenience, not a requirement.
 
 ## Shared config, differentiated runtime
 
@@ -215,11 +215,11 @@ database_name = "app"
 provider = "hetzner"
 size = "cx22"
 domain = "api.example.com"
-runtime = "workerd"         # or "bun" (Remix opt-in)
+runtime = "workerd"         # or "bun" (Bun-track opt-in)
 
 # Bun-specific overrides (only consulted when runtime = "bun")
 [groundflare.bun]
-main = "server.ts"           # Remix entry point, generated by `remix prepare`
+main = "server.ts"           # entry point, generated by `bun prepare`
 # per-binding client choices if the default isn't right
 [groundflare.bun.bindings.DB]
 client = "bun:sqlite"
@@ -233,7 +233,7 @@ url = "redis://localhost:6379/0"
 
 From Stage 1 + 2c on a laptop:
 
-| Target | Mirror (workerd) | Remix (Bun) |
+| Target | Mirror (workerd) | Bun track |
 |---|---:|---:|
 | Throughput (trivial fetch) | ~12-16k rps | ~44k rps |
 | mean latency | ~2-4ms | ~0.6-2ms |
@@ -245,25 +245,25 @@ Same-VPS numbers will be lower but ratios should hold. Stage 3a confirmation nee
 
 ## Phased roadmap
 
-| Phase | Mirror | Remix |
+| Phase | Mirror | Bun track |
 |---|---|---|
 | **v0.1** | MVP: deploy a worker to Hetzner VPS | — |
 | **v0.2-0.3** | Stabilize Mirror: bindings, observability, secrets | — |
-| **v0.4** | Mirror production-grade | **Remix experimental preview**: `remix analyze` only |
-| **v0.5** | Mirror maintenance | **Remix alpha**: `remix prepare` for no-DO Workers |
-| **v0.6-0.7** | — | Remix handles HTMLRewriter, WebSocket fallbacks |
-| **v1.0** | Both tracks stable | Remix DO alternatives (research) |
-| **v1.5+** | — | Remix covers 90% of CF Workers |
+| **v0.4** | Mirror production-grade | **Bun-track experimental preview**: `bun analyze` only |
+| **v0.5** | Mirror maintenance | **Bun-track alpha**: `bun prepare` for no-DO Workers |
+| **v0.6-0.7** | — | Bun handles HTMLRewriter, WebSocket fallbacks |
+| **v1.0** | Both tracks stable | DO alternatives (research) |
+| **v1.5+** | — | Bun track covers 90% of CF Workers |
 
-**Do not ship Remix before Mirror is production-proven.** Runtime diversity before product-market-fit is a well-known trap.
+**Do not ship the Bun track before Mirror is production-proven.** Runtime diversity before product-market-fit is a well-known trap.
 
 ## Risks
 
 | Risk | Mitigation |
 |---|---|
-| **Nobody actually uses Remix** — LLM migration too scary, users stay on Mirror | Ship Mirror first. Only build Remix once we see real demand signals (issues, discussions, DMs). |
-| **Adapter semantic drift** — Mirror's KV behaves differently from Remix's ioredis wrapper | Shared conformance test suite (same tests run against both runtimes) |
-| **DO replacement is genuinely hard** — many real Workers rely on DO | Be honest: Remix is a subset. Never promise DO migration until we have a credible story. |
+| **Nobody actually uses the Bun track** — LLM migration too scary, users stay on Mirror | Ship Mirror first. Only build Bun-track tooling once we see real demand signals (issues, discussions, DMs). |
+| **Adapter semantic drift** — Mirror's KV behaves differently from Bun-track's ioredis wrapper | Shared conformance test suite (same tests run against both runtimes) |
+| **DO replacement is genuinely hard** — many real Workers rely on DO | Be honest: the Bun track is a subset. Never promise DO migration until we have a credible story. |
 | **LLM transformation produces broken code** — subtle semantics wrong | `prepare` generates a diff, user reviews. Never auto-apply. |
 | **Two runtimes = two bug surfaces** — support burden doubles | Keep runtime-specific code in clear directories. Shared conformance tests. |
 
@@ -271,13 +271,13 @@ Same-VPS numbers will be lower but ratios should hold. Stage 3a confirmation nee
 
 - `groundflare` is the product.
 - `groundflare up` is the default (Mirror).
-- `groundflare up --remix` is the performance path.
+- `groundflare up --bun` is the performance path.
 - Neither track has a separate marketing name. There are not "two products." The runtime is an implementation choice.
 
 ## Open questions
 
-1. **`compatibility_date` under Remix.** What do we say when a user's wrangler.toml has `compatibility_date = "2024-01-01"` but they're on Bun? Bun has no equivalent concept. Leaning: **ignore it for Remix, warn if the worker uses flags-gated behavior**.
-2. **Mixed Mode.** Can a Worker run Mirror in staging but Remix in prod? Technically yes (same config, different `--remix` flag). Do we support it officially? Leaning: **yes, document as an intentional pattern**.
-3. **Can Remix use Miniflare's config parsing?** Yes — Remix still reads `wrangler.toml` via `unstable_readConfig`. It only diverges at "what runtime executes the resulting artifact."
-4. **Auto-detect Remix candidacy.** Could `groundflare up` on first run say "this Worker could run on Bun for ~3× throughput; try `groundflare remix analyze`?" Leaning: **yes, opt-in hint after Mirror is working**.
-5. **Pricing implication for commercial tier.** If we eventually offer a managed tier, Mirror and Remix could be priced differently (Bun's higher density = lower our cost per customer). Leaning: **same price to user, more margin for us**.
+1. **`compatibility_date` on the Bun track.** What do we say when a user's wrangler.toml has `compatibility_date = "2024-01-01"` but they're on Bun? Bun has no equivalent concept. Leaning: **ignore it for the Bun track, warn if the worker uses flags-gated behavior**.
+2. **Mixed Mode.** Can a Worker run Mirror in staging but the Bun track in prod? Technically yes (same config, different `--bun` flag). Do we support it officially? Leaning: **yes, document as an intentional pattern**.
+3. **Can the Bun track use Miniflare's config parsing?** Yes — it still reads `wrangler.toml` via `unstable_readConfig`. It only diverges at "what runtime executes the resulting artifact."
+4. **Auto-detect Bun-track candidacy.** Could `groundflare up` on first run say "this Worker could run on Bun for ~3× throughput; try `groundflare bun analyze`?" Leaning: **yes, opt-in hint after Mirror is working**.
+5. **Pricing implication for commercial tier.** If we eventually offer a managed tier, Mirror and Bun could be priced differently (Bun's higher density = lower our cost per customer). Leaning: **same price to user, more margin for us**.
