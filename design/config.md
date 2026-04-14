@@ -87,8 +87,8 @@ url     = "file:///var/lib/groundflare/d1/production.sqlite"
                                # default: file:///var/lib/groundflare/d1/<database_name>.sqlite
 
 [groundflare.bindings.CACHE]
-adapter = "redis"              # redis (default) | memory
-url     = "redis://localhost:6379/0"  # default: spawned local Redis
+adapter = "sqlite"             # sqlite (default) | redis | memory
+path    = "/var/lib/groundflare/kv/CACHE.sqlite"  # default: per-binding sqlite file
 
 [groundflare.bindings.ASSETS]
 adapter = "passthrough"        # passthrough (keep on CF R2) | s3 | minio
@@ -171,14 +171,14 @@ This is the contract. Every supported wrangler field has a defined mapping.
 | `compatibility_flags` | Passed as `--compatibility-flag` to workerd |
 | `[vars]` | Injected into the systemd unit via `Environment=` / `EnvironmentFile=` |
 | `[[d1_databases]]` | Adapter resolution (default: libSQL local file at `/var/lib/groundflare/d1/<database_name>.sqlite`) |
-| `[[kv_namespaces]]` | Adapter resolution (default: Redis with key prefix `kv:<binding>:`) |
+| `[[kv_namespaces]]` | Adapter resolution (default: SQLite file at `/var/lib/groundflare/kv/<binding>.sqlite`, WAL-enabled) |
 | `[[r2_buckets]]` | Adapter resolution (default: **passthrough to CF R2** — see rationale below) |
 | `[[durable_objects.bindings]]` | workerd native, state persisted to `/var/lib/groundflare/do/<class>/` |
 | `[[migrations]]` | Applied to workerd DO state directory on startup |
 | `[[services]]` | Multi-Worker dispatch — **v1.5+**, currently unsupported |
-| `[[queues.producers]]` / `[[queues.consumers]]` | Adapter resolution (default: Redis Streams) — **v0.4+** |
+| `[[queues.producers]]` / `[[queues.consumers]]` | Adapter resolution (default: SQLite-backed queue at `/var/lib/groundflare/queues/<name>.sqlite`; Redis Streams opt-in) — **v0.4+** |
 | `[assets]` | Static assets served directly by Caddy (bypasses Worker for static paths) |
-| `[triggers] crons` | Configured in groundflare-runtime; uses systemd timer or in-process `node-cron`; restart-resilient |
+| `[triggers] crons` | One systemd `.timer` + `.service` pair per cron expression; timer fires `POST http://127.0.0.1:8080/__scheduled` which runtime dispatches to the Worker's `scheduled()` handler. `Persistent=true` catches up missed triggers after downtime. |
 | `routes` | **Ignored** — groundflare uses `[groundflare] domain` |
 | `workers_dev` | **Ignored** — `*.groundflare.app` is the default subdomain |
 | `[ai]` (Workers AI) | **Unsupported** — flagged at config-load time with migration suggestion |
@@ -202,16 +202,79 @@ For each binding type, groundflare picks a default unless overridden.
 | `sqlite` | Same as libsql but no Turso protocol | `file:///path` |
 | `postgres` | Bigger workloads, real PG features | `postgres://user:pass@host:5432/db` |
 
-**Default behavior:** create a `/var/lib/groundflare/d1/<database_name>.sqlite` file on first deploy. groundflare-runtime opens with `journal_mode=WAL`, applies `migrations/*.sql` if present.
+**Default behavior:** create a `/var/lib/groundflare/d1/<database_name>.sqlite` file on first deploy. groundflare-runtime opens with the [standard SQLite PRAGMAs](#standard-sqlite-pragmas), applies `migrations/*.sql` if present.
+
+#### Standard SQLite PRAGMAs
+
+Every SQLite-backed subsystem (D1, KV, DO, Queues) opens its database file with the same prelude, applied exactly once per connection:
+
+```sql
+PRAGMA journal_mode = WAL;
+PRAGMA synchronous = NORMAL;
+PRAGMA busy_timeout = 5000;       -- 5s wait instead of SQLITE_BUSY
+PRAGMA cache_size = -64000;        -- 64 MB page cache
+PRAGMA mmap_size = 268435456;      -- 256 MB mmap for reads
+PRAGMA temp_store = MEMORY;
+PRAGMA foreign_keys = ON;
+```
+
+These are load-bearing for the "集中 SQLite" architecture: without WAL + `busy_timeout`, concurrent workerd request handlers would serialize through EXCLUSIVE locks and bottleneck at single-connection rollback-journal throughput (~100–500 writes/s). With WAL + NORMAL on NVMe, the same stack handles 10k+ writes/s per SQLite file without reader starvation. Implemented as a single `src/runtime/sqlite/prelude.ts` that every adapter imports.
 
 ### KV (key-value)
 
 | Adapter | When to use |
 |---|---|
-| `redis` (default) | Persistent, fast, eventual consistency simulated |
-| `memory` | Dev/testing, lost on restart |
+| `sqlite` (default) | Embedded SQLite file per binding. Zero daemons, best fit for CF KV semantics (prefix `list()`, metadata, TTL are all native columns). |
+| `redis` | Opt-in for users who already run Redis for other reasons. Same API; uses hash + ZSET for TTL. |
+| `memory` | Dev/testing, lost on restart. |
 
-**Default behavior:** install `redis-server` via apt, AOF persistence enabled, bound to `127.0.0.1:6379`, key prefix `kv:<binding_name>:`.
+**Default behavior:** create `/var/lib/groundflare/kv/<binding_name>.sqlite` on first deploy. Opened with the [standard SQLite PRAGMAs](#standard-sqlite-pragmas). Schema:
+
+```sql
+CREATE TABLE kv (
+  key         TEXT PRIMARY KEY,
+  value       BLOB NOT NULL,
+  metadata    TEXT,           -- JSON, CF KV metadata sidecar
+  expires_at  INTEGER          -- unix ms, NULL = no TTL
+);
+CREATE INDEX kv_expires ON kv(expires_at) WHERE expires_at IS NOT NULL;
+```
+
+Background task every 60s: `DELETE FROM kv WHERE expires_at IS NOT NULL AND expires_at < unixepoch('subsec') * 1000`. Prefix `list()` uses `WHERE key >= :prefix AND key < :prefix_upper` (indexed range scan, not `LIKE`).
+
+### Queues
+
+| Adapter | When to use |
+|---|---|
+| `sqlite` (default) | Embedded SQLite. Handles typical micro-SaaS queue traffic (low-thousands msg/s) with ~100ms polling latency. |
+| `redis-streams` | Opt-in for high-throughput, real blocking-pop semantics. Requires `redis-server`. |
+
+**Default behavior (v0.4+):** per-queue SQLite file at `/var/lib/groundflare/queues/<queue_name>.sqlite`, consumer poller runs inside the runtime supervisor, batch size + visibility timeout match CF Queues defaults (10 msg / 30s).
+
+Schema (see [`design/bootstrap.md`](bootstrap.md) for the consumer loop):
+
+```sql
+CREATE TABLE queue_messages (
+  id           INTEGER PRIMARY KEY,
+  payload      BLOB NOT NULL,
+  visible_at   INTEGER NOT NULL,   -- unix ms; consumer picks WHERE visible_at <= now
+  attempts     INTEGER NOT NULL DEFAULT 0,
+  max_attempts INTEGER NOT NULL DEFAULT 3,
+  created_at   INTEGER NOT NULL
+);
+CREATE INDEX queue_visible ON queue_messages(visible_at);
+```
+
+DLQ = sibling table `queue_messages_dlq`. Backoff = `visible_at = now + min(2^attempts, 300) * 1000`.
+
+### Cron Triggers
+
+No adapter choice. Each `[triggers] crons = ["..."]` entry generates a dedicated systemd `.timer` + `.service` pair at bootstrap. Timer fires → `.service` runs `curl -X POST http://127.0.0.1:8080/__scheduled -H 'X-Cron: <expr>'` → runtime dispatches to the Worker's `scheduled(event, env, ctx)` handler with the matching cron expression.
+
+Properties:
+- **Persistent** (`Persistent=true`): missed triggers during downtime fire on next boot
+- **Observable**: `systemctl list-timers` + `journalctl -u groundflare-cron-*.service`
+- **Zero daemon**: OS scheduler does the work
 
 ### R2 (object storage)
 
@@ -249,7 +312,9 @@ What happens with a bare wrangler.toml and no `[groundflare]` section:
 | Email | Read from `git config user.email` |
 | Backup | Prompt (no silent default — data loss implication) |
 | D1 adapter | libSQL local file |
-| KV adapter | Redis via apt + systemd unit (auto-installed) |
+| KV adapter | SQLite file per binding (WAL-enabled) |
+| Queue adapter | SQLite file per queue (v0.4+) |
+| Cron runner | systemd timers, one per cron expression |
 | R2 adapter | **Passthrough** (keep on CF R2) |
 | Runtime memory | 50% of VPS RAM |
 | Runtime CPU | 80% of VPS cores |
