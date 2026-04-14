@@ -1,0 +1,32 @@
+{
+  "name": "groundflare",
+  "version": "0.0.1",
+  "description": "Run your Cloudflare Worker on your own hardware. Wrangler-like DX for self-hosted workerd deployments.",
+  "keywords": [
+    "cloudflare",
+    "workers",
+    "workerd",
+    "self-host",
+    "docker",
+    "deploy",
+    "kamal",
+    "wrangler",
+    "vps"
+  ],
+  "homepage": "https://github.com/solcreek/groundflare",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/solcreek/groundflare.git"
+  },
+  "bugs": {
+    "url": "https://github.com/solcreek/groundflare/issues"
+  },
+  "license": "MIT",
+  "author": "SolCreek",
+  "engines": {
+    "node": ">=20"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}
