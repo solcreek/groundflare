@@ -14,6 +14,7 @@ Internal design documents for groundflare. These are working specs that define p
 | [observability.md](observability.md) | `/metrics` (Prometheus) + `/health` + journald JSON log contract; metric taxonomy per subsystem; CLI observation commands (`tail`, `status`, `logs`, `metrics`); alert events |
 | [workspaces.md](workspaces.md) | Multi-tenant Workers on one VPS (v0.2 target): single workerd + N isolates + Router Worker; per-tenant state isolation via filesystem; deploy atomicity; cross-tenant service bindings; per-tier testing matrix + stress suite + SLOs |
 | [sqlite-performance.md](sqlite-performance.md) | Write-path mitigation menu for SQLite-backed bindings (WAL checkpoint tuning, background checkpointer, coalescing, sharding); priority-ordered implementation plan |
+| [kv-sharding.md](kv-sharding.md) | Shard a KV binding across N Durable Objects for linear write-throughput scaling; FNV-1a hash routing; composite cursor for paginated `list()`; the v0.2-critical unblock for 1000-connection SLO |
 
 ## Conventions
 
