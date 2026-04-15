@@ -57,6 +57,17 @@ export interface WorkspaceWorker {
 
 export interface KvBindingSpec {
   readonly binding: string
+
+  /**
+   * Shard count for this binding. Traffic is distributed across N
+   * Durable Object instances (same class, different `idFromName` seeds)
+   * so write throughput scales linearly with N. See design/kv-sharding.md.
+   *
+   * Default: 1 (single DO, backwards-compatible). Recommended for
+   * HN-burst-resistant bindings: 4. Cannot be changed on a populated
+   * binding without explicit migration (v0.3+).
+   */
+  readonly shards?: number
 }
 
 export interface D1BindingSpec {
