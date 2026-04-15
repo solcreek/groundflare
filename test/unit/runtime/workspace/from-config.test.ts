@@ -1,0 +1,137 @@
+import { describe, it, expect } from 'vitest'
+import { workspaceWorkerFromConfig } from '../../../../src/runtime/workspace/index.js'
+import type { GroundflareSection, WranglerConfig } from '../../../../src/config/index.js'
+
+function minimalWrangler(overrides: Partial<WranglerConfig> = {}): WranglerConfig {
+  return {
+    name: 'api',
+    main: 'src/index.ts',
+    ...overrides,
+  }
+}
+
+describe('workspaceWorkerFromConfig', () => {
+  it('maps basic fields and rewrites entryPath to the on-VPS layout', () => {
+    const w = workspaceWorkerFromConfig(minimalWrangler(), {})
+    expect(w.name).toBe('api')
+    expect(w.entryPath).toBe('workers/api/code/current/index.js')
+    expect(w.domain).toBeUndefined()
+    expect(w.vars).toBeUndefined()
+  })
+
+  it('passes through the domain from [groundflare]', () => {
+    const w = workspaceWorkerFromConfig(minimalWrangler(), {
+      domain: 'api.example.com',
+    })
+    expect(w.domain).toBe('api.example.com')
+  })
+
+  it('passes through compatibility_date + flags', () => {
+    const w = workspaceWorkerFromConfig(
+      minimalWrangler({
+        compatibility_date: '2026-04-01',
+        compatibility_flags: ['nodejs_compat'],
+      }),
+      {},
+    )
+    expect(w.compatibilityDate).toBe('2026-04-01')
+    expect(w.compatibilityFlags).toEqual(['nodejs_compat'])
+  })
+
+  it('maps [vars] to the manifest vars shape (string/number/boolean)', () => {
+    const w = workspaceWorkerFromConfig(
+      minimalWrangler({
+        vars: { GREETING: 'hello', COUNT: 42, ENABLED: true },
+      }),
+      {},
+    )
+    expect(w.vars).toEqual({ GREETING: 'hello', COUNT: 42, ENABLED: true })
+  })
+
+  it('omits vars when [vars] is empty', () => {
+    const w = workspaceWorkerFromConfig(
+      minimalWrangler({ vars: {} }),
+      {},
+    )
+    expect(w.vars).toBeUndefined()
+  })
+
+  it('rejects non-scalar var values', () => {
+    expect(() =>
+      workspaceWorkerFromConfig(
+        minimalWrangler({
+          vars: { NESTED: ({ a: 1 } as unknown) as string },
+        }),
+        {},
+      ),
+    ).toThrow(/NESTED.*unsupported type/)
+  })
+
+  it('maps KV namespaces to WorkspaceWorker.kvNamespaces', () => {
+    const w = workspaceWorkerFromConfig(
+      minimalWrangler({
+        kv_namespaces: [
+          { binding: 'CACHE', id: 'kv-1' },
+          { binding: 'SESSIONS', id: 'kv-2' },
+        ],
+      }),
+      {},
+    )
+    expect(w.kvNamespaces).toEqual([{ binding: 'CACHE' }, { binding: 'SESSIONS' }])
+  })
+
+  it('maps D1 databases keyed by database_name', () => {
+    const w = workspaceWorkerFromConfig(
+      minimalWrangler({
+        d1_databases: [
+          { binding: 'DB', database_name: 'production', database_id: 'd1-1' },
+        ],
+      }),
+      {},
+    )
+    expect(w.d1Databases).toEqual([{ binding: 'DB', databaseName: 'production' }])
+  })
+
+  it('maps R2 buckets', () => {
+    const w = workspaceWorkerFromConfig(
+      minimalWrangler({
+        r2_buckets: [{ binding: 'ASSETS', bucket_name: 'my-assets' }],
+      }),
+      {},
+    )
+    expect(w.r2Buckets).toEqual([{ binding: 'ASSETS' }])
+  })
+
+  it('maps Durable Objects with and without scriptName', () => {
+    const w = workspaceWorkerFromConfig(
+      minimalWrangler({
+        durable_objects: {
+          bindings: [
+            { name: 'COUNTER', class_name: 'Counter' },
+            { name: 'OTHER', class_name: 'Other', script_name: 'counters' },
+          ],
+        },
+      }),
+      {},
+    )
+    expect(w.durableObjects).toEqual([
+      { binding: 'COUNTER', className: 'Counter' },
+      { binding: 'OTHER', className: 'Other', scriptName: 'counters' },
+    ])
+  })
+
+  it('deployedEntryName override changes the file name in entryPath', () => {
+    const w = workspaceWorkerFromConfig(minimalWrangler(), {}, {
+      deployedEntryName: 'bundle.mjs',
+    })
+    expect(w.entryPath).toBe('workers/api/code/current/bundle.mjs')
+  })
+
+  it('omits binding arrays when the config has none', () => {
+    const w = workspaceWorkerFromConfig(minimalWrangler(), {} as GroundflareSection)
+    expect(w.kvNamespaces).toBeUndefined()
+    expect(w.d1Databases).toBeUndefined()
+    expect(w.r2Buckets).toBeUndefined()
+    expect(w.durableObjects).toBeUndefined()
+  })
+})

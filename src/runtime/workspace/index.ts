@@ -16,6 +16,9 @@ export {
   routerBindingName,
 } from './router.js'
 
+export { workspaceWorkerFromConfig } from './from-config.js'
+export type { FromConfigOptions } from './from-config.js'
+
 export type { RouterGenerationInfo } from './router.js'
 
 export type {
