@@ -47,8 +47,25 @@ export interface RunDeployOptions {
 
 export interface DeployResult {
   readonly workspace: string
+  /**
+   * Which runtime this deploy targeted. Mirror ("workerd") is the
+   * default when wrangler's `[groundflare] runtime` is unset; Bun-track
+   * deploys require `runtime = "bun"` (usually set by
+   * `groundflare bun prepare`).
+   */
+  readonly runtime: 'workerd' | 'bun'
   readonly tenants: readonly TenantDeployResult[]
+  /**
+   * Bytes of the workerd capnp config uploaded. Zero on Bun-track
+   * deploys (the equivalent content ships as server.ts + adapter
+   * sources, counted separately in bunArtifactBytes).
+   */
   readonly capnpBytes: number
+  /**
+   * Bytes of the Bun-track artifact (server.ts + adapters/*.ts) uploaded.
+   * Zero on workerd-track deploys.
+   */
+  readonly bunArtifactBytes: number
   readonly caddyfileBytes: number
   readonly healthCheck?: {
     readonly status: number

@@ -25,6 +25,7 @@ import {
   generateCaddyfile,
   type CaddySite,
 } from '../runtime/bootstrap/index.js'
+import { buildBunArtifact } from '../runtime/bun/build.js'
 import {
   buildCapnpFromWorkspace,
   workspaceWorkerFromConfig,
@@ -34,6 +35,7 @@ import { renderCapnpConfig } from '../runtime/workerd/capnp/index.js'
 import { OpenSshClient, type SshClient } from '../ssh/index.js'
 
 import { bundleWorker } from './bundle.js'
+import { stageBunArtifact } from './bun-track.js'
 import {
   DeployError,
   type DeployResult,
@@ -84,14 +86,29 @@ export async function runDeploy(opts: RunDeployOptions): Promise<DeployResult> {
   const manifest: WorkspaceManifest = {
     name: opts.workspace,
     workers: [worker],
+    ...(groundflare.runtime !== undefined ? { runtime: groundflare.runtime } : {}),
   }
+  const isBunTrack = manifest.runtime === 'bun'
 
   // ─── 4. Render ─────────────────────────────────────────────────
-  const capnpConfig = buildCapnpFromWorkspace(manifest, {
-    listenAddress: LISTEN_ADDRESS,
-    stateBaseDir: 'do-state',
-  })
-  const capnpText = renderCapnpConfig(capnpConfig)
+  //
+  // Both tracks share the Caddy reverse-proxy config (same listen
+  // address, same Host-based routing). The runtime-specific config is
+  // either the workerd capnp or the Bun artifact — never both, so the
+  // unused side stays 0 bytes in the DeployResult.
+  let capnpText: string | null = null
+  let bunArtifact: ReturnType<typeof buildBunArtifact> | null = null
+  if (isBunTrack) {
+    bunArtifact = buildBunArtifact(manifest, {
+      listenAddress: LISTEN_ADDRESS,
+    })
+  } else {
+    const capnpConfig = buildCapnpFromWorkspace(manifest, {
+      listenAddress: LISTEN_ADDRESS,
+      stateBaseDir: 'do-state',
+    })
+    capnpText = renderCapnpConfig(capnpConfig)
+  }
 
   const caddySites: CaddySite[] = manifest.workers
     .filter((w) => w.domain !== undefined)
@@ -111,8 +128,16 @@ export async function runDeploy(opts: RunDeployOptions): Promise<DeployResult> {
     log('info', 'dry-run complete; no SSH operations performed')
     return {
       workspace: opts.workspace,
+      runtime: isBunTrack ? 'bun' : 'workerd',
       tenants,
-      capnpBytes: Buffer.byteLength(capnpText, 'utf-8'),
+      capnpBytes: capnpText ? Buffer.byteLength(capnpText, 'utf-8') : 0,
+      bunArtifactBytes: bunArtifact
+        ? Buffer.byteLength(bunArtifact.serverSource, 'utf-8') +
+          Object.values(bunArtifact.adapterSources).reduce(
+            (n, s) => n + Buffer.byteLength(s, 'utf-8'),
+            0,
+          )
+        : 0,
       caddyfileBytes: Buffer.byteLength(caddyfile, 'utf-8'),
       dryRun: true,
     }
@@ -145,13 +170,24 @@ export async function runDeploy(opts: RunDeployOptions): Promise<DeployResult> {
       },
     })
 
-  log('info', `uploading bundle + capnp + Caddyfile to ${opts.bootstrapState.vps.ipv4}`)
-  for (const w of manifest.workers) {
-    const remotePath = `/var/lib/groundflare/workers/${w.name}/code/current/index.js`
-    await ensureRemoteDir(ssh, `/var/lib/groundflare/workers/${w.name}/code/current`)
-    await uploadAsUser(ssh, bundle.code, remotePath, 'groundflare', '0644')
+  let bunStage: Awaited<ReturnType<typeof stageBunArtifact>> | null = null
+  if (isBunTrack && bunArtifact) {
+    log('info', `uploading Bun artifact to ${opts.bootstrapState.vps.ipv4}`)
+    bunStage = await stageBunArtifact({
+      ssh,
+      artifact: bunArtifact,
+      userBundle: bundle.code,
+      log,
+    })
+  } else if (capnpText !== null) {
+    log('info', `uploading bundle + capnp to ${opts.bootstrapState.vps.ipv4}`)
+    for (const w of manifest.workers) {
+      const remotePath = `/var/lib/groundflare/workers/${w.name}/code/current/index.js`
+      await ensureRemoteDir(ssh, `/var/lib/groundflare/workers/${w.name}/code/current`)
+      await uploadAsUser(ssh, bundle.code, remotePath, 'groundflare', '0644')
+    }
+    await uploadAsUser(ssh, capnpText, CAPNP_REMOTE_PATH, 'groundflare', '0644')
   }
-  await uploadAsUser(ssh, capnpText, CAPNP_REMOTE_PATH, 'groundflare', '0644')
   await uploadAsRoot(ssh, caddyfile, CADDYFILE_REMOTE_PATH, '0644')
 
   // ─── 6. Restart services ───────────────────────────────────────
@@ -206,8 +242,10 @@ export async function runDeploy(opts: RunDeployOptions): Promise<DeployResult> {
 
   return {
     workspace: opts.workspace,
+    runtime: isBunTrack ? 'bun' : 'workerd',
     tenants,
-    capnpBytes: Buffer.byteLength(capnpText, 'utf-8'),
+    capnpBytes: capnpText ? Buffer.byteLength(capnpText, 'utf-8') : 0,
+    bunArtifactBytes: bunStage?.artifactBytes ?? 0,
     caddyfileBytes: Buffer.byteLength(caddyfile, 'utf-8'),
     healthCheck: { status, durationMs: probeDuration },
     dryRun: false,

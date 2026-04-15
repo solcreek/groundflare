@@ -334,3 +334,176 @@ describe('runDeploy', () => {
     ).rejects.toBeInstanceOf(DeployError)
   })
 })
+
+function okRuns(n: number): Partial<RunResult>[] {
+  const out: Partial<RunResult>[] = []
+  for (let i = 0; i < n; i++) out.push({ exitCode: 0 })
+  return out
+}
+
+describe('runDeploy — Bun track', () => {
+  function bunWrangler(): string {
+    return [
+      `name = "api"`,
+      `main = "src/index.ts"`,
+      `compatibility_date = "2026-04-01"`,
+      ``,
+      `[groundflare]`,
+      `domain = "api.example.com"`,
+      `runtime = "bun"`,
+      ``,
+      `[[kv_namespaces]]`,
+      `binding = "CACHE"`,
+      `id = "abc"`,
+    ].join('\n')
+  }
+
+  it('dry-run reports runtime=bun and bunArtifactBytes>0', async () => {
+    await scaffoldWorker(bunWrangler())
+    const { client, runCalls, uploads } = mockSsh()
+    const result = await runDeploy({
+      workspace: 'demo',
+      workingDirectory: tmp,
+      acmeEmail: 'ops@example.com',
+      bootstrapState: baseState(),
+      ssh: client,
+      dryRun: true,
+      log: () => {},
+    })
+    expect(result.runtime).toBe('bun')
+    expect(result.bunArtifactBytes).toBeGreaterThan(0)
+    expect(result.capnpBytes).toBe(0)
+    expect(runCalls).toHaveLength(0)
+    expect(uploads).toHaveLength(0)
+  })
+
+  it('uploads server.ts + adapters + user bundle + systemd unit + Caddyfile', async () => {
+    await scaffoldWorker(bunWrangler())
+    // Expected run-call sequence:
+    //   1. ensureRemoteDir (deployRoot)
+    //   2. ensureRemoteDir (kv)
+    //   3. ensureRemoteDir (adapters)
+    //   4. install server.ts
+    //   5-8. install 4 adapter sources (kv, d1, r2, sigv4)
+    //   9. install user.js
+    //   10. install systemd unit (as root)
+    //   11. install Caddyfile (as root)
+    //   12. systemctl restart
+    //   13. curl health probe
+    const { client, runCalls, uploads } = mockSsh({
+      runs: okRuns(12).concat([{ exitCode: 0, stdout: '200' }]),
+    })
+    const result = await runDeploy({
+      workspace: 'demo',
+      workingDirectory: tmp,
+      acmeEmail: 'ops@example.com',
+      bootstrapState: baseState(),
+      ssh: client,
+      log: () => {},
+    })
+    expect(result.runtime).toBe('bun')
+    expect(result.healthCheck?.status).toBe(200)
+    expect(result.bunArtifactBytes).toBeGreaterThan(0)
+    // 1 user bundle + 1 server.ts + 4 adapter sources + 1 unit + 1 Caddyfile = 8
+    expect(uploads).toHaveLength(8)
+    const restartCall = runCalls.find((c) =>
+      c.command.includes('systemctl restart groundflare-worker.service'),
+    )
+    expect(restartCall).toBeDefined()
+    expect(restartCall?.command).toContain('systemctl reload caddy.service')
+  })
+
+  it('installs the Bun systemd unit at /etc/systemd/system/groundflare-worker.service', async () => {
+    await scaffoldWorker(bunWrangler())
+    const { client, runCalls } = mockSsh({
+      runs: okRuns(12).concat([{ exitCode: 0, stdout: '200' }]),
+    })
+    await runDeploy({
+      workspace: 'demo',
+      workingDirectory: tmp,
+      acmeEmail: 'ops@example.com',
+      bootstrapState: baseState(),
+      ssh: client,
+      log: () => {},
+    })
+    const unitInstall = runCalls.find(
+      (c) =>
+        c.command.includes('install') &&
+        c.command.includes('/etc/systemd/system/groundflare-worker.service'),
+    )
+    expect(unitInstall).toBeDefined()
+    // Unit must be installed as root (sudo install -o root -g root).
+    expect(unitInstall?.command).toContain('-o root -g root')
+  })
+
+  it('creates kv/d1/r2 state dirs when bindings demand them', async () => {
+    await scaffoldWorker(
+      [
+        `name = "api"`,
+        `main = "src/index.ts"`,
+        `compatibility_date = "2026-04-01"`,
+        ``,
+        `[groundflare]`,
+        `runtime = "bun"`,
+        ``,
+        `[[kv_namespaces]]`,
+        `binding = "CACHE"`,
+        `id = "1"`,
+        ``,
+        `[[d1_databases]]`,
+        `binding = "DB"`,
+        `database_name = "app"`,
+        ``,
+        `[[r2_buckets]]`,
+        `binding = "ASSETS"`,
+        `bucket_name = "a"`,
+      ].join('\n'),
+    )
+    // 1 deployRoot + 3 state dirs + 1 adapters dir = 5 mkdir calls
+    // + 1 server.ts + 4 adapters + 1 user.js + 1 unit + 1 caddyfile = 8 installs
+    // + 1 restart + 1 health = 15 run calls total
+    const { client, runCalls } = mockSsh({
+      runs: okRuns(14).concat([{ exitCode: 0, stdout: '200' }]),
+    })
+    await runDeploy({
+      workspace: 'demo',
+      workingDirectory: tmp,
+      acmeEmail: 'ops@example.com',
+      bootstrapState: baseState(),
+      ssh: client,
+      log: () => {},
+    })
+    const mkdirs = runCalls
+      .filter((c) => c.command.startsWith('sudo mkdir -p'))
+      .map((c) => c.command)
+    expect(mkdirs.some((m) => m.includes('/var/lib/groundflare/kv'))).toBe(true)
+    expect(mkdirs.some((m) => m.includes('/var/lib/groundflare/d1'))).toBe(true)
+    expect(mkdirs.some((m) => m.includes('/var/lib/groundflare/r2'))).toBe(true)
+    expect(mkdirs.some((m) => m.includes('/var/lib/groundflare/adapters'))).toBe(
+      true,
+    )
+  })
+
+  it('propagates upload_failed when an adapter install fails', async () => {
+    await scaffoldWorker(bunWrangler())
+    const { client } = mockSsh({
+      runs: [
+        { exitCode: 0 }, // mkdir deployRoot
+        { exitCode: 0 }, // mkdir kv state dir
+        { exitCode: 0 }, // mkdir adapters
+        { exitCode: 0 }, // install server.ts
+        { exitCode: 1, stderr: 'disk full' }, // install first adapter fails
+      ],
+    })
+    await expect(
+      runDeploy({
+        workspace: 'demo',
+        workingDirectory: tmp,
+        acmeEmail: 'ops@example.com',
+        bootstrapState: baseState(),
+        ssh: client,
+        log: () => {},
+      }),
+    ).rejects.toMatchObject({ code: 'upload_failed' })
+  })
+})
