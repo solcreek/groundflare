@@ -56,6 +56,16 @@ export interface RunBootstrapOptions {
   /** Override workerd binary path uploaded to the VPS. */
   readonly workerdBinaryPath?: string
 
+  /**
+   * Runtime track this workspace will deploy onto. When `"bun"`,
+   * cloud-init installs the Bun runtime so `groundflare deploy` can
+   * start the Bun systemd unit immediately. Default: `"workerd"`
+   * (Mirror track — matches existing workspaces that predate the Bun
+   * track). Usually derived by the CLI from `[groundflare] runtime`
+   * in wrangler.toml; pass through explicitly here.
+   */
+  readonly runtime?: 'workerd' | 'bun'
+
   /** Inject a logger (defaults to a console-style stderr writer). */
   readonly log?: LogFn
 
@@ -123,6 +133,7 @@ export async function runBootstrap(opts: RunBootstrapOptions): Promise<Bootstrap
         : {}),
       ...(opts.image !== undefined ? { image: opts.image } : {}),
       notifyEmail: opts.acmeEmail,
+      ...(opts.runtime !== undefined ? { runtime: opts.runtime } : {}),
     }),
     waitSshStage(),
     cloudInitStage(),

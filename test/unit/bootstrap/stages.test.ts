@@ -310,6 +310,46 @@ describe('Stage: provider.provision', () => {
     expect(args.name).toBe('custom-host')
   })
 
+  it('runtime="bun" propagates to cloud-init as installBun=true', async () => {
+    const provider = makeProvider()
+    const ctx = await ctxWithKey(provider)
+    await provisionStage({
+      size: 'cx22',
+      region: 'hel1',
+      runtime: 'bun',
+    }).run(ctx)
+    const args = (provider.createVPS as ReturnType<typeof vi.fn>).mock.calls[0]?.[0]
+    // Bun's installer script + /usr/local/bin/bun symlink land in runcmd.
+    expect(args.userData).toMatch(/bun\.sh\/install/)
+    expect(args.userData).toContain('/usr/local/bin/bun')
+    // unzip is added to the apt package list so the installer can unpack.
+    expect(args.userData).toMatch(/^\s*- unzip$/m)
+  })
+
+  it('runtime unset (default workerd) leaves Bun install out of cloud-init', async () => {
+    const provider = makeProvider()
+    const ctx = await ctxWithKey(provider)
+    await provisionStage({
+      size: 'cx22',
+      region: 'hel1',
+    }).run(ctx)
+    const args = (provider.createVPS as ReturnType<typeof vi.fn>).mock.calls[0]?.[0]
+    expect(args.userData).not.toMatch(/bun\.sh\/install/)
+    expect(args.userData).not.toMatch(/^\s*- unzip$/m)
+  })
+
+  it('runtime="workerd" explicit also skips Bun install', async () => {
+    const provider = makeProvider()
+    const ctx = await ctxWithKey(provider)
+    await provisionStage({
+      size: 'cx22',
+      region: 'hel1',
+      runtime: 'workerd',
+    }).run(ctx)
+    const args = (provider.createVPS as ReturnType<typeof vi.fn>).mock.calls[0]?.[0]
+    expect(args.userData).not.toMatch(/bun\.sh\/install/)
+  })
+
   it('isComplete returns false when the VPS no longer exists on the provider', async () => {
     const provider = makeProvider({ getVPS: vi.fn(async () => null) })
     const state: BootstrapState = {

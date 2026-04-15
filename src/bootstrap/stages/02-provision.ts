@@ -24,6 +24,14 @@ export interface ProvisionStageOptions {
   readonly image?: string
   /** Optional contact email passed into cloud-init's unattended-upgrades. */
   readonly notifyEmail?: string
+  /**
+   * Runtime track the workspace targets. When `"bun"`, cloud-init is
+   * asked to install the Bun runtime (via the generator's installBun
+   * option) so the VPS comes up with `/usr/local/bin/bun` already in
+   * place. When `"workerd"` or unset, cloud-init skips Bun — the
+   * Mirror track only needs workerd, which stage 05 uploads.
+   */
+  readonly runtime?: 'workerd' | 'bun'
 }
 
 export function provisionStage(opts: ProvisionStageOptions): Stage {
@@ -66,6 +74,7 @@ export function provisionStage(opts: ProvisionStageOptions): Stage {
       const userData = generateCloudInit({
         sshAuthorizedKeys: [publicKey],
         ...(opts.notifyEmail !== undefined ? { notifyEmail: opts.notifyEmail } : {}),
+        ...(opts.runtime === 'bun' ? { installBun: true } : {}),
       })
 
       const hostname = opts.hostnameOverride ?? `gf-${ctx.workspace}`

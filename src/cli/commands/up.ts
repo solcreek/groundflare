@@ -135,6 +135,7 @@ export default defineCommand({
           acmeEmail,
           placeholderDomain: domain ?? `${workspace}.invalid`,
           log: logFn,
+          ...(groundflare.runtime !== undefined ? { runtime: groundflare.runtime } : {}),
         })
       } catch (err) {
         if (err instanceof BootstrapError) {
