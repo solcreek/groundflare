@@ -1,0 +1,97 @@
+name: Release
+
+# npm publish via OIDC Trusted Publishers.
+#
+# Triggered on tag pushes matching `v*` (e.g. `v0.2.0`) so every
+# publish is tied to a reviewable commit. Also supports manual
+# dispatch for hot-fix retries without re-tagging.
+#
+# Prerequisite — one-time setup on npmjs.com:
+#   1. Log in as the `groundflare` package maintainer at
+#      https://www.npmjs.com/package/groundflare/access
+#   2. Add a Trusted Publisher with:
+#        Publisher         : GitHub Actions
+#        Repository owner  : solcreek
+#        Repository        : groundflare
+#        Workflow filename : release.yml
+#        Environment       : (leave blank)
+#   3. For the very first publish of the package, npm requires either
+#      an existing maintainer (with the classic token flow) or a
+#      Trusted Publisher pre-configured against a reserved name.
+#      See https://docs.npmjs.com/trusted-publishers.
+#
+# Nothing else to configure — no NPM_TOKEN secret, no long-lived
+# credential. The `id-token: write` permission below lets GitHub mint
+# a short-lived OIDC token per run; npm exchanges it for a scoped
+# publish credential valid for this one job.
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+# Never run two publishes concurrently on the same ref — npm's
+# Trusted-Publisher exchange is idempotent, but the log flood from a
+# parallel job stomping on the same tarball hash is not worth it.
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: npm publish (OIDC)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      # OIDC exchange with npm. Required — the default `permissions: read-all`
+      # does not include id-token.
+      id-token: write
+      # Read the tagged source + (later) attach provenance to a release.
+      contents: read
+    # Optional hardening: wire this up to a GitHub Environment
+    # ("npm-release") once one exists, so subsequent publishes gate on
+    # a reviewer approval. Left commented until the environment is
+    # created — GitHub Actions errors out if a referenced environment
+    # doesn't exist.
+    #
+    # environment:
+    #   name: npm-release
+    #   url: https://www.npmjs.com/package/groundflare
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      # Redundant with prepublishOnly, but running it as a distinct step
+      # makes failures easier to read in the Actions log.
+      - name: Pre-publish gate (check + lint + test + build)
+        run: npm run prepublishOnly
+
+      - name: Assert tag matches package.json version
+        # Tag `v0.2.0` must map to package.json "version": "0.2.0".
+        # npm would reject the mismatch downstream anyway, but catching
+        # it here prints a clearer error.
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          pkg=$(node -p "require('./package.json').version")
+          if [ "$tag" != "$pkg" ]; then
+            echo "::error::tag v$tag does not match package.json version $pkg"
+            exit 1
+          fi
+          echo "tag $GITHUB_REF_NAME matches package.json version $pkg"
+
+      - name: Publish to npm with provenance
+        # --provenance attaches a signed SLSA provenance statement to
+        # the tarball. Requires id-token: write above.
+        # --access public is also set in package.json's publishConfig
+        # but passing it explicitly guards against drift.
+        run: npm publish --provenance --access public
