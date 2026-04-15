@@ -14,8 +14,10 @@ import {
   loadBakedPrices,
   priceAgeDays,
   promptUsage,
+  refreshPrices,
   renderEstimate,
 } from '../../estimate/index.js'
+import { FileSecretStore } from '../../secret/index.js'
 import { log } from '../log.js'
 
 const STALE_AFTER_DAYS = 90
@@ -37,6 +39,10 @@ export default defineCommand({
       type: 'string',
       description: 'Workload profile override: a | b | c | d (v0.2+)',
     },
+    'no-live': {
+      type: 'boolean',
+      description: 'Skip live pricing refresh; use the baked table only',
+    },
   },
   async run({ args }) {
     if (args.bill !== undefined || args['cf-token'] !== undefined) {
@@ -45,16 +51,32 @@ export default defineCommand({
       )
     }
 
-    const prices = loadBakedPrices()
-    const age = priceAgeDays(prices)
+    const baked = loadBakedPrices()
+    const age = priceAgeDays(baked)
     if (age > STALE_AFTER_DAYS) {
       log.warn(
-        `pricing table is ${age} days old (updated ${prices.updated}); numbers may drift`,
+        `pricing table is ${age} days old (updated ${baked.updated}); numbers may drift`,
       )
     }
 
+    const { prices, sources } = await refreshPrices({
+      baked,
+      secrets: new FileSecretStore(),
+      ...(args['no-live'] === true ? { disableLive: true } : {}),
+    })
+    for (const src of sources) {
+      if (src.kind === 'baked' && src.reason !== undefined) {
+        log.info(`${src.provider}: using baked prices (${src.reason})`)
+      } else if (src.kind === 'live') {
+        log.info(`${src.provider}: live prices fetched at ${src.fetchedAt}`)
+      }
+    }
+
     const usage = await promptUsage()
-    const estimate = computeEstimate(usage, prices, { confidence: 'low' })
+    const estimate = computeEstimate(usage, prices, {
+      confidence: 'low',
+      priceSources: sources,
+    })
     process.stdout.write(renderEstimate(estimate) + '\n')
   },
 })

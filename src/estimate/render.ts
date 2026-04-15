@@ -50,6 +50,18 @@ export function renderEstimate(estimate: Estimate): string {
   }
 
   lines.push(row(`Prices: ${estimate.pricesUpdated}`))
+  if (estimate.priceSources && estimate.priceSources.length > 0) {
+    for (const src of estimate.priceSources) {
+      const tag = src.kind === 'live' ? 'live' : 'baked'
+      const extra =
+        src.kind === 'live' && src.fetchedAt
+          ? ` (${src.fetchedAt.slice(0, 10)})`
+          : src.reason
+            ? ` — ${src.reason}`
+            : ''
+      lines.push(row(`  ${src.provider}: ${tag}${extra}`))
+    }
+  }
   lines.push(bottomBorder())
   return lines.join('\n')
 }

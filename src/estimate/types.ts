@@ -130,6 +130,19 @@ export interface Estimate {
     readonly percent: number
   }
   readonly warnings: readonly Warning[]
+  /**
+   * Per-provider provenance for the pricing data used. Populated when
+   * the estimate was computed with a refreshPrices() pass; omitted if
+   * the caller just handed us a static Prices table.
+   */
+  readonly priceSources?: readonly PriceSource[]
+}
+
+export interface PriceSource {
+  readonly provider: 'hetzner'
+  readonly kind: 'live' | 'baked'
+  readonly fetchedAt?: string
+  readonly reason?: string
 }
 
 export interface Warning {

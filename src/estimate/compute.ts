@@ -11,7 +11,13 @@ import {
   costHetzner,
   sumLines,
 } from './cost.js'
-import type { Confidence, Estimate, Prices, Usage } from './types.js'
+import type {
+  Confidence,
+  Estimate,
+  PriceSource,
+  Prices,
+  Usage,
+} from './types.js'
 
 export interface ComputeOptions {
   /**
@@ -19,6 +25,8 @@ export interface ComputeOptions {
    * to "low" (lots of guesses); CF-API-fetched data gets "high".
    */
   readonly confidence: Confidence
+  /** Provenance for the prices table. Attached to the result. */
+  readonly priceSources?: readonly PriceSource[]
 }
 
 export function computeEstimate(
@@ -64,6 +72,7 @@ export function computeEstimate(
       percent: round(savingsPercent),
     },
     warnings: collectWarnings(usage, fits),
+    ...(opts.priceSources !== undefined ? { priceSources: opts.priceSources } : {}),
   }
 }
 
