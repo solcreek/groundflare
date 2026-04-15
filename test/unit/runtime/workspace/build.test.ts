@@ -210,20 +210,33 @@ describe('buildCapnpFromWorkspace — binding mappings', () => {
     )
   })
 
-  it('maps D1 bindings to canonical d1AdapterServiceName keyed by database_name', () => {
+  it('maps D1 bindings to DO namespace bindings (the tenant shim wraps them as CF D1)', () => {
     const config = buildCapnpFromWorkspace(
       manifest([
         worker('api', {
           d1Databases: [{ binding: 'DB', databaseName: 'production' }],
         }),
       ]),
+      { stateBaseDir: 'do-state' },
     )
     const tenant = workerOf(findService(config, tenantServiceName('api')))
     expect(tenant.bindings).toContainEqual({
       name: 'DB',
-      kind: 'd1Database',
-      service: d1AdapterServiceName('api', 'production'),
+      kind: 'durableObjectNamespace',
+      className: 'D1Store',
+      serviceName: d1AdapterServiceName('api', 'production'),
     })
+  })
+
+  it('throws when D1 bindings are emitted with in-memory storage (SqlStorage requires localDisk)', () => {
+    expect(() =>
+      buildCapnpFromWorkspace(
+        manifest([
+          worker('api', { d1Databases: [{ binding: 'DB', databaseName: 'main' }] }),
+        ]),
+        { stateBaseDir: 'in-memory' },
+      ),
+    ).toThrow(/inMemory mode does not support SqlStorage/)
   })
 
   it('maps R2 bindings to canonical r2AdapterServiceName', () => {
