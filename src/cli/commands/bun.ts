@@ -6,26 +6,36 @@
  *             and feature against the Bun-track compatibility matrix,
  *             print a human report (or JSON with `--json`). Exit 1 if
  *             any blockers are found so CI can gate on it.
- *   prepare   (Phase 3b — not implemented yet)
+ *   prepare   Run analyze; if clean, flip `[groundflare] runtime = "bun"`
+ *             in wrangler.toml and print next-steps. Source stays
+ *             unchanged — Phase 2 adapters present the CF API surface,
+ *             so no codemod is needed for the common case.
  *
- * Design contract: see `design/tracks.md` §`bun analyze`.
+ * Design contract: see `design/tracks.md` §`bun analyze` / `bun prepare`.
  */
 
 import { defineCommand } from 'citty'
-import { readFile, readdir, stat } from 'node:fs/promises'
+import { readFile, readdir, stat, writeFile } from 'node:fs/promises'
 import { dirname, isAbsolute, posix, relative, resolve } from 'node:path'
 import {
   ConfigNotFoundError,
   ConfigParseError,
   resolveConfig,
 } from '../../config/index.js'
+import type { ResolvedConfig } from '../../config/index.js'
 import {
-  analyzeWorkspace,
   renderHuman,
   renderJson,
   type AnalyzeFs,
 } from '../../runtime/bun/analyze/index.js'
-import { log, notImplemented } from '../log.js'
+import {
+  prepareWorkspace,
+  type PrepareAction,
+  type PrepareFs,
+  type PrepareResult,
+} from '../../runtime/bun/prepare/index.js'
+import { analyzeWorkspace } from '../../runtime/bun/analyze/index.js'
+import { log } from '../log.js'
 
 const SOURCE_EXT = /\.(ts|tsx|js|jsx|mjs|cjs)$/
 const TEST_FILE = /\.(test|spec)\.[cm]?[jt]sx?$/
@@ -61,48 +71,15 @@ const analyzeCmd = defineCommand({
     },
   },
   async run({ args }) {
-    const cwd = resolve(args.cwd ?? process.cwd())
-    let resolved
-    try {
-      resolved = await resolveConfig({ cwd })
-    } catch (err) {
-      if (err instanceof ConfigNotFoundError || err instanceof ConfigParseError) {
-        log.error(err.message)
-        process.exit(1)
-      }
-      throw err
-    }
-    const projectRoot = dirname(resolved.source.file)
-    const sourceRoot = await pickSourceRoot({
-      cliOverride: args.src,
-      mainPath: resolved.wrangler.main,
-      projectRoot,
-    })
-
-    const fs: AnalyzeFs = {
-      async listSourceFiles(root) {
-        const absRoot = resolveAgainst(projectRoot, root)
-        const absFiles = await walkSources(absRoot)
-        // Report relative to projectRoot for nicer locations.
-        return absFiles
-          .map((abs) => toPosix(relative(projectRoot, abs)))
-          .sort()
-      },
-      async readSource(rel) {
-        return readFile(resolve(projectRoot, rel), 'utf-8')
-      },
-    }
-
+    const ctx = await loadContext({ cwd: args.cwd, srcOverride: args.src })
     const report = await analyzeWorkspace({
-      wrangler: resolved.wrangler,
-      sourceRoot: toPosix(relative(projectRoot, sourceRoot) || '.'),
-      fs,
+      wrangler: ctx.resolved.wrangler,
+      sourceRoot: ctx.sourceRootRel,
+      fs: ctx.analyzeFs,
     })
-
     process.stdout.write(
       args.json ? `${renderJson(report)}\n` : `${renderHuman(report)}\n`,
     )
-
     if (report.summary.blockers > 0) process.exit(1)
   },
 })
@@ -111,13 +88,35 @@ const prepareCmd = defineCommand({
   meta: {
     name: 'prepare',
     description:
-      'Generate a Bun-runtime entry + binding facades from a workerd-style worker (Phase 3b)',
+      'Flip `[groundflare] runtime = "bun"` in wrangler.toml after a clean analyze',
   },
-  async run() {
-    notImplemented(
-      'bun prepare',
-      'Phase 3b. Run `groundflare bun analyze --json` today to inspect your worker against the Bun-track compatibility matrix.',
-    )
+  args: {
+    cwd: {
+      type: 'string',
+      description: 'Directory containing wrangler.toml (default: cwd)',
+    },
+    src: {
+      type: 'string',
+      description:
+        'Source root to scan (default: directory of wrangler `main`, else `src/`)',
+    },
+    'dry-run': {
+      type: 'boolean',
+      description: 'Report what prepare would do without writing',
+    },
+  },
+  async run({ args }) {
+    const ctx = await loadContext({ cwd: args.cwd, srcOverride: args.src })
+    const result = await prepareWorkspace({
+      wrangler: ctx.resolved.wrangler,
+      sourceRoot: ctx.sourceRootRel,
+      wranglerPath: ctx.resolved.source.file,
+      wranglerFormat: ctx.resolved.source.format,
+      fs: ctx.prepareFs,
+      dryRun: Boolean(args['dry-run']),
+    })
+    renderPrepareReport(result)
+    if (!result.ok) process.exit(1)
   },
 })
 
@@ -133,6 +132,83 @@ export default defineCommand({
 })
 
 // ─── helpers ───────────────────────────────────────────────────────
+
+interface BunCommandContext {
+  resolved: ResolvedConfig
+  /** Absolute path to the project root (= directory of the wrangler file). */
+  projectRoot: string
+  /** Project-root-relative source root (posix-style) for the report. */
+  sourceRootRel: string
+  analyzeFs: AnalyzeFs
+  prepareFs: PrepareFs
+}
+
+async function loadContext(opts: {
+  cwd?: string
+  srcOverride?: string
+}): Promise<BunCommandContext> {
+  const cwd = resolve(opts.cwd ?? process.cwd())
+  let resolved: ResolvedConfig
+  try {
+    resolved = await resolveConfig({ cwd })
+  } catch (err) {
+    if (err instanceof ConfigNotFoundError || err instanceof ConfigParseError) {
+      log.error(err.message)
+      process.exit(1)
+    }
+    throw err
+  }
+  const projectRoot = dirname(resolved.source.file)
+  const sourceRootAbs = await pickSourceRoot({
+    cliOverride: opts.srcOverride,
+    mainPath: resolved.wrangler.main,
+    projectRoot,
+  })
+  const sourceRootRel = toPosix(relative(projectRoot, sourceRootAbs) || '.')
+
+  const analyzeFs: AnalyzeFs = {
+    async listSourceFiles(root) {
+      const absRoot = resolveAgainst(projectRoot, root)
+      const absFiles = await walkSources(absRoot)
+      return absFiles
+        .map((abs) => toPosix(relative(projectRoot, abs)))
+        .sort()
+    },
+    async readSource(rel) {
+      return readFile(resolve(projectRoot, rel), 'utf-8')
+    },
+  }
+
+  const prepareFs: PrepareFs = {
+    ...analyzeFs,
+    async readWranglerSource() {
+      return readFile(resolved.source.file, 'utf-8')
+    },
+    async writeWranglerSource(content) {
+      await writeFile(resolved.source.file, content, 'utf-8')
+    },
+  }
+
+  return { resolved, projectRoot, sourceRootRel, analyzeFs, prepareFs }
+}
+
+function renderPrepareReport(result: PrepareResult): void {
+  if (!result.ok) {
+    log.error(result.bailReason ?? 'prepare failed')
+    return
+  }
+  for (const action of result.actions) {
+    log.success(formatPrepareAction(action))
+  }
+  log.info(
+    `Source is unchanged — Bun adapters present the Cloudflare API surface for KV / D1 / R2.`,
+  )
+  log.info(`Next: \`groundflare up\` to deploy on the Bun track.`)
+}
+
+function formatPrepareAction(action: PrepareAction): string {
+  return `${action.message} (${action.file})`
+}
 
 function resolveAgainst(base: string, p: string): string {
   return isAbsolute(p) ? p : resolve(base, p)
