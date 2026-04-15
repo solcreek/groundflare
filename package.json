@@ -1,6 +1,6 @@
 {
   "name": "groundflare",
-  "version": "0.0.1",
+  "version": "0.2.0",
   "description": "Run your Cloudflare Worker on your own hardware. Wrangler-like DX for self-hosted workerd deployments.",
   "keywords": [
     "cloudflare",
@@ -34,11 +34,12 @@
   "files": [
     "bin",
     "dist",
+    "CHANGELOG.md",
     "README.md",
     "LICENSE"
   ],
   "scripts": {
-    "build": "tsc -p tsconfig.build.json",
+    "build": "tsc -p tsconfig.build.json && node scripts/copy-bun-adapters.mjs",
     "check": "tsc --noEmit",
     "dev": "tsx src/cli/index.ts",
     "test": "vitest run",

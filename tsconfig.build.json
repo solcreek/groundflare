@@ -14,6 +14,16 @@
     "test/**",
     "examples/**",
     "node_modules",
-    "dist"
+    "dist",
+    // Bun-runtime adapter sources are shipped as raw text (see
+    // scripts/copy-bun-adapters.mjs) and executed by `bun run` on the
+    // VPS, not compiled to .js. Keep them out of tsc so the build
+    // succeeds without bun-types coexisting with @types/node. The
+    // shared KV/D1 conformance spec (test/conformance/**) + the
+    // Bun-native suite (test/bun/**) cover behavioural correctness.
+    "src/runtime/bun/adapters/kv.ts",
+    "src/runtime/bun/adapters/d1.ts",
+    "src/runtime/bun/adapters/r2.ts",
+    "src/runtime/bun/adapters/sigv4.ts"
   ]
 }
