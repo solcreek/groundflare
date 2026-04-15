@@ -237,6 +237,31 @@ At realistic load the runtime is clean: zero timeouts across reads and writes, p
 
 This is the v0.1 baseline claim: **no errors under any concurrency a typical micro-SaaS will see in production**. Higher-pressure scenarios (HN hug, write-heavy hot DOs) get their own follow-up benchmarks below.
 
+### Stage 2d.0b: HN burst — 100-way concurrent writes to a single DO
+
+Measures behavior under a burst workload that no micro-SaaS reaches in steady state but every one encounters when a post hits Hacker News or a similar aggregator. 100 connections hit `/hn-burst` for 15 seconds, each request writing a uniquely-keyed KV entry (`signup:<random>`).
+
+| scenario | conn | RPS | mean | p50 | p99 | max | err |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| HN burst (KV put, random keys) | 100 | 2,439 | 36.92ms | 4 | 80 | **13,639** | **84** |
+
+### Interpretation
+
+1. **RPS stays at ~2,400/s regardless of connection count.** The same number as the 10-connection KV put scenario. This confirms the current single-DO-per-namespace architecture bottlenecks on the DO input gate; adding clients increases queue depth, not throughput.
+2. **p50 (4ms) and p99 (80ms) are healthy.** Median and near-tail users see form-grade latency.
+3. **max latency reached 13.6 s and 84 requests timed out** (~0.5 % of ~36 k total requests). Root cause is the WAL checkpoint convoy effect: when auto-checkpoint fires during sustained write pressure, it blocks the writer for 1–3 s, and the 100-deep queue behind it turns seconds-of-checkpoint into tens-of-seconds-at-the-tail for the unlucky last arrivals.
+
+### Is this production-ready?
+
+For typical micro-SaaS traffic (steady writes well under 100 rps): yes. Stage 2d.0 showed zero errors at 10-way write concurrency, which covers any realistic steady load and even moderate burst.
+
+For unmodified HN-scale bursts on a single binding: **not yet**. A 0.5 % timeout rate during a viral event is not the reliability floor groundflare should commit to. Two independent mitigations are on the v0.2 roadmap:
+
+- **Write coalescing** ([sqlite-performance.md §3](sqlite-performance.md#3-write-coalescing-v02)): batch writes arriving within a 5 ms window into one transaction. Reduces fsync count linearly with batch size; expected to compress the max-latency tail from seconds to single-digit ms.
+- **Background passive checkpointing** ([sqlite-performance.md §2](sqlite-performance.md#2-background-passive-checkpointing-v02)): proactively drains the WAL before auto-checkpoint threshold hits, keeping checkpoint work off the request-serving path.
+
+With those shipped, the HN-burst scenario should show zero timeouts. Until they do, the v0.1 rule is: distribute writes across multiple bindings or tenants when you expect sustained >50-conn write bursts to a single namespace. Most real viral-traffic patterns already do this naturally (different users touch different form endpoints), but the limit is worth being honest about.
+
 ### Stage 2d.1: WAL autocheckpoint raised to 10000 pages
 
 Applied the first mitigation from [sqlite-performance.md §1](sqlite-performance.md#1-wal-checkpoint-threshold-v01-cheap): raised `PRAGMA wal_autocheckpoint` from SQLite's default (1000) to 10000. Hypothesis: fewer checkpoints → less probability that a request hits a checkpoint stall.

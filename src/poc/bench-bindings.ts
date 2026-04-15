@@ -36,6 +36,15 @@ const WARMUP_MS = 2000
 // separate scenario, clearly labelled.
 const CONNECTIONS_READ = 50
 const CONNECTIONS_WRITE = 10
+// HN burst: simulates the moment your post hits the front page and a
+// short burst of distinct users submit forms / comments / clicks. Each
+// request writes to a randomly-keyed KV entry — in the current one-DO-
+// per-namespace design, all writes still serialise through the same
+// input gate, so this measures how that single DO withstands burst
+// pressure. When we add per-key sharding (v0.3+), this same scenario
+// will distribute across shards and the numbers should improve.
+const CONNECTIONS_BURST = 100
+const DURATION_BURST = 15
 
 const WORKER_JS = `
   export default {
@@ -74,6 +83,18 @@ const WORKER_JS = `
         await env.DB.prepare('INSERT INTO logs (ts, msg) VALUES (?, ?)')
           .bind(Date.now(), 'bench').run()
         return new Response(String(id))
+      }
+
+      if (url.pathname === '/hn-burst') {
+        // Simulate a form submission: unique key per "user" + small payload
+        const userId = Math.random().toString(36).slice(2, 12)
+        const payload = JSON.stringify({
+          at: Date.now(),
+          email: userId + '@example.com',
+          signup: true,
+        })
+        await env.CACHE.put('signup:' + userId, payload)
+        return new Response('ok')
       }
 
       return new Response('404', { status: 404 })
@@ -119,6 +140,11 @@ const scenarios: Scenario[] = [
     path: '/d1-insert',
     connections: CONNECTIONS_WRITE,
   },
+  {
+    label: 'HN burst (KV put, random keys)',
+    path: '/hn-burst',
+    connections: CONNECTIONS_BURST,
+  },
 ]
 
 // Prep inline DDL + a dedicated hot-key seeder by injecting extra paths
@@ -159,12 +185,13 @@ async function hammer(
   host: string,
   label: string,
   connections: number,
+  durationOverride?: number,
 ): Promise<Result> {
   await sleep(WARMUP_MS)
   const r = await autocannon({
     url: baseUrl + path,
     connections,
-    duration: DURATION,
+    duration: durationOverride ?? DURATION,
     pipelining: 1,
     headers: { host },
   })
@@ -228,9 +255,14 @@ try {
   await wd.sendRequest({ host, path: '/kv-seed-hot' })
 
   for (const s of scenarios) {
-    console.log(`🏁 ${s.label} → ${s.path}  [${s.connections} conn]`)
+    const duration = s.path === '/hn-burst' ? DURATION_BURST : DURATION
+    console.log(
+      `🏁 ${s.label} → ${s.path}  [${s.connections} conn, ${duration}s]`,
+    )
     if (s.prep) await s.prep(wd, host)
-    results.push(await hammer(baseUrl, s.path, host, s.label, s.connections))
+    results.push(
+      await hammer(baseUrl, s.path, host, s.label, s.connections, duration),
+    )
   }
 } finally {
   await wd.stop()
