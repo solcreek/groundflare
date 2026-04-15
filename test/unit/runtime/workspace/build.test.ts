@@ -171,7 +171,7 @@ describe('buildCapnpFromWorkspace — variable bindings', () => {
 })
 
 describe('buildCapnpFromWorkspace — binding mappings', () => {
-  it('maps KV bindings to canonical kvAdapterServiceName', () => {
+  it('maps KV bindings to DO namespace bindings (the tenant shim wraps them as CF KV)', () => {
     const config = buildCapnpFromWorkspace(
       manifest([
         worker('api', {
@@ -182,14 +182,32 @@ describe('buildCapnpFromWorkspace — binding mappings', () => {
     const tenant = workerOf(findService(config, tenantServiceName('api')))
     expect(tenant.bindings).toContainEqual({
       name: 'CACHE',
-      kind: 'kvNamespace',
-      service: kvAdapterServiceName('api', 'CACHE'),
+      kind: 'durableObjectNamespace',
+      className: 'KvStore',
+      serviceName: kvAdapterServiceName('api', 'CACHE'),
     })
     expect(tenant.bindings).toContainEqual({
       name: 'SESSIONS',
-      kind: 'kvNamespace',
-      service: kvAdapterServiceName('api', 'SESSIONS'),
+      kind: 'durableObjectNamespace',
+      className: 'KvStore',
+      serviceName: kvAdapterServiceName('api', 'SESSIONS'),
     })
+  })
+
+  it('emits a KvStore adapter service per KV binding', () => {
+    const config = buildCapnpFromWorkspace(
+      manifest([
+        worker('api', {
+          kvNamespaces: [{ binding: 'CACHE' }, { binding: 'SESSIONS' }],
+        }),
+      ]),
+    )
+    expect(config.services.map((s) => s.name)).toEqual(
+      expect.arrayContaining([
+        kvAdapterServiceName('api', 'CACHE'),
+        kvAdapterServiceName('api', 'SESSIONS'),
+      ]),
+    )
   })
 
   it('maps D1 bindings to canonical d1AdapterServiceName keyed by database_name', () => {

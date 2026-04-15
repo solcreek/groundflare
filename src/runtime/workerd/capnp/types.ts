@@ -117,7 +117,15 @@ export interface CapnpWorker {
   readonly compatibilityFlags?: readonly string[]
   readonly bindings?: readonly CapnpBinding[]
   readonly durableObjectNamespaces?: readonly CapnpDurableObjectNamespaceDecl[]
-  readonly durableObjectStorage?: { readonly localDiskPath: string }
+  /**
+   * DO storage backend. `inMemory` is ephemeral (per-process) and useful
+   * for tests; `localDisk` refers to a sibling disk service by name (not
+   * a direct filesystem path — workerd's kj::Path rejects absolute paths
+   * in disk services anyway).
+   */
+  readonly durableObjectStorage?:
+    | { readonly inMemory: true }
+    | { readonly localDiskPath: string }
   readonly globalOutbound?: string
 }
 

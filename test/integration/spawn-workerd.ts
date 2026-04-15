@@ -33,6 +33,12 @@ export interface SpawnWorkerdOptions {
    * directory before spawning, so `embed "foo.js"` in the capnp resolves.
    */
   readonly modules: Readonly<Record<string, string>>
+  /**
+   * Extra empty directories to create inside the workdir before spawning.
+   * Needed when the capnp references disk services whose target dirs
+   * must pre-exist (e.g. Durable Object storage roots).
+   */
+  readonly extraDirs?: readonly string[]
   /** Max ms to wait for workerd to become HTTP-responsive. Default 5000. */
   readonly healthTimeoutMs?: number
   /** If true, inherit stdio so workerd output reaches the test console. */
@@ -93,6 +99,9 @@ export async function spawnWorkerd(opts: SpawnWorkerdOptions): Promise<SpawnedWo
       const full = join(workdir, relPath)
       await mkdir(dirname(full), { recursive: true })
       await writeFile(full, content)
+    }
+    for (const dir of opts.extraDirs ?? []) {
+      await mkdir(join(workdir, dir), { recursive: true })
     }
   } catch (err) {
     await rm(workdir, { recursive: true, force: true })

@@ -199,10 +199,15 @@ function nodeForWorker(w: CapnpWorker): CapnpNode {
   }
 
   if (w.durableObjectStorage !== undefined) {
-    fields.push([
-      'durableObjectStorage',
-      struct([['localDisk', str(w.durableObjectStorage.localDiskPath)]]),
-    ])
+    const storage = w.durableObjectStorage
+    if ('inMemory' in storage) {
+      fields.push(['durableObjectStorage', struct([['inMemory', scalar('void')]])])
+    } else {
+      fields.push([
+        'durableObjectStorage',
+        struct([['localDisk', str(storage.localDiskPath)]]),
+      ])
+    }
   }
 
   if (w.globalOutbound !== undefined) {

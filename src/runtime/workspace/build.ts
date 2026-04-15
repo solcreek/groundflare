@@ -16,10 +16,16 @@
 
 import type {
   CapnpBinding,
+  CapnpModule,
   CapnpService,
   CapnpWorker,
   CapnpWorkerdConfig,
 } from '../workerd/capnp/index.js'
+import {
+  KV_ADAPTER_DO_SOURCE,
+  KV_DO_CLASS_NAME,
+  generateTenantKvShim,
+} from '../kv/adapter-module.js'
 import { generateRouterJs, routerBindingName } from './router.js'
 import type { VarValue, WorkspaceManifest, WorkspaceWorker } from './types.js'
 
@@ -37,7 +43,23 @@ const WORKER_NAME_RE = /^[a-z][a-z0-9-]{0,39}$/
 export interface BuildOptions {
   /** Socket bind address. Default `*:8080`. */
   readonly listenAddress?: string
+
+  /**
+   * DO storage mode:
+   *   - string (default `"do-state"`): relative directory name from the
+   *     capnp config file; each tenant-binding gets a sibling disk service
+   *     pointing at `<stateBaseDir>/<worker>/<binding>`. workerd's
+   *     kj::Path parser rejects absolute paths here, so it's intentionally
+   *     relative. The deploy flow places capnp at
+   *     `/var/lib/groundflare/worker.capnp` and state under
+   *     `/var/lib/groundflare/<stateBaseDir>/...`.
+   *   - `"in-memory"`: ephemeral DO storage (process-lifetime). Useful
+   *     for tests or for workspaces that intentionally don't persist.
+   */
+  readonly stateBaseDir?: string | 'in-memory'
 }
+
+const DEFAULT_STATE_BASE_DIR = 'do-state'
 
 export function buildCapnpFromWorkspace(
   manifest: WorkspaceManifest,
@@ -45,10 +67,28 @@ export function buildCapnpFromWorkspace(
 ): CapnpWorkerdConfig {
   validateManifest(manifest)
 
+  const stateBase = opts.stateBaseDir ?? DEFAULT_STATE_BASE_DIR
   const services: CapnpService[] = [buildRouterService(manifest)]
 
   for (const worker of manifest.workers) {
     services.push(buildTenantService(worker, manifest))
+    // KV adapter services — one per (worker, binding) pair — are emitted
+    // alongside the tenant so workerd can resolve the DO namespace
+    // referenced in the tenant's binding list. Each adapter also needs a
+    // sibling `disk` service because workerd's durableObjectStorage config
+    // refers to a disk service *by name*, not a direct filesystem path.
+    if (worker.kvNamespaces && worker.kvNamespaces.length > 0) {
+      for (const kv of worker.kvNamespaces) {
+        const { worker: adapter, disk } = buildKvAdapterService(
+          worker,
+          kv.binding,
+          stateBase,
+          manifest,
+        )
+        if (disk !== null) services.push(disk)
+        services.push(adapter)
+      }
+    }
   }
 
   return {
@@ -114,12 +154,15 @@ function buildTenantService(
     }
   }
 
+  // KV bindings land as DO namespace bindings under the hood. The tenant
+  // shim (below) translates them back into CF KV API surface at runtime.
   if (worker.kvNamespaces) {
     for (const kv of worker.kvNamespaces) {
       bindings.push({
         name: kv.binding,
-        kind: 'kvNamespace',
-        service: kvAdapterServiceName(worker.name, kv.binding),
+        kind: 'durableObjectNamespace',
+        className: KV_DO_CLASS_NAME,
+        serviceName: kvAdapterServiceName(worker.name, kv.binding),
       })
     }
   }
@@ -159,13 +202,31 @@ function buildTenantService(
     }
   }
 
+  const hasKv = (worker.kvNamespaces?.length ?? 0) > 0
+
+  const modules: CapnpModule[] = []
+  if (hasKv) {
+    // The shim becomes the Worker's entry; it imports the user's real
+    // entry as `./user.js` (exact module name match) and wraps env to
+    // expose the CF KV API.
+    const kvBindingNames = worker.kvNamespaces!.map((kv) => kv.binding)
+    modules.push({
+      name: DEFAULT_TENANT_MODULE_NAME,
+      source: { kind: 'esModule', inline: generateTenantKvShim(kvBindingNames) },
+    })
+    modules.push({
+      name: './user.js',
+      source: { kind: 'esModule', embedPath: worker.entryPath },
+    })
+  } else {
+    modules.push({
+      name: DEFAULT_TENANT_MODULE_NAME,
+      source: { kind: 'esModule', embedPath: worker.entryPath },
+    })
+  }
+
   const capnpWorker: CapnpWorker = {
-    modules: [
-      {
-        name: DEFAULT_TENANT_MODULE_NAME,
-        source: { kind: 'esModule', embedPath: worker.entryPath },
-      },
-    ],
+    modules,
     compatibilityDate:
       worker.compatibilityDate ??
       manifest.defaults?.compatibilityDate ??
@@ -179,6 +240,72 @@ function buildTenantService(
     name: tenantServiceName(worker.name),
     kind: 'worker',
     worker: capnpWorker,
+  }
+}
+
+// ─── KV adapter service ────────────────────────────────────────────
+
+interface KvAdapterServices {
+  readonly worker: CapnpService
+  /** Null when using `in-memory` storage (no disk service needed). */
+  readonly disk: CapnpService | null
+}
+
+function buildKvAdapterService(
+  worker: WorkspaceWorker,
+  bindingName: string,
+  stateBase: string | 'in-memory',
+  manifest: WorkspaceManifest,
+): KvAdapterServices {
+  const serviceName = kvAdapterServiceName(worker.name, bindingName)
+
+  let storage: CapnpWorker['durableObjectStorage']
+  let diskService: CapnpService | null = null
+
+  if (stateBase === 'in-memory') {
+    storage = { inMemory: true }
+  } else {
+    // Path must be relative to the capnp file (workerd's kj::Path
+    // rejects absolute paths in disk services).
+    const diskServiceName = `${serviceName}-disk`
+    diskService = {
+      name: diskServiceName,
+      kind: 'disk',
+      path: `${stateBase}/${worker.name}/${bindingName}`,
+      writable: true,
+    }
+    storage = { localDiskPath: diskServiceName }
+  }
+
+  const capnpWorker: CapnpWorker = {
+    modules: [
+      {
+        name: DEFAULT_TENANT_MODULE_NAME,
+        source: { kind: 'esModule', inline: KV_ADAPTER_DO_SOURCE },
+      },
+    ],
+    compatibilityDate:
+      manifest.defaults?.compatibilityDate ?? DEFAULT_COMPATIBILITY_DATE,
+    // DurableObjectNamespace requires `uniqueKey` OR `ephemeralLocal` —
+    // without one of them, workerd assumes ephemeralLocal which excludes
+    // `state.storage` entirely. Derive the key deterministically so redeploys
+    // don't invalidate existing object IDs.
+    durableObjectNamespaces: [
+      {
+        className: KV_DO_CLASS_NAME,
+        uniqueKey: `groundflare-kv-${worker.name}-${bindingName}`,
+      },
+    ],
+    durableObjectStorage: storage,
+  }
+
+  return {
+    worker: {
+      name: serviceName,
+      kind: 'worker',
+      worker: capnpWorker,
+    },
+    disk: diskService,
   }
 }
 
