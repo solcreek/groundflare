@@ -55,18 +55,18 @@ jobs:
         run: npm ci
 
       - name: Pre-publish gate (check + lint + test + build)
-        run: npm run prepublishOnly
+        run: npm run prepublishOnly -w groundflare
 
       - name: Assert tag matches package.json version
         if: startsWith(github.ref, 'refs/tags/v')
         run: |
           tag="${GITHUB_REF_NAME#v}"
-          pkg=$(node -p "require('./package.json').version")
+          pkg=$(node -p "require('./packages/groundflare/package.json').version")
           if [ "$tag" != "$pkg" ]; then
-            echo "::error::tag v$tag does not match package.json version $pkg"
+            echo "::error::tag v$tag does not match groundflare package version $pkg"
             exit 1
           fi
-          echo "tag $GITHUB_REF_NAME matches package.json version $pkg"
+          echo "tag $GITHUB_REF_NAME matches groundflare package version $pkg"
 
       - name: Publish to npm (OIDC + auto provenance)
-        run: npm publish
+        run: npm publish -w groundflare

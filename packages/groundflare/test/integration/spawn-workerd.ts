@@ -17,11 +17,20 @@ import { spawn, type ChildProcess } from 'node:child_process'
 import { setTimeout as sleep } from 'node:timers/promises'
 import { mkdtemp, rm, writeFile, mkdir } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
+import { createRequire } from 'node:module'
 import { join, dirname, resolve } from 'node:path'
 import { createServer } from 'node:net'
 import { request as httpRequestRaw, type OutgoingHttpHeaders } from 'node:http'
 
-const WORKERD_BIN = resolve(process.cwd(), 'node_modules', '.bin', 'workerd')
+// Resolve the workerd binary via require.resolve so the path stays
+// correct whether the npm install hoisted the package to the repo root
+// (monorepo workspace layout) or kept it inside packages/groundflare/
+// node_modules/.
+const WORKERD_BIN = (() => {
+  const req = createRequire(import.meta.url)
+  const pkgPath = req.resolve('workerd/package.json')
+  return resolve(dirname(pkgPath), 'bin/workerd')
+})()
 
 export interface SpawnWorkerdOptions {
   /** TCP port workerd will bind to (caller must have generated capnp pointing here). */

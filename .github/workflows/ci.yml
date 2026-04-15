@@ -70,7 +70,7 @@ jobs:
         run: docker info
 
       - name: Build fake-vps image (cached by Docker layer cache)
-        run: docker build -t groundflare/fake-vps:test -f test/e2e/fixtures/fake-vps/Dockerfile test/e2e/fixtures/fake-vps
+        run: docker build -t groundflare/fake-vps:test -f packages/groundflare/test/e2e/fixtures/fake-vps/Dockerfile packages/groundflare/test/e2e/fixtures/fake-vps
 
       - name: Test (Tier 3 e2e)
         run: npm run test:e2e

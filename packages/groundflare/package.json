@@ -1,0 +1,89 @@
+{
+  "name": "groundflare",
+  "version": "0.2.1",
+  "description": "Run your Cloudflare Worker on your own hardware. Wrangler-like DX for self-hosted workerd deployments.",
+  "keywords": [
+    "cloudflare",
+    "workers",
+    "workerd",
+    "self-host",
+    "docker",
+    "deploy",
+    "kamal",
+    "wrangler",
+    "vps"
+  ],
+  "homepage": "https://github.com/solcreek/groundflare",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/solcreek/groundflare.git"
+  },
+  "bugs": {
+    "url": "https://github.com/solcreek/groundflare/issues"
+  },
+  "license": "MIT",
+  "author": "SolCreek",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "bin": {
+    "groundflare": "./bin/groundflare.js",
+    "gf": "./bin/groundflare.js"
+  },
+  "files": [
+    "bin",
+    "dist",
+    "CHANGELOG.md",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json && node scripts/copy-bun-adapters.mjs",
+    "check": "tsc --noEmit",
+    "dev": "tsx src/cli/index.ts",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:unit": "vitest run test/unit test/conformance",
+    "test:integration": "vitest run test/integration",
+    "test:e2e": "vitest run --config vitest.config.e2e.ts",
+    "test:bun": "bun test test/bun",
+    "test:all": "npm run test && npm run test:bun",
+    "poc:bench-bindings": "tsx src/poc/bench-bindings.ts",
+    "poc:bench-bun": "tsx src/poc/bench-bun.ts",
+    "poc:bench-bun-burst": "tsx src/poc/bench-bun-burst.ts",
+    "coverage": "vitest run --coverage",
+    "lint": "eslint --no-error-on-unmatched-pattern \"src/**/*.ts\" \"test/**/*.ts\"",
+    "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
+    "format:check": "prettier --check \"src/**/*.ts\" \"test/**/*.ts\"",
+    "prepublishOnly": "npm run check && npm run lint && npm run test && npm run build"
+  },
+  "dependencies": {
+    "better-sqlite3": "^11.5.0",
+    "citty": "^0.1.6",
+    "consola": "^3.2.3",
+    "esbuild": "^0.28.0",
+    "oxc-parser": "^0.125.0",
+    "smol-toml": "^1.3.1",
+    "update-notifier": "^7.3.1",
+    "workerd": "^1.20260414.1"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.12",
+    "@types/node": "^22.0.0",
+    "@types/update-notifier": "^6.0.8",
+    "@vitest/coverage-v8": "^2.1.0",
+    "autocannon": "^8.0.0",
+    "eslint": "^9.15.0",
+    "eslint-config-prettier": "^9.1.0",
+    "hono": "^4.12.12",
+    "prettier": "^3.3.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.6.0",
+    "typescript-eslint": "^8.15.0",
+    "vitest": "^2.1.0"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

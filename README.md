@@ -1,134 +1,39 @@
-# groundflare
-
-[![npm version](https://img.shields.io/npm/v/groundflare.svg?color=cb0000)](https://www.npmjs.com/package/groundflare)
-[![License](https://img.shields.io/npm/l/groundflare.svg?color=blue)](./LICENSE)
-[![Node.js](https://img.shields.io/node/v/groundflare.svg)](https://nodejs.org)
-[![GitHub stars](https://img.shields.io/github/stars/solcreek/groundflare?style=flat)](https://github.com/solcreek/groundflare)
+# groundflare (monorepo)
 
 > Your Cloudflare Worker, grounded.
 
 Run any Cloudflare Worker on your own hardware. Same code, your machine, no vendor lock-in.
 
-**Status** — v0.1 Mirror track is feature-complete in-tree and passes an end-to-end Docker e2e suite. v0.2 adds the Bun track: `bun:sqlite` KV/D1 adapters, S3-compat R2 passthrough, `groundflare bun analyze` + `bun prepare` CLI, and a matching Tier-3 e2e — all exercised by a shared conformance spec against the Mirror-track adapters. Parallel release prep in progress.
+This repository is a monorepo containing:
 
-## Quick start
+| Package | Path | Status |
+|---|---|---|
+| [`groundflare`](./packages/groundflare) — the CLI | `packages/groundflare` | [![npm](https://img.shields.io/npm/v/groundflare.svg?color=cb0000)](https://www.npmjs.com/package/groundflare) |
+| `create-groundflare-app` — project scaffold | `packages/create-groundflare-app` | planned (v0.3) |
+
+For usage, installation, and design documentation, see the [`groundflare` package README](./packages/groundflare/README.md).
+
+Cross-cutting architecture documents live under [`design/`](./design). They describe the two-runtime track model, bootstrap pipeline, performance measurements, and compatibility matrix that apply to all packages in this repo.
+
+## Working in the monorepo
 
 ```bash
-# Once v0.1 is published:
-npm install -g groundflare
-cd my-worker-project/          # any wrangler.toml project
-groundflare up                 # provision a VPS + deploy, one command
-
-# Today (early access from source):
+# clone + install — npm workspaces links packages/* automatically
 git clone https://github.com/solcreek/groundflare.git
-cd groundflare && npm install && npm link
+cd groundflare
+npm ci
+
+# run the CLI from source
+npm --prefix packages/groundflare run dev -- bun analyze --cwd ./my-worker
+
+# tests + gates
+npm run check
+npm run lint
+npm test
+npm run test:bun
+npm run test:e2e
 ```
-
-Requires Node.js ≥ 20.
-
-## Two tracks, one CLI
-
-Cloudflare published `workerd` as open source. groundflare takes that recipe and cooks it in any home kitchen — literally the same runtime, or a Bun-native remix for throughput-sensitive menus. See [`design/tracks.md`](design/tracks.md) for the full design.
-
-### Mirror track (default)
-
-Runs `workerd` with your Worker unchanged. Bug-for-bug Cloudflare semantics, including Durable Objects.
-
-- **Zero code changes** to your existing Worker
-- Measured throughput: 100–1000 rps per binding on shared-CPU tiers; ~500 rps predictable on dedicated CPU
-- Best for: migrating existing CF Workers, Durable-Object workloads, full Workers-API compatibility
-
-### Bun track (opt-in, v0.2)
-
-Runs `Bun.serve` with Cloudflare-shaped adapters: `bun:sqlite` for KV and D1, S3-compat passthrough to Cloudflare R2. Most Workers migrate with no source changes — `env.DB.prepare(...)`, `env.CACHE.put(...)`, `env.ASSETS.get(...)` all keep working.
-
-- **~7,300–9,900 rps per binding on any $6+ VPS**, zero errors through 1000-concurrent HN burst ([`design/benchmarks.md`](design/benchmarks.md) §Stage 3c)
-- Best for: high-throughput or bursty workloads, no Durable-Object dependency
-- Opt in via `[groundflare] runtime = "bun"` in `wrangler.toml`
-
-```bash
-# 1. See which bindings & features can migrate to Bun
-groundflare bun analyze
-#   ✓ KV binding CACHE → bun:sqlite (one file per binding)
-#   ✓ D1 binding DB    → bun:sqlite
-#   ✓ R2 binding ASSETS → S3-compat passthrough
-#   Ready for the Bun track. Run `groundflare bun prepare` next.
-
-# 2. Flip wrangler.toml to runtime = "bun" (source untouched)
-groundflare bun prepare
-#   ✔ set [groundflare].runtime = "bun" (was "workerd")
-
-# 3. Provision + deploy on the Bun track
-groundflare up
-```
-
-Blockers the analyzer refuses to migrate (stay on Mirror): `HTMLRewriter`, `WebSocketPair`, `class extends DurableObject`, and any DO binding declarations.
-
-## Supported bindings
-
-Status refers to the version where each binding is promoted from "works" to "v0.2 reliability SLO covered".
-
-| Binding | Mirror | Bun | Default adapter |
-|---|---|---|---|
-| Workers runtime | ✅ v0.1 | ✅ v0.2 | workerd / Bun.serve |
-| KV | ✅ v0.1 | ✅ v0.2 | SQLite (WAL, embedded, optional shards=N) |
-| D1 | ✅ v0.1 | ✅ v0.2 | libSQL / SQLite |
-| R2 | ✅ v0.1 | ✅ v0.2 | passthrough to Cloudflare R2 (default) · SeaweedFS (self-host) |
-| Durable Objects | ✅ v0.1 | ❌ Mirror-only | workerd native `ctx.storage` |
-| Cache API | ✅ v0.1 | ⚠️ v0.3 | in-memory |
-| Service Bindings | ✅ v0.1 | ⚠️ v0.4 | same-process dispatch |
-| Cron Triggers | ✅ v0.1 | 🚧 v0.3 | systemd `.timer` → `__scheduled` (Bun-track shim lands in v0.3) |
-| HTMLRewriter | ✅ v0.1 | ⚠️ v0.3 | workerd native · linkedom (Bun) |
-| WebSocketPair | ✅ v0.1 | ⚠️ v0.3 | workerd native · Bun WebSocket |
-| Queues | 🚧 v0.4 | 🚧 v0.4 | SQLite (default) · Redis Streams (opt-in) |
-
-Legend: ✅ implemented · ⚠️ partial / planned version · ❌ not on the Bun track by design · 🚧 in progress
-
-Intentionally unsupported (no local runtime; keep these bindings on Cloudflare or substitute an external service):
-
-- **Workers AI** — use Ollama, vLLM, OpenRouter, or the Anthropic API
-- **Vectorize** — use pgvector, Qdrant, or similar
-- **Hyperdrive** — use a direct Postgres connection
-- **Browser Rendering** — use Browserless
-- **Email Workers** — use Resend or Postmark
-
-## Cost efficiency
-
-Measured end-to-end on DigitalOcean `sgp1` with kernel tunings from [`design/bootstrap.md`](design/bootstrap.md) applied. Full methodology and per-tier numbers in [`design/benchmarks.md`](design/benchmarks.md).
-
-| VPS tier | Monthly | Mirror rps/binding | Bun rps/binding | Errors @ 1000 conn |
-|---|---:|---|---:|---:|
-| `s-1vcpu-1gb` shared | **$6** | 100–1,000 (hypervisor variance) | **~7,300** | 0 |
-| `s-2vcpu-4gb` shared | $21 | 100–1,000 | ~9,900 | 0 |
-| `c-2` dedicated | $84 | ~500 predictable | ~9,000 | 0 |
-
-For context, a typical indie Cloudflare Workers Paid plan with moderate D1/KV usage runs in the $15–$50/mo range before traffic surges hit per-request pricing. `groundflare estimate` (v0.2) reads a Cloudflare billing CSV or pulls usage live and reports projected savings on the target VPS tier — see [`design/cost-estimate.md`](design/cost-estimate.md).
-
-**A note on shared-tier variance**: the 100–1,000 rps range for Mirror on shared-CPU droplets reflects hypervisor-neighbour luck, not tier difference. Dedicated-CPU tiers remove the variance; the Bun track barely notices it at all.
-
-## Why groundflare
-
-Cloudflare Workers are, in our opinion, the best serverless developer experience available. groundflare exists because we're heavy users of that platform and wanted the same developer experience on our own hardware for specific cases:
-
-- **D1 ceilings** — 10 GB per database cap, write-throughput bottleneck, stale read replicas
-- **Bill unpredictability** — viral moments surprised by per-request metering
-- **Compliance / data residency** — GDPR, HIPAA, government air-gap, BYO-cloud mandates
-- **Deterministic cost** — a single $6/mo line item instead of metered overage
-
-Cloudflare remains the right answer for global edge reach and the rest of its platform. groundflare is the right answer when co-located deterministic infrastructure matters more than global distribution — and it stays compatible so you can mix and match. Most real users land on a hybrid: static assets and edge caching on Cloudflare, data plane and compute on groundflare.
-
-## Design docs
-
-- [`design/tracks.md`](design/tracks.md) — Mirror vs Bun strategy
-- [`design/bootstrap.md`](design/bootstrap.md) — day-0 VPS automation pipeline
-- [`design/config.md`](design/config.md) — `wrangler.toml` extension model
-- [`design/kv-sharding.md`](design/kv-sharding.md) — per-binding sharding
-- [`design/benchmarks.md`](design/benchmarks.md) — measured numbers across VPS tiers
-- [`design/sqlite-performance.md`](design/sqlite-performance.md) — write-path reliability targets
-- [`design/testing.md`](design/testing.md) — four-tier test pyramid
-- [`design/observability.md`](design/observability.md) — metrics, logs, alerts
-- [`design/workspaces.md`](design/workspaces.md) — multi-tenant Workers on one VPS
 
 ## License
 
-MIT
+MIT — see [LICENSE](./LICENSE).
