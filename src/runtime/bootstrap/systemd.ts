@@ -21,7 +21,9 @@ export interface WorkerUnitOptions {
 
   /**
    * Path to the capnp config that workerd should load. Required; usually
-   * `/var/lib/groundflare/system/worker.capnp`.
+   * `/var/lib/groundflare/worker.capnp` (the capnp file's `embed` paths
+   * resolve relative to the file, so keeping it at the base of
+   * /var/lib/groundflare lines up with the tenant bundle layout).
    */
   readonly capnpPath: string
 
@@ -119,7 +121,10 @@ export function generateWorkerSystemdUnit(opts: WorkerUnitOptions): string {
     `WorkingDirectory=${workingDirectory}`,
   ]
 
-  if (envFile !== null) serviceLines.push(`EnvironmentFile=${envFile}`)
+  // "-" prefix tells systemd to skip (not fail) when the file is missing.
+  // A Worker without [vars] produces no environment file at deploy time, so
+  // the unit must start cleanly without it.
+  if (envFile !== null) serviceLines.push(`EnvironmentFile=-${envFile}`)
 
   serviceLines.push(
     `ExecStart=${workerdBinary} serve ${opts.capnpPath}`,

@@ -19,7 +19,12 @@ import { BootstrapError, type Stage } from '../types.js'
 
 const STAGE_ID = 'system.install-services'
 const UNIT_REMOTE_PATH = '/etc/systemd/system/groundflare-worker.service'
-const CAPNP_REMOTE_PATH = '/var/lib/groundflare/system/worker.capnp'
+// NOTE: the capnp file lives directly under /var/lib/groundflare/ (NOT
+// under /system/) so the `embed` paths it contains — e.g.
+// `workers/<name>/code/current/index.js` — resolve against
+// /var/lib/groundflare/workers/ where runDeploy lays out tenant bundles.
+// Putting the capnp in a sibling directory would break those resolves.
+const CAPNP_REMOTE_PATH = '/var/lib/groundflare/worker.capnp'
 const CADDYFILE_REMOTE_PATH = '/etc/caddy/Caddyfile'
 
 export interface InstallServicesStageOptions {

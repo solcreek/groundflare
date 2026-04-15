@@ -71,9 +71,11 @@ describe('generateWorkerSystemdUnit — defaults', () => {
     expect(s.Service).toContain('SyslogIdentifier=groundflare-worker')
   })
 
-  it('points EnvironmentFile at the default location', () => {
+  it('points EnvironmentFile at the default location with optional-load prefix', () => {
     const s = parseIni(out)
-    expect(s.Service).toContain('EnvironmentFile=/etc/groundflare/environment')
+    // "-" prefix: systemd ignores missing file (Worker without [vars]
+    // emits none, and the unit must still start).
+    expect(s.Service).toContain('EnvironmentFile=-/etc/groundflare/environment')
   })
 
   it('installs to multi-user.target', () => {
@@ -116,7 +118,7 @@ describe('generateWorkerSystemdUnit — overrides', () => {
       capnpPath: '/tmp/w.capnp',
       environmentFile: '/etc/app.env',
     })
-    expect(out).toContain('EnvironmentFile=/etc/app.env')
+    expect(out).toContain('EnvironmentFile=-/etc/app.env')
   })
 
   it('appends extraServiceLines verbatim', () => {
