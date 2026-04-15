@@ -43,8 +43,8 @@ const CONNECTIONS_WRITE = 10
 // input gate, so this measures how that single DO withstands burst
 // pressure. When we add per-key sharding (v0.3+), this same scenario
 // will distribute across shards and the numbers should improve.
-const CONNECTIONS_BURST = 1000
-const DURATION_BURST = 15
+const CONNECTIONS_BURST = Number(process.env.HN_BURST_CONNS ?? '1000')
+const DURATION_BURST = Number(process.env.HN_BURST_SECS ?? '15')
 
 const WORKER_JS = `
   export default {

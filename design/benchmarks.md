@@ -272,6 +272,56 @@ For unmodified HN-scale bursts on a single binding: **not yet**. A 0.5–3 % tim
 
 With those shipped, the HN-burst scenario should show zero timeouts. Until they do, the v0.1 rule is: distribute writes across multiple bindings or tenants when you expect sustained >50-conn write bursts to a single namespace. Most real viral-traffic patterns already do this naturally (different users touch different form endpoints), but the limit is worth being honest about.
 
+### Stage 3a: VPS-scale bench on DigitalOcean s-2vcpu-4gb (sgp1)
+
+Ran the full bench suite on a real VPS (DO `s-2vcpu-4gb`, shared CPU tier, Singapore) to get numbers free of laptop noise and native macOS differences. `shards = 4` on the KV binding; kernel tunings from [`design/bootstrap.md`](bootstrap.md) Stage 5 applied (`ulimit -n 65536`, `net.core.somaxconn = 65535`, `tcp_max_syn_backlog = 65535`, `tcp_fin_timeout = 15`).
+
+#### Steady-state + moderate burst (all zero errors)
+
+| scenario | conn | RPS | p50 | p99 | errors |
+|---|---:|---:|---:|---:|---:|
+| noop (baseline) | 50 | 3,087 | 9 | 73 | **0** |
+| KV get (hot) | 50 | 1,427 | 11 | 165 | **0** |
+| KV get (miss) | 50 | 1,214 | 30 | 191 | **0** |
+| KV put (random) | 10 | 198 | 40 | 303 | **0** |
+| D1 SELECT (indexed) | 50 | 1,459 | 9 | 167 | **0** |
+| D1 INSERT | 10 | 225 | 34 | 354 | **0** |
+
+#### HN-burst sweep (Mirror, workerd + DO shards=4)
+
+| conn | RPS | p50 | p99 | max | err | error rate |
+|---:|---:|---:|---:|---:|---:|---:|
+| 100 | 190 | 165 | 5,125 | 6,184 | 17 | 0.6 % |
+| 200 | 189 | 509 | 8,972 | 9,214 | 72 | 2.5 % |
+| 500 | 150 | 111 | 11,029 | 11,425 | 372 | 14 % |
+| 1000 | 118 | 107 | 12,898 | 13,101 | 904 | 38 % |
+
+#### Same sweep on Bun (Bun.serve + bun:sqlite, identical PRAGMAs)
+
+| conn | RPS | p50 | p99 | max | err | error rate |
+|---:|---:|---:|---:|---:|---:|---:|
+| 100 | **9,084** | 8 | 89 | 150 | 0 | **0 %** |
+| 200 | **8,814** | 17 | 119 | 210 | 0 | **0 %** |
+| 500 | **9,169** | 42 | 176 | 291 | 0 | **0 %** |
+| 1000 | **9,910** | 85 | **229** | 659 | 0 | **0 %** |
+
+#### Bottleneck diagnosis
+
+Ran `vmstat` + `top` + `iostat` during a 500-conn Mirror bench. `workerd` held 100 % on one CPU core, `iowait` ~0 %, `steal` 2–18 % (shared CPU tier), memory barely touched. The Mirror ceiling is **workerd's single-process event loop**, not disk or memory. Sharding parallelises input gates but the DOs still share one workerd event loop, so more shards did not lift total RPS on laptop or VPS.
+
+#### Interpretation
+
+1. **Mirror track has a real per-binding ceiling on modest hardware** (~190 rps on `s-2vcpu-4gb`; the exact number scales roughly with CPU cores × single-core perf). At steady-state for a typical micro-SaaS this is ample. At HN-burst scale to one binding, Mirror times out requests.
+2. **Bun track sustains ~50× the Mirror throughput on the same VPS** with zero errors through 1000 concurrent writers. Single-binding HN burst at this hardware tier: Bun passes comfortably, Mirror fails.
+3. **Linux tuning is necessary but not sufficient.** It modestly reduces error counts at moderate burst (e.g. 372 → 213 errors at 500 conn) but does not move the workerd single-core ceiling.
+4. **The architectural gap validates the dual-track strategy in [`design/tracks.md`](tracks.md).** Mirror is the right fit for zero-code-change CF-compatibility; the Bun track becomes commercially necessary for workloads that burst hard on a single binding and can absorb LLM-assisted migration.
+
+#### Comparison with Cloudflare D1 (published + observed)
+
+Cloudflare does not publish absolute RPS or p99 for D1; they share relative improvement ratios and dashboard percentiles. User reports on Hacker News and community forums describe D1 query latency typically at **200–400 ms**, spiking to **3,000 ms** under stress; external Postgres via Workers measured at **50–100 ms** by the same developers. Collected here strictly as reference, not competitive comparison — the shapes of the products differ ([CF blog: D1 turned up to 11](https://blog.cloudflare.com/d1-turning-it-up-to-11/), [HN discussion](https://news.ycombinator.com/item?id=43572511), [kv-d1-benchmark](https://github.com/bruceharrison1984/kv-d1-benchmark)).
+
+Our Mirror steady-state p50 (40 ms for KV put, 34 ms for D1 INSERT) is in a comparable band; our Bun track is substantially below it (8 ms p50). Per the [cookbook analogy](../README.md), this is expected — cooking the same recipe in a dedicated home kitchen avoids the shared-restaurant serving hop.
+
 ### Stage 2d.2: sharding Phase 1 — HN burst with shards = 4
 
 Phase 1 of [kv-sharding.md](kv-sharding.md) wired hash routing across N DO instances. Re-ran the HN burst at 1000 connections with three shard counts on the same laptop:
