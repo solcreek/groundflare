@@ -221,12 +221,27 @@ describe('buildBunArtifact — adapter sources', () => {
     expect(a.adapterSources['adapters/d1.ts']).toContain('from \'bun:sqlite\'')
   })
 
-  it('ships KV + D1 adapters even when the worker declares neither', () => {
+  it('always ships adapters/r2.ts + adapters/sigv4.ts (Phase 2d+)', () => {
+    const a = buildBunArtifact(manifest())
+    expect(a.adapterSources).toHaveProperty('adapters/r2.ts')
+    expect(a.adapterSources).toHaveProperty('adapters/sigv4.ts')
+    expect(a.adapterSources['adapters/r2.ts']).toContain(
+      'export class BunR2Adapter',
+    )
+    expect(a.adapterSources['adapters/sigv4.ts']).toContain(
+      'export async function signRequest',
+    )
+    expect(a.adapterSources['adapters/r2.ts']).toContain('./sigv4.ts')
+  })
+
+  it('ships KV + D1 + R2 adapters even when the worker declares none of them', () => {
     // server.ts unconditionally imports them; shipping dead files is
     // cheaper than forking the shim template around each import.
     const a = buildBunArtifact(manifest())
     expect(a.adapterSources['adapters/kv.ts']).toBeDefined()
     expect(a.adapterSources['adapters/d1.ts']).toBeDefined()
+    expect(a.adapterSources['adapters/r2.ts']).toBeDefined()
+    expect(a.adapterSources['adapters/sigv4.ts']).toBeDefined()
   })
 })
 

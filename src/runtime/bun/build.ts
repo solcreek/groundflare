@@ -16,6 +16,8 @@
 import {
   BUN_D1_ADAPTER_SOURCE,
   BUN_KV_ADAPTER_SOURCE,
+  BUN_R2_ADAPTER_SOURCE,
+  BUN_SIGV4_SOURCE,
 } from './adapters/sources.js'
 import { generateBunShim, type BunKvBinding } from './shim.js'
 import { generateBunSystemdUnit, type BunUnitOptions } from './systemd.js'
@@ -142,10 +144,12 @@ export function buildBunArtifact(
   const adapterSources: Record<string, string> = {}
   // Always ship all adapter sources — server.ts unconditionally imports
   // them, whether or not this particular worker declared the matching
-  // binding. Paying for ~20 KB of source on every Bun deployment is
+  // binding. Paying for ~30 KB of source on every Bun deployment is
   // cheaper than conditionally branching the shim around each import.
   adapterSources['adapters/kv.ts'] = BUN_KV_ADAPTER_SOURCE
   adapterSources['adapters/d1.ts'] = BUN_D1_ADAPTER_SOURCE
+  adapterSources['adapters/r2.ts'] = BUN_R2_ADAPTER_SOURCE
+  adapterSources['adapters/sigv4.ts'] = BUN_SIGV4_SOURCE
 
   const systemdUnit = generateBunSystemdUnit({
     entryPath: entryModulePath,

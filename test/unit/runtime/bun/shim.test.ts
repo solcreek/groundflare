@@ -130,11 +130,23 @@ describe('generateBunShim', () => {
     )
   })
 
-  it('R2 stub still throws a Phase-2 message (2d not yet landed)', () => {
+  it('wires R2 facade to the real BunR2Adapter (Phase 2d+)', () => {
     const src = generateBunShim({ entryModule: './user.js' })
-    expect(src).toContain(
-      'R2.${op}() — groundflare Bun adapter not yet implemented (Phase 2)',
+    expect(src).toContain('import { BunR2Adapter } from "./adapters/r2.ts"')
+    // The facade reads credentials from env vars rather than baking
+    // them into the compiled server.ts — secrets stay out of the artifact.
+    expect(src).toContain('const envPrefix = "R2_" + binding.toUpperCase()')
+    expect(src).toContain('process.env[envPrefix + "ACCESS_KEY_ID"]')
+    expect(src).toContain('new BunR2Adapter({')
+    expect(src).not.toContain(
+      'R2.${op}() — groundflare Bun adapter not yet implemented',
     )
+  })
+
+  it('R2 facade raises a helpful error when credentials are missing', () => {
+    const src = generateBunShim({ entryModule: './user.js' })
+    expect(src).toContain('missing credentials')
+    expect(src).toContain('groundflare secret put')
   })
 
   // D1 stub assertions removed — Phase 2c replaced the stub with
@@ -154,20 +166,10 @@ describe('generateBunShim', () => {
     expect(src).toContain('const STATE_BASE_DIR = "/srv/groundflare"')
   })
 
-  it('exposes CF R2 object + multipart methods in the stub', () => {
-    const src = generateBunShim({ entryModule: './user.js' })
-    for (const m of [
-      'get:',
-      'head:',
-      'put:',
-      'delete:',
-      'list:',
-      'createMultipartUpload:',
-      'resumeMultipartUpload:',
-    ]) {
-      expect(src).toContain(m)
-    }
-  })
+  // R2 stub assertions removed — Phase 2d replaced the stub with
+  // BunR2Adapter. The R2 surface (get/head/put/delete/list) is
+  // exercised by test/bun/adapters/r2.test.ts against real mock
+  // fetches, not by grepping substrings out of the shim output.
 
   it('dispatches the fetch event into user.fetch with env + ctx', () => {
     const src = generateBunShim({ entryModule: './user.js' })

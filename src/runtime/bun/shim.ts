@@ -130,6 +130,7 @@ export function generateBunShim(opts: BunShimOptions): string {
     `import user from ${JSON.stringify(opts.entryModule)}`,
     `import { BunKVAdapter } from "./adapters/kv.ts"`,
     `import { BunD1Adapter } from "./adapters/d1.ts"`,
+    `import { BunR2Adapter } from "./adapters/r2.ts"`,
     '',
     '// ── binding configuration (injected at build time) ─────────────',
     `const VARS = ${varsLiteral}`,
@@ -139,11 +140,19 @@ export function generateBunShim(opts: BunShimOptions): string {
     `const STATE_BASE_DIR = ${JSON.stringify(stateBaseDir)}`,
     '',
     '// ── binding facades ───────────────────────────────────────────',
-    '// KV: backed by bun:sqlite (adapters/kv.ts). One SQLite file per',
-    '//     binding — \`${STATE_BASE_DIR}/kv/<binding>.sqlite\`.',
-    '// D1: backed by bun:sqlite (adapters/d1.ts). One SQLite file per',
-    '//     database — \`${STATE_BASE_DIR}/d1/<databaseName>.sqlite\`.',
-    '// R2: Phase 2d stubs — replaced by passthrough / S3 SDK next.',
+    '// KV: bun:sqlite (adapters/kv.ts). One file per binding —',
+    '//     \`${STATE_BASE_DIR}/kv/<binding>.sqlite\`.',
+    '// D1: bun:sqlite (adapters/d1.ts). One file per database —',
+    '//     \`${STATE_BASE_DIR}/d1/<databaseName>.sqlite\`.',
+    '// R2: passthrough to Cloudflare R2\'s S3-compatible API via',
+    '//     adapters/r2.ts. Credentials come from env vars to keep',
+    '//     secrets out of the compiled artifact:',
+    '//       R2_<BINDING>_ACCOUNT_ID',
+    '//       R2_<BINDING>_ACCESS_KEY_ID',
+    '//       R2_<BINDING>_SECRET_ACCESS_KEY',
+    '//     The systemd EnvironmentFile pulls these in from',
+    '//     /etc/groundflare/environment, which `groundflare secret`',
+    '//     populates at deploy time.',
     '',
     'function makeKvFacade(binding, _shards) {',
     '  return BunKVAdapter.open(`${STATE_BASE_DIR}/kv/${binding}.sqlite`)',
@@ -153,7 +162,23 @@ export function generateBunShim(opts: BunShimOptions): string {
     '  return BunD1Adapter.open(`${STATE_BASE_DIR}/d1/${databaseName}.sqlite`)',
     '}',
     '',
-    R2_STUB,
+    'function makeR2Facade(binding, bucketName) {',
+    '  const envPrefix = "R2_" + binding.toUpperCase() + "_"',
+    '  const accountId = process.env[envPrefix + "ACCOUNT_ID"]',
+    '  const accessKeyId = process.env[envPrefix + "ACCESS_KEY_ID"]',
+    '  const secretAccessKey = process.env[envPrefix + "SECRET_ACCESS_KEY"]',
+    '  if (!accountId || !accessKeyId || !secretAccessKey) {',
+    '    throw new Error(',
+    '      `R2 binding ${binding}: missing credentials. Set ${envPrefix}ACCOUNT_ID, ` +',
+    '      `${envPrefix}ACCESS_KEY_ID, ${envPrefix}SECRET_ACCESS_KEY (typically via ` +',
+    '      `\\`groundflare secret put\\`).`',
+    '    )',
+    '  }',
+    '  return new BunR2Adapter({',
+    '    accountId, accessKeyId, secretAccessKey,',
+    '    bucket: process.env[envPrefix + "BUCKET"] || bucketName,',
+    '  })',
+    '}',
     '',
     '// ── env construction ──────────────────────────────────────────',
     'function buildEnv() {',
@@ -214,20 +239,6 @@ const HEADER =
   '// Regenerated on every `groundflare deploy`; local edits will be lost.\n' +
   '// Entry for the Bun runtime track. See design/tracks.md.'
 
-const R2_STUB = `function makeR2Facade(binding, _bucketName) {
-  const unimpl = (op) => () => {
-    throw new Error(\`R2.\${op}() — groundflare Bun adapter not yet implemented (Phase 2). Binding: \${binding}\`)
-  }
-  return {
-    get: unimpl("get"),
-    head: unimpl("head"),
-    put: unimpl("put"),
-    delete: unimpl("delete"),
-    list: unimpl("list"),
-    createMultipartUpload: unimpl("createMultipartUpload"),
-    resumeMultipartUpload: unimpl("resumeMultipartUpload"),
-  }
-}`
 
 function parseListen(address: string): { host: string; port: number } {
   // Accept `host:port` or `:port` (the latter is spelled `0.0.0.0:port`

@@ -24,3 +24,5 @@ function readAdapterSource(name: string): string {
 
 export const BUN_KV_ADAPTER_SOURCE = readAdapterSource('kv.ts')
 export const BUN_D1_ADAPTER_SOURCE = readAdapterSource('d1.ts')
+export const BUN_R2_ADAPTER_SOURCE = readAdapterSource('r2.ts')
+export const BUN_SIGV4_SOURCE = readAdapterSource('sigv4.ts')
