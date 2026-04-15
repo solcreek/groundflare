@@ -193,3 +193,62 @@ describe('generateCloudInit — validation', () => {
     ).toThrow(/system user name/)
   })
 })
+
+describe('generateCloudInit — installBun', () => {
+  it('does not install Bun by default (Mirror-track VPSes stay lean)', () => {
+    const y = generateCloudInit({ sshAuthorizedKeys: [SAMPLE_KEY] })
+    expect(y).not.toContain('unzip')
+    expect(y).not.toContain('bun.sh/install')
+    expect(y).not.toContain('/root/.bun/bin/bun')
+  })
+
+  it('adds unzip to packages when installBun is true', () => {
+    const y = generateCloudInit({
+      sshAuthorizedKeys: [SAMPLE_KEY],
+      installBun: true,
+    })
+    expect(y).toMatch(/^ {2}- unzip$/m)
+  })
+
+  it('appends the bun install runcmd + symlink when installBun is true', () => {
+    const y = generateCloudInit({
+      sshAuthorizedKeys: [SAMPLE_KEY],
+      installBun: true,
+    })
+    expect(y).toContain(
+      '  - HOME=/root bash -c "curl -fsSL https://bun.sh/install | bash"',
+    )
+    expect(y).toContain('  - ln -sf /root/.bun/bin/bun /usr/local/bin/bun')
+  })
+
+  it('emits the bun steps after SSH hardening, before write_files', () => {
+    const y = generateCloudInit({
+      sshAuthorizedKeys: [SAMPLE_KEY],
+      installBun: true,
+    })
+    const sshIdx = y.indexOf('systemctl restart ssh')
+    const bunIdx = y.indexOf('bun.sh/install')
+    const writeFilesIdx = y.indexOf('write_files:')
+    expect(sshIdx).toBeGreaterThan(0)
+    expect(bunIdx).toBeGreaterThan(sshIdx)
+    expect(writeFilesIdx).toBeGreaterThan(bunIdx)
+  })
+
+  it('de-dupes unzip when it is also in extraPackages', () => {
+    const y = generateCloudInit({
+      sshAuthorizedKeys: [SAMPLE_KEY],
+      installBun: true,
+      extraPackages: ['unzip', 'vim'],
+    })
+    const matches = y.match(/^ {2}- unzip$/gm) ?? []
+    expect(matches.length).toBe(1)
+  })
+
+  it('does not add the symlink when installBun is false explicitly', () => {
+    const y = generateCloudInit({
+      sshAuthorizedKeys: [SAMPLE_KEY],
+      installBun: false,
+    })
+    expect(y).not.toContain('/usr/local/bin/bun')
+  })
+})

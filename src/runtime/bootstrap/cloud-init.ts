@@ -50,6 +50,21 @@ export interface CloudInitOptions {
    * 03:00 VPS-local, matching the schedule in design/bootstrap.md §8.
    */
   readonly autoReboot?: boolean
+
+  /**
+   * Install the Bun runtime on first boot. When true:
+   *   - adds `unzip` to the apt package list (Bun's install script requires it)
+   *   - runs Bun's official install script as root
+   *   - symlinks /usr/local/bin/bun to the root-local install so any user
+   *     (including the `groundflare` systemd service user) can execute it
+   *
+   * Use this for VPSes that will run the Bun track
+   * (`[groundflare] runtime = "bun"` in wrangler.toml). Default false —
+   * Mirror-track VPSes don't need Bun and shouldn't spend boot time on it.
+   *
+   * See design/tracks.md for track selection semantics.
+   */
+  readonly installBun?: boolean
 }
 
 const DEFAULT_SYSTEM_USER = 'groundflare'
@@ -85,6 +100,10 @@ export function generateCloudInit(opts: CloudInitOptions): string {
   const packages = dedupePreserveOrder([
     ...(opts.basePackages ?? DEFAULT_BASE_PACKAGES),
     ...(opts.extraPackages ?? []),
+    // Bun's install script invokes `unzip` to unpack the release tarball;
+    // the Ubuntu base image doesn't ship it. We add it only when the
+    // Bun runtime is being provisioned to keep Mirror-track VPSes lean.
+    ...(opts.installBun === true ? ['unzip'] : []),
   ])
 
   const lines: string[] = ['#cloud-config']
@@ -117,6 +136,17 @@ export function generateCloudInit(opts: CloudInitOptions): string {
     '  - sed -i "s/^#*PasswordAuthentication.*/PasswordAuthentication no/" /etc/ssh/sshd_config',
   )
   lines.push('  - systemctl restart ssh')
+
+  if (opts.installBun === true) {
+    // Install Bun as root (HOME=/root so the installer writes to /root/.bun),
+    // then symlink the binary into /usr/local/bin so any user can execute it.
+    // Binary permissions default to 0755, so the groundflare systemd user can
+    // run it via the symlink without touching root-owned dirs.
+    lines.push(
+      '  - HOME=/root bash -c "curl -fsSL https://bun.sh/install | bash"',
+    )
+    lines.push('  - ln -sf /root/.bun/bin/bun /usr/local/bin/bun')
+  }
 
   lines.push('write_files:')
   lines.push('  - path: /etc/apt/apt.conf.d/50unattended-upgrades')
