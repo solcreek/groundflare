@@ -100,6 +100,7 @@ async function printWorkspaceDetail(
       host: state.vps.ipv4,
       user: state.vps.user,
       privateKeyPath: state.sshKey.localPath,
+      ...(state.vps.port !== undefined ? { port: state.vps.port } : {}),
     },
   })
 

@@ -101,6 +101,9 @@ export function provisionStage(opts: ProvisionStageOptions): Stage {
       if (vps.publicIPv6 !== undefined) {
         stateVps.ipv6 = vps.publicIPv6
       }
+      if (vps.sshPort !== undefined) {
+        stateVps.port = vps.sshPort
+      }
       ctx.state.vps = stateVps
 
       ctx.log('info', `provisioned ${vps.id} at ${vps.publicIPv4} (${vps.size}/${vps.region})`)

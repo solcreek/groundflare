@@ -49,6 +49,8 @@ export interface BootstrapState {
     id: string
     ipv4: string
     ipv6?: string
+    /** Non-standard SSH port (test harness only; real providers use 22). */
+    port?: number
     size: string
     region: string
     /** `groundflare`, `root`, etc. */

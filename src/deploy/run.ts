@@ -139,6 +139,9 @@ export async function runDeploy(opts: RunDeployOptions): Promise<DeployResult> {
         host: opts.bootstrapState.vps.ipv4,
         user: opts.bootstrapState.vps.user,
         privateKeyPath: opts.bootstrapState.sshKey.localPath,
+        ...(opts.bootstrapState.vps.port !== undefined
+          ? { port: opts.bootstrapState.vps.port }
+          : {}),
       },
     })
 

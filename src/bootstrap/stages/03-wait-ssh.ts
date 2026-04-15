@@ -50,9 +50,11 @@ export function waitSshStage(opts: WaitSshStageOptions = {}): Stage {
         )
       }
 
-      ctx.log('info', `polling TCP ${ctx.state.vps.ipv4}:22 …`)
+      const port = ctx.state.vps.port ?? 22
+      ctx.log('info', `polling TCP ${ctx.state.vps.ipv4}:${port} …`)
       await waitForSshTcpReady({
         host: ctx.state.vps.ipv4,
+        port,
         maxWaitMs: opts.maxWaitMs ?? 5 * 60_000,
         ...(opts.perAttemptTimeoutMs !== undefined
           ? { perAttemptTimeoutMs: opts.perAttemptTimeoutMs }
@@ -60,10 +62,11 @@ export function waitSshStage(opts: WaitSshStageOptions = {}): Stage {
       })
       ctx.log('info', 'TCP reachable; verifying SSH handshake')
 
-      const target = {
+      const target: SshTarget = {
         host: ctx.state.vps.ipv4,
         user: ctx.state.vps.user,
         privateKeyPath: ctx.state.sshKey.localPath,
+        ...(ctx.state.vps.port !== undefined ? { port: ctx.state.vps.port } : {}),
       }
       const client = opts.sshClientFactory
         ? opts.sshClientFactory(target)

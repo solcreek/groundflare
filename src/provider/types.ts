@@ -122,6 +122,11 @@ export interface VPS {
   readonly status: VPSStatus
   readonly publicIPv4?: string
   readonly publicIPv6?: string
+  /**
+   * Non-standard SSH port. Real providers always serve on 22 so omit this;
+   * the test-only DockerTestProvider sets it to the host-forwarded port.
+   */
+  readonly sshPort?: number
   /** Size identifier (e.g. `cx22`). */
   readonly size: string
   /** Region identifier (e.g. `hel1`). */
