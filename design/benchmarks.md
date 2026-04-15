@@ -272,6 +272,30 @@ For unmodified HN-scale bursts on a single binding: **not yet**. A 0.5–3 % tim
 
 With those shipped, the HN-burst scenario should show zero timeouts. Until they do, the v0.1 rule is: distribute writes across multiple bindings or tenants when you expect sustained >50-conn write bursts to a single namespace. Most real viral-traffic patterns already do this naturally (different users touch different form endpoints), but the limit is worth being honest about.
 
+### Stage 2d.2: sharding Phase 1 — HN burst with shards = 4
+
+Phase 1 of [kv-sharding.md](kv-sharding.md) wired hash routing across N DO instances. Re-ran the HN burst at 1000 connections with three shard counts on the same laptop:
+
+| shards | RPS | mean | p50 | p99 | max | err |
+|---:|---:|---:|---:|---:|---:|---:|
+| 1 | 1,987 | 129ms | 6 | 777ms | 10,401ms | 920 (~3%) |
+| **4** | **2,071** | **68ms** | **6** | **299ms** | **10,621ms** | **952 (~3%)** |
+| 8 | 2,043 | 79ms | 6 | 676ms | 10,445ms | 936 (~3%) |
+
+### Interpretation
+
+1. **p99 drops 62 % at shards = 4 (777 → 299 ms)**, which hits the [v0.2 reliability SLO](sqlite-performance.md#reliability-targets) for p99 < 300 ms. Sharding is working as designed — more DOs, less queuing per DO.
+2. **Throughput plateaus around 2,000 rps regardless of shard count.** shards=4 and shards=8 deliver essentially identical RPS, and shards=8 is slightly worse on p99. This is a **laptop-CPU saturation signal**, not a sharding-layer signal — the physical CPU cannot dispatch faster.
+3. **Errors stay at ~3 %.** All three configurations time out in the same band. The max latency is identical (10.4–10.6 s) and equals autocannon's 10 s timeout — these are client-side drops, not server-side stalls. The underlying cause at this point is CPU saturation, not the KV stack.
+4. **shards = 4 is the recommended default.** Lower p99 than shards = 1 or 8; per design [§Performance expectations](kv-sharding.md#performance-expectations).
+
+### Remaining gap before clean 1000-conn SLO
+
+- Laptop isn't the right test environment for 1000 concurrent. [Stage 3a](benchmarks.md#planned-future-stages) (Hetzner CX22) has 2 dedicated vCPUs, predictable NVMe, no background processes competing. The 3 % error band should disappear or shrink sharply.
+- If it doesn't, the next mitigation is [§2 background passive checkpointing](sqlite-performance.md#2-background-passive-checkpointing-v02) — removing the WAL convoy that still produces occasional 1–3 s stalls.
+
+Stage 3a is the next gating benchmark for v0.2 release.
+
 ### Stage 2d.1: WAL autocheckpoint raised to 10000 pages
 
 Applied the first mitigation from [sqlite-performance.md §1](sqlite-performance.md#1-wal-checkpoint-threshold-v01-cheap): raised `PRAGMA wal_autocheckpoint` from SQLite's default (1000) to 10000. Hypothesis: fewer checkpoints → less probability that a request hits a checkpoint stall.

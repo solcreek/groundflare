@@ -220,7 +220,7 @@ const manifest: WorkspaceManifest = {
       name: workerName,
       domain: host,
       entryPath: 'user.js',
-      kvNamespaces: [{ binding: 'CACHE' }],
+      kvNamespaces: [{ binding: 'CACHE', shards: 4 }],
       d1Databases: [{ binding: 'DB', databaseName: dbName }],
     },
   ],
