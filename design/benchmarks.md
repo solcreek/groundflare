@@ -322,6 +322,55 @@ Cloudflare does not publish absolute RPS or p99 for D1; they share relative impr
 
 Our Mirror steady-state p50 (40 ms for KV put, 34 ms for D1 INSERT) is in a comparable band; our Bun track is substantially below it (8 ms p50). Per the [cookbook analogy](../README.md), this is expected — cooking the same recipe in a dedicated home kitchen avoids the shared-restaurant serving hop.
 
+### Stage 3b: VPS scaling curve — dedicated vs shared CPU, more cores vs noisy cores
+
+Followed Stage 3a with two additional tiers to characterise how the Mirror runtime scales across machine sizes and CPU tiers:
+
+- `c-2` — **CPU-optimised, 2 dedicated vCPU**, 4 GB RAM, ~$0.125/hr
+- `s-4vcpu-8gb` — **shared, 4 vCPU**, 8 GB RAM, ~$0.071/hr
+
+Compared against Stage 3a's `s-2vcpu-4gb` (shared, 2 vCPU, ~$0.042/hr). Same cloud-init hardening, same kernel tunings, same bench script. HN burst sweep (random KV puts) across 100/200/500/1000 connections, 15 s each.
+
+#### Mirror (workerd + KV DO shards=4) across tiers
+
+| Tier | CPU | 100 conn | 200 conn | 500 conn | 1000 conn |
+|---|---|---|---|---|---|
+| `s-2vcpu-4gb` shared | 2 shared | 190 rps / 17 err | 189 / 72 err | 150 / 372 err | 118 / 904 err |
+| **`c-2` dedicated** | **2 dedicated** | **497 / 100 err** | **518 / 184** | **483 / 164** | **479 / 536** |
+| `s-4vcpu-8gb` shared | 4 shared | 92 / 0 err | 157 / 48 | 139 / 265 | 115 / 1000 |
+
+#### Bun (Bun.serve + bun:sqlite) across tiers
+
+| Tier | 100 conn | 200 conn | 500 conn | 1000 conn |
+|---|---|---|---|---|
+| `s-2vcpu-4gb` shared | 9,084 / 0 err | 8,814 / 0 | 9,169 / 0 | 9,910 / 0 |
+| `c-2` dedicated | 8,752 / 0 err | 9,112 / 0 | 9,296 / 0 | 9,009 / 0 |
+| `s-4vcpu-8gb` shared | 9,124 / 0 err | 9,082 / 0 | 9,156 / 0 | 9,606 / 0 |
+
+#### Interpretation
+
+1. **For Mirror, dedicated CPU matters much more than core count.** The CPU-optimised `c-2` with 2 dedicated vCPUs sustains ~500 rps per binding — about **2.5× the shared tier with the same core count**, and surprisingly **4× the shared 4-core tier** at peak throughput. CPU steal on shared tiers is the dominant cost; extra shared cores don't compensate.
+2. **workerd is effectively single-core bound at the tenant level.** Adding cores gives modest scheduler headroom but does not parallelise workerd's dispatch path. The shared 4 vCPU tier was actually noisier than shared 2 vCPU, giving slightly worse Mirror numbers because more cores = more neighbours competing for shared resources.
+3. **Bun.serve plateaus around 9,000–9,600 rps across every tier.** Bun is also single-threaded by default; what changes across tiers is noise, not throughput ceiling. The absolute number is ~50× Mirror on any tier.
+4. **Mirror even on `c-2` still has high error counts at HN-burst concurrency** (100+ errors from 100 conn up). Throughput is better; reliability at extreme burst is not solved by bigger hardware alone — it requires either the Bun track or a fundamentally different Worker-facing concurrency model than "single DO per binding".
+
+#### Practical sizing guidance (per-binding, single tenant)
+
+| Target sustained RPS | Mirror recommendation | Bun recommendation |
+|---:|---|---|
+| ≤ 200 | s-2vcpu-4gb shared ($21/mo) — steady-state fine | any tier |
+| 200–500 | **`c-2` dedicated ($84/mo)** — only tier Mirror reaches this | any tier, massive headroom |
+| 500–1000 | Mirror not reliable at any measured tier; see Bun | any tier |
+| > 1000 | Mirror: requires CPU beyond tested tiers, or multi-process workerd architecture not yet built | any tier up to ~9k rps ceiling |
+
+These numbers are per **single binding on a single instance**. An application whose writes distribute across N bindings (e.g. per-user rate limits that hit different keyspaces) sees N × these limits on Mirror.
+
+#### Decision fallout for v0.2
+
+- Mirror's single-binding ceiling on a $5–$10 tier is ~200 rps. That is the honest claim to carry into v0.2 copy.
+- Reaching 1000-conn HN-burst reliability on Mirror is not purely a software problem — the DO-through-one-workerd-event-loop architecture caps throughput at one core's worth of dispatch. Background checkpointing (§2 in [`sqlite-performance.md`](sqlite-performance.md)) will not meaningfully change this.
+- The Bun track is where the 1000+ rps single-binding story lives. Prioritising its implementation is now on the critical path, promoted from the "nice to have" framing in the original `tracks.md` draft.
+
 ### Stage 2d.2: sharding Phase 1 — HN burst with shards = 4
 
 Phase 1 of [kv-sharding.md](kv-sharding.md) wired hash routing across N DO instances. Re-ran the HN burst at 1000 connections with three shard counts on the same laptop:
