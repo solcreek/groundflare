@@ -1,0 +1,14 @@
+# groundflare — Bun configuration.
+#
+# We run two test runners:
+#   - vitest  → test/unit, test/conformance, test/integration, test/e2e
+#              (everything that targets the Node side or workerd via SSH)
+#   - bun test → test/bun  (adapters that ship as source to the VPS and
+#              run inside the real Bun runtime, so must be tested there)
+#
+# This file only configures bun test. Keep it minimal; the vitest
+# config lives in vitest.config.ts.
+
+[test]
+# Kept empty intentionally — bun test picks up *.test.ts under the
+# paths we pass on the CLI. See package.json "test:bun" script.

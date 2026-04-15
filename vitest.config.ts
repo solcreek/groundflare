@@ -6,7 +6,16 @@ export default defineConfig({
     // e2e tests run under a dedicated config (vitest.config.e2e.ts) with
     // Docker requirements + long timeouts; they are NOT part of the
     // default suite.
-    exclude: ['node_modules/**', 'dist/**', 'src/poc/**', 'test/e2e/**'],
+    // test/bun/** runs under `bun test` (see package.json "test:bun"):
+    // those files import from "bun:sqlite" and use the bun:test API, which
+    // vitest can't execute. Keep them out of the default vitest sweep.
+    exclude: [
+      'node_modules/**',
+      'dist/**',
+      'src/poc/**',
+      'test/e2e/**',
+      'test/bun/**',
+    ],
     // Longer timeout for conformance tests which manipulate real SQLite files;
     // integration tests set per-test 30s timeouts where they spawn workerd.
     testTimeout: 10_000,

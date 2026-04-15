@@ -46,6 +46,8 @@
     "test:unit": "vitest run test/unit test/conformance",
     "test:integration": "vitest run test/integration",
     "test:e2e": "vitest run --config vitest.config.e2e.ts",
+    "test:bun": "bun test test/bun",
+    "test:all": "npm run test && npm run test:bun",
     "poc:bench-bindings": "tsx src/poc/bench-bindings.ts",
     "poc:bench-bun": "tsx src/poc/bench-bun.ts",
     "poc:bench-bun-burst": "tsx src/poc/bench-bun-burst.ts",
