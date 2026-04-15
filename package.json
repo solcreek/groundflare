@@ -45,6 +45,7 @@
     "test:watch": "vitest",
     "test:unit": "vitest run test/unit test/conformance",
     "test:integration": "vitest run test/integration",
+    "test:e2e": "vitest run --config vitest.config.e2e.ts",
     "poc:bench-bindings": "tsx src/poc/bench-bindings.ts",
     "poc:bench-bun": "tsx src/poc/bench-bun.ts",
     "coverage": "vitest run --coverage",

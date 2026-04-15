@@ -3,7 +3,10 @@ import { defineConfig } from 'vitest/config'
 export default defineConfig({
   test: {
     include: ['test/**/*.test.ts', 'src/**/*.test.ts'],
-    exclude: ['node_modules/**', 'dist/**', 'src/poc/**'],
+    // e2e tests run under a dedicated config (vitest.config.e2e.ts) with
+    // Docker requirements + long timeouts; they are NOT part of the
+    // default suite.
+    exclude: ['node_modules/**', 'dist/**', 'src/poc/**', 'test/e2e/**'],
     // Longer timeout for conformance tests which manipulate real SQLite files;
     // integration tests set per-test 30s timeouts where they spawn workerd.
     testTimeout: 10_000,
