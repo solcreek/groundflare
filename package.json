@@ -45,6 +45,7 @@
     "test:watch": "vitest",
     "test:unit": "vitest run test/unit test/conformance",
     "test:integration": "vitest run test/integration",
+    "poc:bench-bindings": "tsx src/poc/bench-bindings.ts",
     "coverage": "vitest run --coverage",
     "lint": "eslint --no-error-on-unmatched-pattern \"src/**/*.ts\" \"test/**/*.ts\"",
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",

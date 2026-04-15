@@ -174,6 +174,53 @@ groundflare's contract is "take any existing Cloudflare Worker and run it unchan
 - **For users who don't need Workers semantics** (pure fetch handler, no bindings), Bun + Hono is genuinely a better choice. Those users aren't groundflare's audience.
 - `bun:sqlite` remains worth studying as an adapter reference — if workerd's built-in D1 path shows performance issues on a real VPS, we have a proof point that in-process SQLite can be very fast.
 
+## Stage 2d: workerd + SQLite-backed KV and D1 (multi-tenant)
+
+The previous stages measured pure HTTP dispatch. Stage 2d exercises the real `buildCapnpFromWorkspace` → `renderCapnpConfig` → `spawnWorkerd` pipeline with on-disk SQLite KV and D1 bindings, routed through the multi-tenant Router Worker.
+
+### Setup
+
+- Machine: same laptop (Apple Silicon)
+- Tool: autocannon 10s @ 50 parallel connections per scenario
+- Architecture: Router Worker → tenant Worker (dispatches by Host header) → SqlStorage-backed DO namespace → on-disk SQLite file
+- PRAGMAs applied per `src/runtime/sqlite/prelude.ts` (WAL, NORMAL sync, 64 MB cache, 256 MB mmap, busy_timeout 5000)
+- Script: [`src/poc/bench-bindings.ts`](../src/poc/bench-bindings.ts)
+
+### Results
+
+| Scenario | RPS | mean | p50 | p99 | max | errors |
+|---|---:|---:|---:|---:|---:|---:|
+| noop (baseline, multi-tenant) | 6,855 | 6.75ms | 0ms | 45ms | 85ms | 0 |
+| KV get (hot key) | 3,958 | 12.12ms | 1ms | 80ms | 140ms | 0 |
+| KV get (miss) | 4,231 | 11.18ms | 1ms | 79ms | 150ms | 0 |
+| KV put (random keys) | 2,626 | 20.66ms | 4ms | 39ms | 8,718ms | 32 |
+| D1 SELECT (indexed) | 3,875 | 12.38ms | 1ms | 93ms | 180ms | 0 |
+| D1 INSERT | 2,452 | 11.75ms | 5ms | 9ms | 6,362ms | 16 |
+
+### Interpretation
+
+1. **Baseline drops from Stage 1's 16k rps to 6.8k rps.** The multi-tenant Router Worker adds an extra dispatch hop. This is intrinsic to the workspace architecture, not a regression.
+
+2. **Read throughput is comfortable for the target workload.** 3.9–4.2k rps for KV get / D1 SELECT on a laptop implies a $5 Hetzner CX22 will handle 1–2k rps, more than enough for any micro-SaaS. p50 stays at 1ms — median users see a fully cached response.
+
+3. **Writes show tail-latency spikes under 50-way concurrency.** KV put max 8.7s, D1 INSERT max 6.4s, with a small number of timeouts (32 and 16). SQLite WAL handles concurrent writers via `busy_timeout` retries, but at 50 parallel writers on a single file some callers wait seconds. For a single-node, single-tenant workload (the common case), 50-way concurrent writes are unrealistic.
+
+4. **KV hot vs miss are effectively identical.** Both paths hit the same SQL-backed DO; a "miss" just returns null after the lookup. No OS-level page-cache advantage for hot keys because the working set fits in memory either way.
+
+5. **D1 INSERT p99 is surprisingly low (9ms) but max explodes (6.3s).** The distribution is bimodal: most inserts are fast, but when the WAL checkpointer kicks in or two writers collide, some requests stall. This is SQLite's expected behavior under heavy write contention.
+
+### Implications
+
+- **Reads are a solved problem at target scale.** The KV/D1 reads are fast, deterministic, and have healthy p99s.
+- **Write contention is the thing to watch in production.** The Queues design (SQLite-backed) will hit the same pattern; the `redis-streams` opt-in exists precisely for users who outgrow this.
+- **The baseline gap vs Stage 1 is architectural, not a bug.** Multi-tenancy costs ~60% of trivial-dispatch throughput. Single-tenant deployments could skip the Router Worker for full Stage 1 numbers, but we haven't made that a separate code path yet — may be worth an option for users with one Worker per VPS.
+
+### Follow-ups
+
+- Stage 2e: same scenarios with workspace of 10 concurrent tenants (contention across files)
+- Stage 3a: re-run on Hetzner CX22 to validate ratio assumptions
+- Optimization: investigate whether per-binding WAL checkpoint tuning changes the tail numbers
+
 ## Planned future stages
 
 | Stage | Status | What it measures |
@@ -182,7 +229,8 @@ groundflare's contract is "take any existing Cloudflare Worker and run it unchan
 | Stage 2a | ✅ Done | Idle-recovery latency (30s) |
 | **Stage 2b** | Pending | Longer idle windows (5 min, 1h, 24h) |
 | Stage 2c | ✅ Done | workerd vs Bun.serve vs Bun+bun:sqlite |
-| **Stage 2d** | Pending | Worker with bindings (KV/SQLite, D1/libSQL) |
+| Stage 2d | ✅ Done | Worker with SQLite-backed KV + D1 bindings (multi-tenant) |
+| **Stage 2e** | Pending | Multi-tenant concurrency (10 tenants hitting separate files) |
 | **Stage 3a** | Pending | Same benchmark on a Hetzner CX22 |
 | **Stage 3b** | Pending | vs real CF Workers edge |
 | **Stage 4** | Pending | Pathological (long queries, large responses, burst) |
