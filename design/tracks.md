@@ -2,7 +2,7 @@
 
 > groundflare ships two runtime tracks from the same CLI and same deploy experience. The **Mirror track** runs your Worker unchanged on workerd. The **Bun track** transforms it to a Bun-native app with help from an LLM-assisted migration tool. Same home, two ways to cook.
 
-Status: v0 draft. The Bun track is experimental until v0.5+. Mirror is the default path through at least v1.0.
+Status: v1 — **parallel release**. Mirror and Bun tracks both ship at v0.2 after the Stage 3b scaling data made the commercial case for Bun undeniable ([`benchmarks.md` §Stage 3b](benchmarks.md#stage-3b-vps-scaling-curve-dedicated-vs-shared-cpu-mirror-vs-bun)). Mirror remains the default and zero-code-change path; Bun is the opt-in high-throughput path. Earlier revisions of this doc gated Bun to v0.5+ experimental — that framing is superseded.
 
 ## Why two tracks
 
@@ -243,19 +243,19 @@ From Stage 1 + 2c on a laptop:
 
 Same-VPS numbers will be lower but ratios should hold. Stage 3a confirmation needed.
 
-## Phased roadmap
+## Phased roadmap (parallel release plan)
+
+Superseded the earlier "Bun gated to v0.5+" roadmap after [Stage 3b](benchmarks.md#stage-3b-vps-scaling-curve-dedicated-vs-shared-cpu-mirror-vs-bun) demonstrated Bun sustains ~9,000 rps per binding with zero errors on any $5–$85 tier while Mirror caps at ~200–500 rps depending on CPU steal. The commercial claim "HN-proof on $5 VPS" is reachable only via Bun, and waiting to ship it costs the market window.
 
 | Phase | Mirror | Bun track |
 |---|---|---|
-| **v0.1** | MVP: deploy a worker to Hetzner VPS | — |
-| **v0.2-0.3** | Stabilize Mirror: bindings, observability, secrets | — |
-| **v0.4** | Mirror production-grade | **Bun-track experimental preview**: `bun analyze` only |
-| **v0.5** | Mirror maintenance | **Bun-track alpha**: `bun prepare` for no-DO Workers |
-| **v0.6-0.7** | — | Bun handles HTMLRewriter, WebSocket fallbacks |
-| **v1.0** | Both tracks stable | DO alternatives (research) |
-| **v1.5+** | — | Bun track covers 90% of CF Workers |
+| **v0.1 (shipped)** | MVP: deploy a worker to Hetzner VPS + conformance + Tier 3 e2e via Docker fake-VPS | — |
+| **v0.2 (in progress, parallel release)** | Honest SLO (~200 rps shared, ~500 rps dedicated, per binding). Sharding Phase 1. Background checkpoint optional. | **Full alpha**: runtime bootstrap, KV/D1 bindings via bun:sqlite, `groundflare bun analyze`/`prepare` CLI, e2e matrix |
+| **v0.3** | Background passive checkpointing, sharded `list()` cursor, multi-binding observability | HTMLRewriter (linkedom) + WebSocket shim + `caches.default` fallback |
+| **v0.4** | Maintenance | Service bindings cross-tenant, remaining edge-cases |
+| **v1.0** | Production-hardened Mirror | Production-hardened Bun track; Durable Objects still Mirror-only (no credible single-node shim yet) |
 
-**Do not ship the Bun track before Mirror is production-proven.** Runtime diversity before product-market-fit is a well-known trap.
+**Parallel release rule**: v0.2 does not ship until both tracks pass their own conformance + e2e matrices. A user running `groundflare up` without opting in gets Mirror. `groundflare up --bun` or `[groundflare] runtime = "bun"` in config selects the Bun track after running `groundflare bun prepare`.
 
 ## Risks
 
