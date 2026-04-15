@@ -251,11 +251,21 @@ Measures behavior under a burst workload that no micro-SaaS reaches in steady st
 2. **p50 (4ms) and p99 (80ms) are healthy.** Median and near-tail users see form-grade latency.
 3. **max latency reached 13.6 s and 84 requests timed out** (~0.5 % of ~36 k total requests). Root cause is the WAL checkpoint convoy effect: when auto-checkpoint fires during sustained write pressure, it blocks the writer for 1–3 s, and the 100-deep queue behind it turns seconds-of-checkpoint into tens-of-seconds-at-the-tail for the unlucky last arrivals.
 
+### Pushing to 1000-way concurrent writes
+
+Repeated the same scenario at 1000 parallel connections for 15 s to find the current ceiling:
+
+| scenario | conn | RPS | mean | p50 | p99 | max | err |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| HN burst (KV put) | 1000 | 1,987 | 129ms | 6 | 777 | 10,401 | **920** (~3 %) |
+
+The 3 % timeout rate is where the current single-DO architecture visibly fails a viral traffic event. Throughput actually dropped slightly (vs 100 conn) because more clients amplify queue contention, not parallelism — confirming the DO input gate is the single bottleneck.
+
 ### Is this production-ready?
 
 For typical micro-SaaS traffic (steady writes well under 100 rps): yes. Stage 2d.0 showed zero errors at 10-way write concurrency, which covers any realistic steady load and even moderate burst.
 
-For unmodified HN-scale bursts on a single binding: **not yet**. A 0.5 % timeout rate during a viral event is not the reliability floor groundflare should commit to. Two independent mitigations are on the v0.2 roadmap:
+For unmodified HN-scale bursts on a single binding: **not yet**. A 0.5–3 % timeout rate during a viral event is not the reliability floor groundflare should commit to. Two independent mitigations are on the v0.2 roadmap:
 
 - **Write coalescing** ([sqlite-performance.md §3](sqlite-performance.md#3-write-coalescing-v02)): batch writes arriving within a 5 ms window into one transaction. Reduces fsync count linearly with batch size; expected to compress the max-latency tail from seconds to single-digit ms.
 - **Background passive checkpointing** ([sqlite-performance.md §2](sqlite-performance.md#2-background-passive-checkpointing-v02)): proactively drains the WAL before auto-checkpoint threshold hits, keeping checkpoint work off the request-serving path.

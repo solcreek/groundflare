@@ -104,6 +104,23 @@ Not a general KV/D1 escape hatch — scoped to queues where pub/sub semantics ar
 | 5 | Per-key sharding (opt-in) | v0.3+ | 1–2 weeks | Scales write throughput linearly |
 | — | Redis Streams adapter for queues | v0.4 (already in design) | — | Escape hatch for high-volume queues |
 
+## Reliability targets
+
+These are the numbers groundflare commits to hitting. Benchmarks track against them; regressions block a release.
+
+| Load profile | conn | v0.1 actual | v0.2 target |
+|---|---:|---|---|
+| Steady state (typical micro-SaaS) | ≤ 20 | p99 < 10 ms, errors = 0 ✅ | p99 < 10 ms, errors = 0 |
+| Burst (moderate viral) | 50–100 | p99 80 ms, 0.5 % errors | p99 < 100 ms, errors = 0 |
+| **Burst (HN front-page / 1000+ users)** | **1000** | **p99 777 ms, 3 % errors ❌** | **p99 < 300 ms, errors = 0** |
+| Extreme (sustained > 1000) | > 1000 | undefined | graceful degradation, errors < 0.01 % |
+
+"1000 concurrent" here means 1000 simultaneous TCP connections each doing back-to-back writes to the same binding — a synthetic worst case. Realistic HN traffic distributes writes across many users / bindings / endpoints; the pure-single-DO number is a floor, not the expected experience.
+
+v0.2 reaches the 1000-connection target via §2 (background passive checkpointing) and §3 (write coalescing). The math: coalescing batches ~10 writes per 5 ms window, amortising fsync cost; effective throughput rises to ~25 k writes / s per DO. At 1000 conn that is 40 ms mean, single-digit-ms median, p99 well under the 300 ms target. Background checkpointing eliminates the convoy pauses that drive the current tail.
+
+Sharding (§4) is the v0.3+ unlock for workloads that need > 25 k writes / s per binding. v0.2 should not need it to meet the 1000-connection target.
+
 ## Rejected options (and why)
 
 - **In-adapter "single writer queue" on top of DO**: redundant with DO input gate. Only useful if paired with coalescing (merged into §3).
