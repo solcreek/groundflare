@@ -13,6 +13,7 @@
  * surface it as a configuration error with a migration hint.
  */
 
+import { BUN_KV_ADAPTER_SOURCE } from './adapters/sources.js'
 import { generateBunShim, type BunKvBinding } from './shim.js'
 import { generateBunSystemdUnit, type BunUnitOptions } from './systemd.js'
 import type { WorkspaceManifest, WorkspaceWorker } from '../workspace/types.js'
@@ -57,6 +58,15 @@ export interface BunArtifact {
    * for multi-tenant) without breaking callers that read it.
    */
   readonly userEntryRelativePath: string
+
+  /**
+   * Additional source files the generated server.ts imports from,
+   * keyed by path relative to `deployRoot`. Callers write each
+   * entry's value to `${deployRoot}/${key}`. As of Phase 2b this
+   * contains the KV adapter (`adapters/kv.ts`); D1 (Phase 2c) and
+   * R2 (Phase 2d) get added here as they land.
+   */
+  readonly adapterSources: Record<string, string>
 
   /**
    * systemd unit content, ready to write to
@@ -119,11 +129,19 @@ export function buildBunArtifact(
   const serverSource = generateBunShim({
     entryModule: `./${userEntryRelativePath}`,
     listenAddress: opts.listenAddress ?? DEFAULT_LISTEN_ADDRESS,
+    stateBaseDir: deployRoot,
     vars,
     kvNamespaces,
     d1Databases: worker.d1Databases,
     r2Buckets: worker.r2Buckets,
   })
+
+  const adapterSources: Record<string, string> = {}
+  // Always ship the KV adapter source — server.ts unconditionally
+  // imports it, whether or not this particular worker declared a KV
+  // binding. Paying for ~8 KB of source on every Bun deployment is
+  // cheaper than conditionally branching the shim around the import.
+  adapterSources['adapters/kv.ts'] = BUN_KV_ADAPTER_SOURCE
 
   const systemdUnit = generateBunSystemdUnit({
     entryPath: entryModulePath,
@@ -140,6 +158,7 @@ export function buildBunArtifact(
   return {
     serverSource,
     userEntryRelativePath,
+    adapterSources,
     systemdUnit,
     stateDirs,
     deployRoot,

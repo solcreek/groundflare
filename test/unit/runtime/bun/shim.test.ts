@@ -104,25 +104,49 @@ describe('generateBunShim', () => {
     )
   })
 
-  it('contains facade stubs that throw a Phase-2 message', () => {
+  it('wires KV facade to the real BunKVAdapter (Phase 2b+)', () => {
     const src = generateBunShim({ entryModule: './user.js' })
-    expect(src).toContain('KV.${op}() — groundflare Bun adapter not yet implemented (Phase 2)')
-    expect(src).toContain('D1.${op}() — groundflare Bun adapter not yet implemented (Phase 2)')
-    expect(src).toContain('R2.${op}() — groundflare Bun adapter not yet implemented (Phase 2)')
+    // Imports the adapter from the file shipped alongside server.ts
+    expect(src).toContain('import { BunKVAdapter } from "./adapters/kv.ts"')
+    // makeKvFacade opens a per-binding SQLite file rooted in stateBaseDir
+    expect(src).toContain(
+      'return BunKVAdapter.open(`${STATE_BASE_DIR}/kv/${binding}.sqlite`)',
+    )
+    // No more Phase 1 stub error for KV — D1 and R2 still throw until
+    // Phase 2c/2d wires them.
+    expect(src).not.toContain(
+      'KV.${op}() — groundflare Bun adapter not yet implemented',
+    )
   })
 
-  it('exposes all CF KV facade methods in the stub', () => {
+  it('D1 and R2 stubs still throw Phase-2 messages (2c / 2d not yet landed)', () => {
     const src = generateBunShim({ entryModule: './user.js' })
-    for (const m of ['get:', 'getWithMetadata:', 'put:', 'delete:', 'list:']) {
-      expect(src).toContain(m)
-    }
+    expect(src).toContain(
+      'D1.${op}() — groundflare Bun adapter not yet implemented (Phase 2)',
+    )
+    expect(src).toContain(
+      'R2.${op}() — groundflare Bun adapter not yet implemented (Phase 2)',
+    )
   })
 
-  it('exposes the common CF D1 prepared-statement surface in the stub', () => {
+  it('D1 stub still exposes the full prepared-statement surface', () => {
     const src = generateBunShim({ entryModule: './user.js' })
     for (const m of ['prepare:', 'batch:', 'exec:', 'dump:']) {
       expect(src).toContain(m)
     }
+  })
+
+  it('bakes stateBaseDir into the shim (default /var/lib/groundflare)', () => {
+    const src = generateBunShim({ entryModule: './user.js' })
+    expect(src).toContain('const STATE_BASE_DIR = "/var/lib/groundflare"')
+  })
+
+  it('honours a custom stateBaseDir', () => {
+    const src = generateBunShim({
+      entryModule: './user.js',
+      stateBaseDir: '/srv/groundflare',
+    })
+    expect(src).toContain('const STATE_BASE_DIR = "/srv/groundflare"')
   })
 
   it('exposes CF R2 object + multipart methods in the stub', () => {

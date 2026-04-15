@@ -202,6 +202,25 @@ describe('buildBunArtifact — state directories', () => {
   })
 })
 
+describe('buildBunArtifact — adapter sources', () => {
+  it('always ships adapters/kv.ts alongside server.ts', () => {
+    const a = buildBunArtifact(manifest())
+    expect(a.adapterSources).toHaveProperty('adapters/kv.ts')
+    // The file must look like the real adapter, not an empty stub.
+    expect(a.adapterSources['adapters/kv.ts']).toContain(
+      'export class BunKVAdapter',
+    )
+    expect(a.adapterSources['adapters/kv.ts']).toContain('from \'bun:sqlite\'')
+  })
+
+  it('ships KV adapter even when the worker has no KV bindings', () => {
+    // server.ts unconditionally imports it; shipping a dead file is
+    // cheaper than forking the shim template around the import.
+    const a = buildBunArtifact(manifest())
+    expect(a.adapterSources['adapters/kv.ts']).toBeDefined()
+  })
+})
+
 describe('isBunWorkspace', () => {
   it('returns false when runtime is unset (default = workerd)', () => {
     expect(isBunWorkspace(manifest())).toBe(false)
