@@ -118,34 +118,50 @@ Reshuffled after the Stage 2d discovery (see §"Load-bearing clarification" and 
 | 5 | Background passive checkpointing | v0.2 | 0.5–1 day | Tightens p99 within each shard |
 | — | Redis Streams adapter for queues | v0.4 (already in design) | — | Escape hatch for high-volume queues |
 
-## Reliability targets
+## Reliability targets (v0.2 — anchored to measured VPS numbers)
 
-These are the numbers groundflare commits to hitting. Benchmarks track against them; regressions block a release.
+Every number below is measured in [`benchmarks.md` §Stage 3a](benchmarks.md#stage-3a-vps-scale-bench-on-digitalocean-s-2vcpu-4gb-sgp1) and [§Stage 3b](benchmarks.md#stage-3b-vps-scaling-curve-dedicated-vs-shared-cpu-mirror-vs-bun) on real DigitalOcean droplets with kernel tunings from [bootstrap.md](bootstrap.md) applied. Previous revisions of this doc carried predicted numbers from laptop benches and a theoretical "coalescing unlocks 25 k rps" argument. That framing did not survive the measurement.
 
-| Load profile | conn | v0.1 actual | v0.2 target |
-|---|---:|---|---|
-| Steady state (typical micro-SaaS) | ≤ 20 | p99 < 10 ms, errors = 0 ✅ | p99 < 10 ms, errors = 0 |
-| Burst (moderate viral) | 50–100 | p99 80 ms, 0.5 % errors | p99 < 100 ms, errors = 0 |
-| **Burst (HN front-page / 1000+ users)** | **1000** | **p99 777 ms, 3 % errors ❌** | **p99 < 300 ms, errors = 0** |
-| Extreme (sustained > 1000) | > 1000 | undefined | graceful degradation, errors < 0.01 % |
+### Mirror track (workerd)
 
-"1000 concurrent" here means 1000 simultaneous TCP connections each doing back-to-back writes to the same binding — a synthetic worst case. Realistic HN traffic distributes writes across many users / bindings / endpoints; the pure-single-DO number is a floor, not the expected experience.
+Per-binding, single-tenant. `shards = 4` on the KV binding. 15-second HN-burst of random-key writes.
 
-### What actually reaches the v0.2 target
+| Tier | $/mo | Sustained RPS | Safe burst (errors=0) | Past that |
+|---|---:|---:|---|---|
+| `s-2vcpu-4gb` **shared** | $21 | **~190** | ≤ ~20 conn p99 < 10 ms | ≥ 100 conn → 0.6 %+ errors |
+| `s-4vcpu-8gb` **shared** | $48 | ~115–160 | **not recommended** (noisier than 2 vCPU) | 4 shared cores = more steal exposure |
+| **`c-2` dedicated** | $84 | **~500** | ≤ ~50–100 conn | ≥ 500 conn → ~10 %+ errors |
 
-The initial analysis (a prior revision of this doc) assumed write coalescing alone would lift throughput from ~2.4 k to ~25 k writes / s per DO. **That analysis was wrong** for the production code path.
+**Bottleneck is single-core CPU.** workerd's tenant dispatch does not parallelise across cores; shards still share one workerd event loop. Dedicated CPU gives 2.5× shared on the same core count because CPU steal (shared hypervisor) costs about half the throughput. Adding shared cores does not compensate.
 
-Empirically (Stage 2d re-run with coalescing added to `src/runtime/kv/sqlite.ts`): HN burst numbers did not improve. Root cause is that the `ctx.storage.put` inside `KV_ADAPTER_DO_SOURCE` is the bottleneck, and the DO input gate serialises concurrent storage ops to a single DO instance. No amount of coalescing at the Node adapter layer reaches the production hot path, and coalescing *inside* the DO would still face the same input-gate serialisation — it can only fire one kvPut RPC at a time.
+### Bun track
 
-**Corrected path to the 1000-connection target: sharding (§4)**. Routing a binding's traffic across N independent DOs (each a separate `idFromName`) gives N independent input gates and linear write throughput scaling. Math:
+Same workload, `bun:sqlite` + `Bun.serve`. Identical PRAGMA prelude so SQLite configuration is not the differentiator.
 
-- 1 DO: ~2,400 writes / s ceiling (measured)
-- 4 DOs: ~10 k writes / s, comfortable margin for 1000 conn
-- 10 DOs: ~24 k writes / s, ample headroom
+| Tier | $/mo | Sustained RPS | Safe burst (errors=0) |
+|---|---:|---:|---|
+| Any tier tested ($21–$84) | $21+ | **~9,000** per binding | **≥ 1000 conn, p99 < 300 ms** |
 
-Sharding is now the **critical v0.2 work item**, promoted from v0.3. Background passive checkpointing (§2) remains a v0.2 item; it flattens tail latency within each shard.
+Bun.serve is also single-threaded by default; the ceiling is a single core's worth of Bun dispatch. The absolute number is ~50× Mirror on the same hardware. Above ~9 k rps per binding requires either `reusePort` multi-process Bun (not in v0.2) or moving to an even larger tier.
 
-Coalescing (§3) is retained in the codebase as a valid optimisation for the Node-side tooling path (CLI migrate, backup, conformance tests where adapters are exercised directly). It does not contribute to the production reliability target on single bindings but is not harmful either — it is the right pattern if we ever add a non-DO storage backend.
+### What this means for the v0.2 commercial claim
+
+- **Mirror is shipped with ceiling honesty.** "~200 rps per binding on shared 2-vCPU tier, ~500 rps on dedicated 2-vCPU tier. Beyond that, move to Bun track." Not a marketing win but it is a number users can trust.
+- **Bun carries the "HN-proof" claim.** 9 k rps per binding with zero errors at 1000 concurrent is the documented baseline for the commercial pitch. A single $5 Hetzner CX22 handles more burst than almost any real micro-SaaS will ever generate.
+- **Durable Objects remain Mirror-only.** Bun has no single-node DO shim; workloads that need DO stay on Mirror and accept the lower throughput ceiling until we have a credible DO alternative (no ETA).
+
+### Why previous mitigations do not raise the Mirror ceiling
+
+The earlier "coalescing + background checkpoint lifts Mirror to 25 k rps" analysis conflated the Node-side `SqliteKVAdapter` with the production KV path. The production path runs `KV_ADAPTER_DO_SOURCE` inside workerd and uses `ctx.storage`, not our Node adapter. Empirically on every tier tested, the limit is workerd's single-core dispatch of the tenant Worker, upstream of the KV adapter — sharding provides clean per-shard tail latency improvements but the aggregate throughput does not scale past one CPU core's worth of event-loop work.
+
+What the mitigation menu below still does for Mirror:
+
+- **WAL checkpoint threshold + background passive checkpointing** (§1, §2): smooths p99 within a shard when fsync convoys happen. Visible on tight single-core benches; buried in noise at 1000-conn burst because timeouts dominate.
+- **Write coalescing in `SqliteKVAdapter`** (§3): useful for Node-side tooling (CLI migrate, backup). Does not touch the production hot path.
+- **Sharding** (§4): measurable p99 improvement (777 ms → 299 ms at 1000 conn on laptop) but does not lift sustained RPS past the single-core ceiling.
+- **Redis Streams opt-in for queues** (§5): still the escape hatch for high-volume FIFO workloads.
+
+These remain worth shipping for tail quality and Node-side correctness, but the **real reliability ladder for v0.2 is pick-the-right-track, not stack-more-mitigations**.
 
 ## Rejected options (and why)
 
