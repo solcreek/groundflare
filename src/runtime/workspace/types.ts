@@ -17,6 +17,25 @@ export interface WorkspaceManifest {
   readonly name: string
   readonly workers: readonly WorkspaceWorker[]
   readonly defaults?: WorkspaceDefaults
+
+  /**
+   * Runtime track for this workspace (see design/tracks.md):
+   *   - "workerd": Mirror track — `buildCapnpFromWorkspace()` produces
+   *     the capnp config workerd reads. Zero code changes to the user's
+   *     Worker; full Cloudflare Workers semantics including Durable
+   *     Objects. Default — matches all workspaces written before the
+   *     Bun track existed.
+   *   - "bun": Bun track — `buildBunArtifact()` produces the server.ts
+   *     + systemd unit Bun executes. 10–50× per-binding throughput at
+   *     the cost of a one-time LLM-assisted code migration
+   *     (`groundflare bun prepare`, Phase 3). Durable Objects not yet
+   *     supported on this track.
+   *
+   * The CLI dispatches to the appropriate build function based on this
+   * field; changing it on a populated workspace requires explicit
+   * migration (documented per-track).
+   */
+  readonly runtime?: 'workerd' | 'bun'
 }
 
 export interface WorkspaceDefaults {
