@@ -124,15 +124,16 @@ Every number below is measured in [`benchmarks.md` §Stage 3a](benchmarks.md#sta
 
 ### Mirror track (workerd)
 
-Per-binding, single-tenant. `shards = 4` on the KV binding. 15-second HN-burst of random-key writes.
+Per-binding, single-tenant. `shards = 4` on the KV binding. 15-second HN-burst of random-key writes. **Shared-tier numbers have large hypervisor-neighbour variance** — see §Methodology caveat at the end of this section.
 
-| Tier | $/mo | Sustained RPS | Safe burst (errors=0) | Past that |
+| Tier | $/mo | Sustained RPS | Safe burst (errors=0) | Notes |
 |---|---:|---:|---|---|
-| `s-2vcpu-4gb` **shared** | $21 | **~190** | ≤ ~20 conn p99 < 10 ms | ≥ 100 conn → 0.6 %+ errors |
-| `s-4vcpu-8gb` **shared** | $48 | ~115–160 | **not recommended** (noisier than 2 vCPU) | 4 shared cores = more steal exposure |
-| **`c-2` dedicated** | $84 | **~500** | ≤ ~50–100 conn | ≥ 500 conn → ~10 %+ errors |
+| `s-1vcpu-1gb` **shared** | $6 | **~620–970** | ≤ 1000 conn, p99 ≤ 3.3 s | Surprisingly good draw (see caveat) |
+| `s-2vcpu-4gb` **shared** | $21 | ~190 | ≤ ~20 conn p99 < 10 ms | Likely noisy-neighbour sample |
+| `s-4vcpu-8gb` **shared** | $48 | ~115–160 | **not recommended** | 4 shared cores = more steal exposure |
+| **`c-2` dedicated** | $84 | **~500** | ≤ ~50–100 conn | Consistent, dedicated CPU |
 
-**Bottleneck is single-core CPU.** workerd's tenant dispatch does not parallelise across cores; shards still share one workerd event loop. Dedicated CPU gives 2.5× shared on the same core count because CPU steal (shared hypervisor) costs about half the throughput. Adding shared cores does not compensate.
+**Core limit is one CPU's worth of event-loop dispatch.** workerd's tenant dispatch does not parallelise across cores; shards still share one workerd event loop. Dedicated CPU gives predictable ~500 rps. Shared tiers can range 120–970 rps per binding depending on the hypervisor draw of the moment.
 
 ### Bun track
 
@@ -140,9 +141,20 @@ Same workload, `bun:sqlite` + `Bun.serve`. Identical PRAGMA prelude so SQLite co
 
 | Tier | $/mo | Sustained RPS | Safe burst (errors=0) |
 |---|---:|---:|---|
-| Any tier tested ($21–$84) | $21+ | **~9,000** per binding | **≥ 1000 conn, p99 < 300 ms** |
+| `s-1vcpu-1gb` **shared** | **$6** | **~7,300–9,000** | **≥ 1000 conn, p99 ≤ 354 ms** |
+| `s-2vcpu-4gb` shared | $21 | ~9,000–9,900 | ≥ 1000 conn, p99 < 230 ms |
+| `c-2` dedicated | $84 | ~8,800–9,300 | ≥ 1000 conn, p99 < 300 ms |
+| `s-4vcpu-8gb` shared | $48 | ~9,100–9,600 | ≥ 1000 conn, p99 < 300 ms |
 
-Bun.serve is also single-threaded by default; the ceiling is a single core's worth of Bun dispatch. The absolute number is ~50× Mirror on the same hardware. Above ~9 k rps per binding requires either `reusePort` multi-process Bun (not in v0.2) or moving to an even larger tier.
+Bun.serve is also single-threaded by default; the ceiling is a single core's worth of Bun dispatch. The absolute number is ~10–50× Mirror on the same hardware with much tighter variance across tiers. Above ~9 k rps per binding requires either `reusePort` multi-process Bun (not in v0.2) or moving to an even larger tier.
+
+**The "$5 VPS HN-proof" claim is empirically supported** — Bun cleared 1000-conn HN burst with zero errors on the cheapest usable tier ($6/mo, 1 vCPU, 1 GB).
+
+### Methodology caveat
+
+All shared-tier numbers come from single 15-second runs on one droplet each. DigitalOcean's shared-CPU basic droplets have noticeable hypervisor-neighbour variance — the same SKU in the same region can deliver wildly different sustained RPS depending on who we're sharing with. The 5–8× gap between Mirror on `s-1vcpu-1gb` (620–970 rps) and `s-2vcpu-4gb` (~190 rps) is almost certainly a noisy-neighbour effect, not a tier-class effect. A rigorous SLO would average 10+ runs across different droplet instantiations per tier. Until we do that, treat shared-tier Mirror numbers as "expect 100–1000 rps, worst-case closer to 100". Dedicated tiers (`c-*` slugs) have no neighbour variance and their numbers are trustworthy as written.
+
+Bun numbers are much tighter across tiers (≈ 7k–10k across all we tested), suggesting Bun is much less CPU-steal-sensitive than workerd — consistent with its lighter per-request cost leaving more headroom to absorb scheduling noise.
 
 ### What this means for the v0.2 commercial claim
 

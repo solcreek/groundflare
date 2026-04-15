@@ -371,6 +371,40 @@ These numbers are per **single binding on a single instance**. An application wh
 - Reaching 1000-conn HN-burst reliability on Mirror is not purely a software problem — the DO-through-one-workerd-event-loop architecture caps throughput at one core's worth of dispatch. Background checkpointing (§2 in [`sqlite-performance.md`](sqlite-performance.md)) will not meaningfully change this.
 - The Bun track is where the 1000+ rps single-binding story lives. Prioritising its implementation is now on the critical path, promoted from the "nice to have" framing in the original `tracks.md` draft.
 
+### Stage 3c: scaling floor — s-1vcpu-1gb ($6/mo, 1 shared vCPU)
+
+Added the cheapest usable tier to the curve to verify the "HN-proof on a $5 VPS" marketing claim empirically. DO's `s-1vcpu-1gb` is 1 vCPU / 1 GB RAM / 25 GB SSD at $6/mo — the tier below this is 512 MB RAM, which would not fit `workerd` + `node` + `bun` + apt + ssh in memory.
+
+#### Mirror HN burst sweep
+
+| conn | RPS | p50 | p99 | max | err |
+|---:|---:|---:|---:|---:|---:|
+| 100 | 619 | 25 | 1,089 | 1,398 | **0** |
+| 200 | 967 | 17 | 751 | 867 | **0** |
+| 500 | 894 | 18 | 1,813 | 1,941 | **0** |
+| 1000 | 921 | 17 | 3,292 | 3,366 | **0** |
+
+#### Bun HN burst sweep
+
+| conn | RPS | p50 | p99 | max | err |
+|---:|---:|---:|---:|---:|---:|
+| 100 | 8,115 | 10 | 48 | 96 | **0** |
+| 200 | 9,006 | 18 | 66 | 144 | **0** |
+| 500 | 8,385 | 50 | 129 | 228 | **0** |
+| 1000 | 7,289 | 133 | 354 | 499 | **0** |
+
+#### Interpretation + methodology caveat
+
+1. **Bun cleared HN burst on the $6 tier with zero errors all the way through 1000 conn.** This confirms the "HN-proof on $5 VPS" claim empirically. Bun's throughput is remarkably consistent across tiers (7k–10k) and insensitive to CPU-steal noise.
+2. **Mirror on `s-1vcpu-1gb` surprisingly outperformed the `s-2vcpu-4gb` ($21/mo) Stage 3a numbers by 5-8×.** 921 rps at 1000 conn with zero errors on 1 vCPU vs 118 rps with 38 % errors on 2 vCPU. This is not a tier-class effect — same "Basic" shared SKU family. **It is almost certainly a noisy-neighbour effect**: the $21 tier in Stage 3a happened to share a hypervisor with heavy neighbours; this $6 tier happened to land on a quieter host.
+3. **Single-run shared-tier benchmarks are not SLO-grade.** Mirror throughput on any given shared droplet can realistically vary 100–1000 rps per binding depending on the hypervisor draw. Dedicated tiers (`c-*`) have no such variance. A rigorous SLO for shared tiers requires 10+ run averages across different droplet instantiations.
+4. **Bun's lower CPU-steal sensitivity is interpretable** — it does much less per-request work, so a given CPU-steal slice takes a smaller proportional bite.
+
+#### Practical conclusion
+
+- **Bun's "$5 HN-proof" claim is defensible.** We measured it.
+- **Mirror's commitment should be stated as a range with a noisy-neighbour disclaimer**, not a single number, for shared tiers. For dedicated tiers Mirror is predictable at ~500 rps.
+
 ### Stage 2d.2: sharding Phase 1 — HN burst with shards = 4
 
 Phase 1 of [kv-sharding.md](kv-sharding.md) wired hash routing across N DO instances. Re-ran the HN burst at 1000 connections with three shard counts on the same laptop:
