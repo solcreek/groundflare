@@ -1,5 +1,15 @@
 # Changelog
 
+## v0.2.1 — packaging fix
+
+Fix a packaging bug in v0.2.0 that made `npx groundflare` fail with
+`ERR_MODULE_NOT_FOUND` immediately. `esbuild` (used by the deploy
+bundler), `better-sqlite3` (Mirror-track KV/D1 driver), and `workerd`
+(binary staged onto the VPS by bootstrap stage 5) were all in
+`devDependencies` but imported at runtime. Moved to `dependencies`.
+
+No behavioural changes; v0.2.0 is deprecated on npm.
+
 ## v0.2.0 — parallel release with the Bun track
 
 v0.2 ships two runtime tracks from the same CLI: the Mirror track
