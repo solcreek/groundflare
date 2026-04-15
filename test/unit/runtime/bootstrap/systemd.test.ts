@@ -1,5 +1,9 @@
 import { describe, it, expect } from 'vitest'
-import { generateWorkerSystemdUnit } from '../../../../src/runtime/bootstrap/index.js'
+import {
+  cronUnitName,
+  generateCronUnitPair,
+  generateWorkerSystemdUnit,
+} from '../../../../src/runtime/bootstrap/index.js'
 
 function parseIni(text: string): Record<string, string[]> {
   // Micro INI parser for systemd-style units (no value splitting; duplicates kept).
@@ -160,5 +164,143 @@ describe('generateWorkerSystemdUnit — validation', () => {
       memoryMaxPercent: 42.7,
     })
     expect(out).toContain('MemoryMax=42%')
+  })
+})
+
+describe('cronUnitName', () => {
+  it('produces a stable, short, prefixed name', () => {
+    const name = cronUnitName('api', '*/5 * * * *')
+    expect(name).toMatch(/^groundflare-cron-api-[0-9a-f]{8}$/)
+  })
+
+  it('is deterministic for the same inputs', () => {
+    expect(cronUnitName('api', '*/5 * * * *')).toBe(cronUnitName('api', '*/5 * * * *'))
+  })
+
+  it('differs when the worker name differs', () => {
+    expect(cronUnitName('api', '*/5 * * * *')).not.toBe(
+      cronUnitName('admin', '*/5 * * * *'),
+    )
+  })
+
+  it('differs when the cron expression differs', () => {
+    expect(cronUnitName('api', '*/5 * * * *')).not.toBe(
+      cronUnitName('api', '*/10 * * * *'),
+    )
+  })
+})
+
+describe('generateCronUnitPair — timer unit', () => {
+  const pair = generateCronUnitPair({
+    workerName: 'api',
+    cronExpression: '*/5 * * * *',
+  })
+
+  it('embeds the translated OnCalendar value', () => {
+    expect(pair.timer).toContain('OnCalendar=*-*-* *:0/5:00')
+  })
+
+  it('describes the worker + expression in Description=', () => {
+    expect(pair.timer).toContain('Description=groundflare cron: api @ */5 * * * *')
+  })
+
+  it('enables Persistent=true by default', () => {
+    expect(pair.timer).toContain('Persistent=true')
+  })
+
+  it('references its own .service via Unit=', () => {
+    expect(pair.timer).toContain(`Unit=${pair.unitName}.service`)
+  })
+
+  it('installs into timers.target', () => {
+    expect(pair.timer).toContain('WantedBy=timers.target')
+  })
+
+  it('uses default AccuracySec=1s', () => {
+    expect(pair.timer).toContain('AccuracySec=1s')
+  })
+
+  it('honours persistent=false', () => {
+    const p = generateCronUnitPair({
+      workerName: 'api',
+      cronExpression: '0 0 * * *',
+      persistent: false,
+    })
+    expect(p.timer).toContain('Persistent=false')
+  })
+
+  it('honours a custom accuracy value', () => {
+    const p = generateCronUnitPair({
+      workerName: 'api',
+      cronExpression: '0 0 * * *',
+      accuracy: '10s',
+    })
+    expect(p.timer).toContain('AccuracySec=10s')
+  })
+})
+
+describe('generateCronUnitPair — service unit', () => {
+  const pair = generateCronUnitPair({
+    workerName: 'api',
+    cronExpression: '*/5 * * * *',
+  })
+
+  it('is a Type=oneshot service', () => {
+    expect(pair.service).toContain('Type=oneshot')
+  })
+
+  it('requires the groundflare-worker.service by default', () => {
+    expect(pair.service).toContain('Requires=groundflare-worker.service')
+    expect(pair.service).toContain('After=groundflare-worker.service')
+  })
+
+  it('ExecStarts a curl POST to the default /__scheduled endpoint', () => {
+    expect(pair.service).toContain('curl')
+    expect(pair.service).toContain('--request POST')
+    expect(pair.service).toContain('http://127.0.0.1:8080/__scheduled')
+    expect(pair.service).toContain('worker=api')
+  })
+
+  it('URL-encodes the cron expression in the query string', () => {
+    // encodeURIComponent passes `*` through but escapes `/` as %2F
+    // and spaces as %20. `*/5 * * * *` becomes `*%2F5%20*%20*%20*%20*`.
+    expect(pair.service).toContain('cron=*%2F5')
+    expect(pair.service).toContain('%20')
+    // sanity — raw unescaped spaces would break the systemd ExecStart line
+    expect(pair.service).not.toContain('cron=*/5 ')
+  })
+
+  it('sends stdout + stderr to journald with a worker-tagged identifier', () => {
+    expect(pair.service).toContain('StandardOutput=journal')
+    expect(pair.service).toContain('StandardError=journal')
+    expect(pair.service).toContain(`SyslogIdentifier=${pair.unitName}`)
+  })
+
+  it('honours a custom scheduledEndpoint and requiresUnit', () => {
+    const p = generateCronUnitPair({
+      workerName: 'api',
+      cronExpression: '0 * * * *',
+      scheduledEndpoint: 'http://127.0.0.1:9000/internal/scheduled',
+      requiresUnit: 'groundflare-worker@prod.service',
+    })
+    expect(p.service).toContain('http://127.0.0.1:9000/internal/scheduled')
+    expect(p.service).toContain('Requires=groundflare-worker@prod.service')
+  })
+})
+
+describe('generateCronUnitPair — validation', () => {
+  it('rejects invalid worker names', () => {
+    expect(() =>
+      generateCronUnitPair({ workerName: 'NotLower', cronExpression: '* * * * *' }),
+    ).toThrow(/worker name/)
+    expect(() =>
+      generateCronUnitPair({ workerName: 'name_with_underscore', cronExpression: '* * * * *' }),
+    ).toThrow(/worker name/)
+  })
+
+  it('propagates UnsupportedCronError from cronToSystemdCalendar', () => {
+    expect(() =>
+      generateCronUnitPair({ workerName: 'api', cronExpression: 'nope' }),
+    ).toThrow(/Unsupported cron/)
   })
 })

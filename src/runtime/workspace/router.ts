@@ -71,39 +71,62 @@ const CRON_BINDINGS = {
 ${cronBindings.join('\n')}
 }
 
+function plain(body, status) {
+  return new Response(body, {
+    status,
+    headers: { 'content-type': 'text/plain; charset=utf-8' },
+  })
+}
+
+async function dispatchScheduled(url, env, ctx) {
+  if (url.hostname !== '127.0.0.1' && url.hostname !== 'localhost') {
+    return plain('not found', 404)
+  }
+  const workerName = url.searchParams.get('worker')
+  if (!workerName) return plain('missing worker parameter', 400)
+  const bindingName = CRON_BINDINGS[workerName]
+  if (!bindingName) return plain('unknown worker: ' + workerName, 404)
+  const target = env[bindingName]
+  if (!target || typeof target.scheduled !== 'function') {
+    return plain('target has no scheduled handler', 404)
+  }
+  const cron = url.searchParams.get('cron') || ''
+  await target.scheduled(
+    { cron, scheduledTime: Date.now(), type: 'scheduled' },
+    env,
+    ctx,
+  )
+  return plain('ok', 200)
+}
+
 export default {
   async fetch(request, env, ctx) {
-    const hostname = new URL(request.url).hostname.toLowerCase()
+    const url = new URL(request.url)
+
+    // Internal cron dispatch: systemd .timer units curl POST this path.
+    // Gated on hostname = 127.0.0.1/localhost; external requests for the
+    // same path get a plain 404 (no information leak about the feature).
+    if (url.pathname === '/__scheduled') {
+      if (request.method !== 'POST') {
+        return new Response('method not allowed', {
+          status: 405,
+          headers: { allow: 'POST', 'content-type': 'text/plain; charset=utf-8' },
+        })
+      }
+      return dispatchScheduled(url, env, ctx)
+    }
+
+    // Normal host-based dispatch to tenant Workers.
+    const hostname = url.hostname.toLowerCase()
     const bindingName = ROUTES[hostname]
     if (!bindingName) {
-      return new Response('groundflare: no Worker matches host ' + hostname, {
-        status: 404,
-        headers: { 'content-type': 'text/plain; charset=utf-8' },
-      })
+      return plain('groundflare: no Worker matches host ' + hostname, 404)
     }
     const target = env[bindingName]
     if (!target) {
-      return new Response('groundflare: target binding missing for ' + bindingName, {
-        status: 503,
-        headers: { 'content-type': 'text/plain; charset=utf-8' },
-      })
+      return plain('groundflare: target binding missing for ' + bindingName, 503)
     }
     return target.fetch(request)
-  },
-
-  async scheduled(event, env, ctx) {
-    // Cron triggers reach the router via systemd timers that post to
-    // __scheduled with \`event.cron = "<worker>|<expression>"\`.
-    const raw = typeof event.cron === 'string' ? event.cron : ''
-    const sep = raw.indexOf('|')
-    if (sep < 1) return
-    const workerName = raw.slice(0, sep)
-    const cron = raw.slice(sep + 1)
-    const bindingName = CRON_BINDINGS[workerName]
-    if (!bindingName) return
-    const target = env[bindingName]
-    if (!target || typeof target.scheduled !== 'function') return
-    await target.scheduled({ ...event, cron }, env, ctx)
   },
 }
 `

@@ -6,6 +6,9 @@
  * Stage 6 for the role of each unit in the overall pipeline.
  */
 
+import { createHash } from 'node:crypto'
+import { cronToSystemdCalendar } from './cron.js'
+
 export interface WorkerUnitOptions {
   /**
    * systemd Description= field. Recommended: "groundflare workerd runtime
@@ -152,4 +155,144 @@ function validatePercent(value: number, name: string): number {
     throw new RangeError(`${name} must be in (0, 100]; got ${value}`)
   }
   return Math.floor(value)
+}
+
+// ─── Cron timer / service units ────────────────────────────────────
+
+export interface CronUnitOptions {
+  /** Worker name that owns this cron entry. Required. */
+  readonly workerName: string
+
+  /** Five-field cron expression. Required. */
+  readonly cronExpression: string
+
+  /**
+   * systemd `Persistent=` — when true, a missed trigger during downtime
+   * fires immediately on next boot. Default true. See design/bootstrap.md.
+   */
+  readonly persistent?: boolean
+
+  /**
+   * Accuracy of trigger firing. Default `1s` (tight; matches CF's edge
+   * scheduler expectations). Looser values allow systemd to batch timer
+   * firings on low-power systems.
+   */
+  readonly accuracy?: string
+
+  /**
+   * URL the service's curl hits to dispatch the event. Default
+   * `http://127.0.0.1:8080/__scheduled` — the Router Worker's internal
+   * scheduled endpoint. The worker name and cron are passed as query
+   * parameters so the router can route to the right tenant.
+   */
+  readonly scheduledEndpoint?: string
+
+  /**
+   * Service the cron service requires before dispatching (so we don't
+   * curl a worker that hasn't started yet). Default
+   * `groundflare-worker.service`.
+   */
+  readonly requiresUnit?: string
+}
+
+export interface CronUnitPair {
+  /**
+   * Stable unit filename stem (e.g. `groundflare-cron-api-8f3c9e1a`).
+   * Append `.timer` for the timer, `.service` for the service.
+   */
+  readonly unitName: string
+  readonly timer: string
+  readonly service: string
+}
+
+const CRON_DEFAULT_ENDPOINT = 'http://127.0.0.1:8080/__scheduled'
+const CRON_DEFAULT_REQUIRES = 'groundflare-worker.service'
+const CRON_DEFAULT_ACCURACY = '1s'
+
+/**
+ * Produce the `.timer` + `.service` pair for a single cron entry.
+ *
+ * The unit name is deterministic: a short hash of (worker, expression)
+ * so redeploys produce stable filenames and systemctl identifiers.
+ */
+export function generateCronUnitPair(opts: CronUnitOptions): CronUnitPair {
+  validateWorkerName(opts.workerName)
+  const onCalendar = cronToSystemdCalendar(opts.cronExpression)
+  const unitName = cronUnitName(opts.workerName, opts.cronExpression)
+  const persistent = opts.persistent !== false
+  const accuracy = opts.accuracy ?? CRON_DEFAULT_ACCURACY
+  const endpoint = opts.scheduledEndpoint ?? CRON_DEFAULT_ENDPOINT
+  const requires = opts.requiresUnit ?? CRON_DEFAULT_REQUIRES
+
+  const queryString = buildQueryString({
+    worker: opts.workerName,
+    cron: opts.cronExpression,
+  })
+  const dispatchUrl = `${endpoint}?${queryString}`
+
+  const timer =
+    SYSTEMD_HEADER +
+    '\n[Unit]\n' +
+    `Description=groundflare cron: ${opts.workerName} @ ${opts.cronExpression}\n` +
+    '\n[Timer]\n' +
+    `OnCalendar=${onCalendar}\n` +
+    `AccuracySec=${accuracy}\n` +
+    (persistent ? 'Persistent=true\n' : 'Persistent=false\n') +
+    `Unit=${unitName}.service\n` +
+    '\n[Install]\n' +
+    'WantedBy=timers.target\n'
+
+  const service =
+    SYSTEMD_HEADER +
+    '\n[Unit]\n' +
+    `Description=groundflare cron dispatch: ${opts.workerName} @ ${opts.cronExpression}\n` +
+    `Requires=${requires}\n` +
+    `After=${requires}\n` +
+    '\n[Service]\n' +
+    'Type=oneshot\n' +
+    `ExecStart=/usr/bin/curl --silent --show-error --fail --max-time 30 ` +
+    `--request POST ${shellSingleQuote(dispatchUrl)}\n` +
+    'StandardOutput=journal\n' +
+    'StandardError=journal\n' +
+    `SyslogIdentifier=${unitName}\n`
+
+  return { unitName, timer, service }
+}
+
+/**
+ * Deterministic unit stem for a (worker, expression) pair. Stable across
+ * redeploys so systemd's state tracking (last-trigger time for Persistent=)
+ * survives.
+ */
+export function cronUnitName(workerName: string, cronExpression: string): string {
+  const hash = createHash('sha256')
+    .update(`${workerName}\0${cronExpression}`)
+    .digest('hex')
+    .slice(0, 8)
+  return `groundflare-cron-${workerName}-${hash}`
+}
+
+function validateWorkerName(name: string): void {
+  if (!/^[a-z][a-z0-9-]{0,39}$/.test(name)) {
+    throw new TypeError(
+      `systemd cron: invalid worker name ${JSON.stringify(name)}; ` +
+        `must match /^[a-z][a-z0-9-]{0,39}$/`,
+    )
+  }
+}
+
+function buildQueryString(params: Record<string, string>): string {
+  const parts: string[] = []
+  for (const [k, v] of Object.entries(params)) {
+    parts.push(`${encodeURIComponent(k)}=${encodeURIComponent(v)}`)
+  }
+  return parts.join('&')
+}
+
+function shellSingleQuote(value: string): string {
+  // Wrap in single quotes and replace any embedded single quote with
+  // the safe "'\''" sequence. Our known inputs (URLs built from
+  // encodeURIComponent) never actually contain single quotes, but the
+  // guard is cheap and makes the template robust.
+  return `'${value.replace(/'/g, `'\\''`)}'`
 }

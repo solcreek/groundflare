@@ -78,16 +78,21 @@ describe('generateRouterJs', () => {
     expect(js).toContain('"internal": "WORKER_INTERNAL"')
   })
 
-  it('exports a default object with fetch and scheduled methods', () => {
+  it('exports a default object with a fetch handler', () => {
     const js = generateRouterJs([worker('x', { domain: 'x.test' })])
     expect(js).toMatch(/export default \{/)
     expect(js).toMatch(/async fetch\(/)
-    expect(js).toMatch(/async scheduled\(/)
+  })
+
+  it('includes an internal /__scheduled dispatch path (not as a tenant route)', () => {
+    const js = generateRouterJs([worker('x', { domain: 'x.test' })])
+    expect(js).toContain('/__scheduled')
+    expect(js).toContain('dispatchScheduled')
   })
 
   it('returns 404 when no host matches', () => {
     const js = generateRouterJs([])
-    expect(js).toContain('status: 404')
+    expect(js).toContain(', 404')
     expect(js).toContain('no Worker matches host')
   })
 
@@ -95,12 +100,8 @@ describe('generateRouterJs', () => {
     // Defensive path — should be impossible in practice, but the router
     // handles it gracefully rather than throwing.
     const js = generateRouterJs([worker('x', { domain: 'x.test' })])
-    expect(js).toContain('status: 503')
-  })
-
-  it('splits event.cron on | to extract the target worker name', () => {
-    const js = generateRouterJs([worker('x', { domain: 'x.test' })])
-    expect(js).toContain(`indexOf('|')`)
+    expect(js).toContain(', 503')
+    expect(js).toContain('target binding missing')
   })
 
   it('is deterministic for equivalent inputs', () => {
@@ -120,7 +121,6 @@ describe('generated router body — executes correctly in V8', () => {
   // inside a Function and the returned object closes over them.
   function loadRouter(workers: WorkspaceWorker[]): {
     fetch: (req: Request, env: Record<string, unknown>, ctx: unknown) => Promise<Response>
-    scheduled: (event: { cron: string }, env: Record<string, unknown>, ctx: unknown) => Promise<void>
   } {
     const source = generateRouterJs(workers)
     const body = source.replace(/export default (\{[\s\S]*\})\s*$/, 'return $1')
@@ -173,32 +173,106 @@ describe('generated router body — executes correctly in V8', () => {
     expect(await response.text()).toContain('no Worker matches host')
   })
 
-  it('routes cron triggers to the named worker via CRON_BINDINGS', async () => {
-    const router = loadRouter([worker('cleaner')])
-    let received: { cron: string; scheduledTime?: number } | null = null
-    const env = {
-      WORKER_CLEANER: {
-        scheduled: async (e: { cron: string; scheduledTime?: number }) => {
-          received = e
+  describe('internal /__scheduled dispatch', () => {
+    it('routes POST /__scheduled?worker=<name>&cron=<expr> to the target scheduled handler', async () => {
+      const router = loadRouter([worker('cleaner')])
+      // Use an array collector to side-step TS control-flow narrowing
+      // of a `let received = null` captured in an async callback.
+      const events: Array<{ cron?: string; scheduledTime?: number }> = []
+      const env = {
+        WORKER_CLEANER: {
+          scheduled: async (e: { cron?: string; scheduledTime?: number }) => {
+            events.push(e)
+          },
         },
-      },
-    }
-    await router.scheduled({ cron: 'cleaner|0 */5 * * *' }, env, {})
-    expect(received).toEqual({ cron: '0 */5 * * *' })
-  })
+      }
+      const url = 'http://127.0.0.1:8080/__scheduled?worker=cleaner&cron=0+*+*+*+*'
+      const response = await router.fetch(new Request(url, { method: 'POST' }), env, {})
+      expect(response.status).toBe(200)
+      expect(await response.text()).toBe('ok')
+      expect(events).toHaveLength(1)
+      expect(events[0]?.cron).toBe('0 * * * *')
+      expect(typeof events[0]?.scheduledTime).toBe('number')
+    })
 
-  it('cron with malformed event.cron silently no-ops', async () => {
-    const router = loadRouter([worker('cleaner')])
-    await expect(
-      router.scheduled({ cron: 'missing-separator' }, {}, {}),
-    ).resolves.toBeUndefined()
-    await expect(router.scheduled({ cron: '' }, {}, {})).resolves.toBeUndefined()
-  })
+    it('returns 404 when __scheduled is reached via a non-localhost hostname', async () => {
+      const router = loadRouter([worker('cleaner')])
+      const env = { WORKER_CLEANER: { scheduled: async () => {} } }
+      const response = await router.fetch(
+        new Request('https://api.example.com/__scheduled?worker=cleaner&cron=a', {
+          method: 'POST',
+        }),
+        env,
+        {},
+      )
+      expect(response.status).toBe(404)
+    })
 
-  it('cron targeting an unknown worker silently no-ops', async () => {
-    const router = loadRouter([worker('cleaner')])
-    await expect(
-      router.scheduled({ cron: 'nobody|* * * * *' }, {}, {}),
-    ).resolves.toBeUndefined()
+    it('returns 405 on non-POST methods for __scheduled', async () => {
+      const router = loadRouter([worker('cleaner')])
+      const response = await router.fetch(
+        new Request('http://127.0.0.1:8080/__scheduled?worker=cleaner'),
+        { WORKER_CLEANER: { scheduled: async () => {} } },
+        {},
+      )
+      expect(response.status).toBe(405)
+      expect(response.headers.get('allow')).toBe('POST')
+    })
+
+    it('returns 400 when worker query param is missing', async () => {
+      const router = loadRouter([worker('cleaner')])
+      const response = await router.fetch(
+        new Request('http://127.0.0.1:8080/__scheduled', { method: 'POST' }),
+        { WORKER_CLEANER: { scheduled: async () => {} } },
+        {},
+      )
+      expect(response.status).toBe(400)
+    })
+
+    it('returns 404 when the target worker name is not registered', async () => {
+      const router = loadRouter([worker('cleaner')])
+      const response = await router.fetch(
+        new Request('http://127.0.0.1:8080/__scheduled?worker=ghost', {
+          method: 'POST',
+        }),
+        { WORKER_CLEANER: { scheduled: async () => {} } },
+        {},
+      )
+      expect(response.status).toBe(404)
+      expect(await response.text()).toContain('ghost')
+    })
+
+    it('returns 404 when the target has no scheduled handler', async () => {
+      const router = loadRouter([worker('cleaner')])
+      const response = await router.fetch(
+        new Request('http://127.0.0.1:8080/__scheduled?worker=cleaner', {
+          method: 'POST',
+        }),
+        // No scheduled method on the target
+        { WORKER_CLEANER: {} },
+        {},
+      )
+      expect(response.status).toBe(404)
+    })
+
+    it('does not dispatch tenant fetch() for /__scheduled on a tenant host', async () => {
+      const router = loadRouter([worker('api', { domain: 'api.test' })])
+      let called = false
+      const env = {
+        WORKER_API: {
+          fetch: async () => {
+            called = true
+            return new Response('ok')
+          },
+        },
+      }
+      const response = await router.fetch(
+        new Request('https://api.test/__scheduled', { method: 'POST' }),
+        env,
+        {},
+      )
+      expect(response.status).toBe(404)
+      expect(called).toBe(false)
+    })
   })
 })
