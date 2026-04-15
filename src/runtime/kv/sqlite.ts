@@ -18,6 +18,11 @@ import type { BetterSqlite3Database } from '../sqlite/node.js'
 import { openSqlite } from '../sqlite/node.js'
 import type { SqlitePreludeOptions } from '../sqlite/prelude.js'
 import {
+  WriteCoalescer,
+  type CoalescerOptions,
+  type PendingOp,
+} from './coalescer.js'
+import {
   normalizeGetOptions,
   type KVAdapter,
   type KVGetOptions,
@@ -52,6 +57,15 @@ export interface SqliteKVAdapterOptions extends SqlitePreludeOptions {
    * Defaults to `Date.now`.
    */
   now?: () => number
+
+  /**
+   * Write-coalescing behaviour. Defaults to a 5 ms window / 100-op cap,
+   * which is the production profile that unlocks the v0.2 reliability
+   * target (see design/sqlite-performance.md §3). Pass `coalescer.IMMEDIATE`
+   * to bypass coalescing entirely — tests that care about one-op-per-
+   * transaction semantics should do that.
+   */
+  coalescer?: CoalescerOptions
 }
 
 export class SqliteKVAdapter implements KVAdapter {
@@ -63,8 +77,15 @@ export class SqliteKVAdapter implements KVAdapter {
   private readonly stmtPut: Statement
   private readonly stmtDelete: Statement
   private readonly stmtCleanup: Statement
+  private readonly coalescer: WriteCoalescer
+  /**
+   * better-sqlite3 transaction wrapper that applies a pending-op batch
+   * inside a single BEGIN / COMMIT. Created once in the constructor so
+   * each flush is a method call, not a re-wrap.
+   */
+  private readonly applyBatch: (batch: readonly PendingOp[]) => void
 
-  constructor(db: BetterSqlite3Database, opts: { now?: () => number; ownsConnection?: boolean } = {}) {
+  constructor(db: BetterSqlite3Database, opts: { now?: () => number; ownsConnection?: boolean; coalescer?: CoalescerOptions } = {}) {
     this.db = db
     this.now = opts.now ?? Date.now
     this.ownsConnection = opts.ownsConnection ?? false
@@ -82,6 +103,21 @@ export class SqliteKVAdapter implements KVAdapter {
     this.stmtCleanup = db.prepare(
       'DELETE FROM kv WHERE expires_at IS NOT NULL AND expires_at <= ?',
     )
+
+    const applyBatchRaw = (batch: readonly PendingOp[]): void => {
+      for (const op of batch) {
+        if (op.kind === 'put') {
+          this.stmtPut.run(op.key, op.value, op.metadata, op.expiresAt)
+        } else {
+          this.stmtDelete.run(op.key)
+        }
+      }
+    }
+    this.applyBatch = db.transaction(applyBatchRaw) as (batch: readonly PendingOp[]) => void
+    this.coalescer = new WriteCoalescer(
+      (batch) => this.applyBatch(batch),
+      opts.coalescer,
+    )
   }
 
   /**
@@ -91,14 +127,30 @@ export class SqliteKVAdapter implements KVAdapter {
    */
   static open(path: string, opts: SqliteKVAdapterOptions = {}): SqliteKVAdapter {
     const db = openSqlite(path, opts)
-    return new SqliteKVAdapter(db, { now: opts.now, ownsConnection: true })
+    return new SqliteKVAdapter(db, {
+      now: opts.now,
+      ownsConnection: true,
+      coalescer: opts.coalescer,
+    })
   }
 
   close(): void {
+    this.coalescer.close()
     if (this.ownsConnection) this.db.close()
   }
 
+  /** Force-drain any pending coalesced writes. Intended for tests. */
+  flushPendingWrites(): void {
+    this.coalescer.flushNow()
+  }
+
   async get(key: string, options?: KVGetType | KVGetOptions): Promise<unknown> {
+    const pending = this.readPending(key)
+    if (pending !== undefined) {
+      return pending === null
+        ? null
+        : decode(pending.value, normalizeGetOptions(options).type)
+    }
     const row = this.readRow(key)
     if (!row) return null
     return decode(row.value, normalizeGetOptions(options).type)
@@ -108,6 +160,17 @@ export class SqliteKVAdapter implements KVAdapter {
     key: string,
     options?: KVGetType | KVGetOptions,
   ): Promise<KVGetWithMetadataResult<unknown, M>> {
+    const pending = this.readPending(key)
+    if (pending !== undefined) {
+      if (pending === null) return { value: null, metadata: null }
+      return {
+        value: decode(pending.value, normalizeGetOptions(options).type),
+        metadata:
+          pending.metadata === null
+            ? null
+            : (JSON.parse(pending.metadata) as M),
+      }
+    }
     const row = this.readRow(key)
     if (!row) return { value: null, metadata: null }
     return {
@@ -128,11 +191,17 @@ export class SqliteKVAdapter implements KVAdapter {
     const metadata =
       options.metadata === undefined ? null : JSON.stringify(options.metadata)
 
-    this.stmtPut.run(key, bytes, metadata, expiresAt)
+    return this.coalescer.enqueue({
+      kind: 'put',
+      key,
+      value: bytes,
+      metadata,
+      expiresAt,
+    })
   }
 
   async delete(key: string): Promise<void> {
-    this.stmtDelete.run(key)
+    return this.coalescer.enqueue({ kind: 'delete', key })
   }
 
   async list<M = unknown>(options: KVListOptions = {}): Promise<KVListResult<M>> {
@@ -200,6 +269,25 @@ export class SqliteKVAdapter implements KVAdapter {
   cleanupExpired(): number {
     const info = this.stmtCleanup.run(this.now())
     return Number(info.changes)
+  }
+
+  /**
+   * Return the value of a key from the coalescer's pending buffer.
+   *   undefined  → no pending op; caller should fall through to SQL
+   *   null       → pending delete; the key is effectively absent
+   *   { value, metadata } → pending put with the live value
+   */
+  private readPending(key: string):
+    | { value: Uint8Array; metadata: string | null; expiresAt: number | null }
+    | null
+    | undefined {
+    const op = this.coalescer.latestFor(key)
+    if (!op) return undefined
+    if (op.kind === 'delete') return null
+    // TTL that's already elapsed (client passed a past expiration) should
+    // read as missing even though the row is pending.
+    if (op.expiresAt !== null && op.expiresAt <= this.now()) return null
+    return { value: op.value, metadata: op.metadata, expiresAt: op.expiresAt }
   }
 
   private readRow(key: string):

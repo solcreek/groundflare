@@ -19,6 +19,18 @@ Stage 2d demonstrated this shape: p50 stays at single-digit ms, but p99 reaches 
 
 It is not useful to add an in-adapter "single writer queue" on top of the DO input gate. The DO already provides single-writer semantics. Adding another queue only delays by an extra hop. The write queue pattern is only worth building **if it also buys coalescing** — see §3 below.
 
+## Load-bearing clarification: two code paths, one SQLite-per-binding story
+
+There are two places SQLite work happens in groundflare, and interventions at each place affect different scenarios:
+
+1. **Inside workerd, as a Durable Object** (`KV_ADAPTER_DO_SOURCE` / `D1_ADAPTER_DO_SOURCE`). This is the production hot path — every `env.CACHE.put()` from a tenant Worker lands here. Storage is workerd's built-in `ctx.storage`, which sits on SQLite but is managed by workerd's runtime. PRAGMAs, checkpoint cadence, and write batching are **governed by workerd**, not by our Node code.
+
+2. **Inside Node, as `SqliteKVAdapter` / `SqliteD1Adapter`** (better-sqlite3). This is the tooling path — CLI commands that read/migrate/back-up files, conformance tests that exercise adapter semantics from Node. PRAGMAs and coalescing implemented in `src/runtime/sqlite/*` only affect this path.
+
+A benchmark against a running workerd (Stage 2d-onwards) measures path 1. A benchmark against `SqliteKVAdapter` directly would measure path 2. The two do not share performance.
+
+**Consequence: coalescing in `src/runtime/kv/sqlite.ts` does not reduce latency in Stage 2d's HN burst.** The fix for the production hot path has to land inside path 1.
+
 ## Mitigation menu, in priority order
 
 ### 1. WAL checkpoint threshold (v0.1, cheap)
@@ -95,13 +107,15 @@ Not a general KV/D1 escape hatch — scoped to queues where pub/sub semantics ar
 
 ## Implementation priority
 
-| # | Change | Version | Work | Impact |
+Reshuffled after the Stage 2d discovery (see §"Load-bearing clarification" and §"Reliability targets" above).
+
+| # | Change | Version | Work | Impact on production hot path |
 |---|---|---|---|---|
-| 1 | WAL checkpoint threshold = 10000 in prelude | v0.1 | 5 min | Small avg-case improvement |
-| 2 | Bench uses realistic concurrency (reads 50, writes 10) | v0.1 | 15 min | Makes benchmarks honest, not a real fix |
-| 3 | Background passive checkpointing | v0.2 | 0.5–1 day | Major p99 improvement |
-| 4 | Write coalescing in KV/D1 adapter | v0.2 | 2–4 days | Major throughput improvement |
-| 5 | Per-key sharding (opt-in) | v0.3+ | 1–2 weeks | Scales write throughput linearly |
+| 1 | WAL checkpoint threshold = 10000 in prelude | v0.1 | 5 min | None on production DO path (workerd manages its own PRAGMAs); benefits Node-side tooling |
+| 2 | Bench uses realistic concurrency (reads 50, writes 10) | v0.1 | 15 min | Not a fix — makes benchmarks honest |
+| 3 | Write coalescing in `SqliteKVAdapter` (Node-side) | v0.1 (landed) | done | Benefits tooling path; does not reach production |
+| 4 | **Sharding: route a binding across N DOs** | **v0.2 (critical)** | 1–2 weeks | **Linear write throughput scaling; unblocks 1000-conn SLO** |
+| 5 | Background passive checkpointing | v0.2 | 0.5–1 day | Tightens p99 within each shard |
 | — | Redis Streams adapter for queues | v0.4 (already in design) | — | Escape hatch for high-volume queues |
 
 ## Reliability targets
@@ -117,9 +131,21 @@ These are the numbers groundflare commits to hitting. Benchmarks track against t
 
 "1000 concurrent" here means 1000 simultaneous TCP connections each doing back-to-back writes to the same binding — a synthetic worst case. Realistic HN traffic distributes writes across many users / bindings / endpoints; the pure-single-DO number is a floor, not the expected experience.
 
-v0.2 reaches the 1000-connection target via §2 (background passive checkpointing) and §3 (write coalescing). The math: coalescing batches ~10 writes per 5 ms window, amortising fsync cost; effective throughput rises to ~25 k writes / s per DO. At 1000 conn that is 40 ms mean, single-digit-ms median, p99 well under the 300 ms target. Background checkpointing eliminates the convoy pauses that drive the current tail.
+### What actually reaches the v0.2 target
 
-Sharding (§4) is the v0.3+ unlock for workloads that need > 25 k writes / s per binding. v0.2 should not need it to meet the 1000-connection target.
+The initial analysis (a prior revision of this doc) assumed write coalescing alone would lift throughput from ~2.4 k to ~25 k writes / s per DO. **That analysis was wrong** for the production code path.
+
+Empirically (Stage 2d re-run with coalescing added to `src/runtime/kv/sqlite.ts`): HN burst numbers did not improve. Root cause is that the `ctx.storage.put` inside `KV_ADAPTER_DO_SOURCE` is the bottleneck, and the DO input gate serialises concurrent storage ops to a single DO instance. No amount of coalescing at the Node adapter layer reaches the production hot path, and coalescing *inside* the DO would still face the same input-gate serialisation — it can only fire one kvPut RPC at a time.
+
+**Corrected path to the 1000-connection target: sharding (§4)**. Routing a binding's traffic across N independent DOs (each a separate `idFromName`) gives N independent input gates and linear write throughput scaling. Math:
+
+- 1 DO: ~2,400 writes / s ceiling (measured)
+- 4 DOs: ~10 k writes / s, comfortable margin for 1000 conn
+- 10 DOs: ~24 k writes / s, ample headroom
+
+Sharding is now the **critical v0.2 work item**, promoted from v0.3. Background passive checkpointing (§2) remains a v0.2 item; it flattens tail latency within each shard.
+
+Coalescing (§3) is retained in the codebase as a valid optimisation for the Node-side tooling path (CLI migrate, backup, conformance tests where adapters are exercised directly). It does not contribute to the production reliability target on single bindings but is not harmful either — it is the right pattern if we ever add a non-DO storage backend.
 
 ## Rejected options (and why)
 
