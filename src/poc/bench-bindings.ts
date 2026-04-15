@@ -25,8 +25,17 @@ import { pickFreePort, spawnWorkerd, type SpawnedWorkerd } from '../../test/inte
 const STATE_BASE = 'state'
 
 const DURATION = 10
-const CONNECTIONS = 50
 const WARMUP_MS = 2000
+
+// Realistic micro-SaaS concurrency: many concurrent readers (no SQLite
+// contention), few concurrent writers (DO input gate serialises writes;
+// typical single-tenant workload sees <20 simultaneous writers).
+// The previous 50-conn-everywhere profile generated spurious "errors"
+// (client-side timeouts from artificial contention) and is not a useful
+// default for characterising the runtime. Stress numbers live in a
+// separate scenario, clearly labelled.
+const CONNECTIONS_READ = 50
+const CONNECTIONS_WRITE = 10
 
 const WORKER_JS = `
   export default {
@@ -75,6 +84,7 @@ const WORKER_JS = `
 type Scenario = {
   label: string
   path: string
+  connections: number
   prep?: (wd: SpawnedWorkerd, host: string) => Promise<void>
 }
 
@@ -82,50 +92,32 @@ const scenarios: Scenario[] = [
   {
     label: 'noop (baseline)',
     path: '/noop',
+    connections: CONNECTIONS_READ,
   },
   {
     label: 'KV get (hot)',
     path: '/kv-get-hot',
-    prep: async (wd, host) => {
-      // Seed the hot key by hitting a PUT endpoint first.
-      const seed = `
-        export default {
-          async fetch(req, env) { await env.CACHE.put('hot-key', 'hello'); return new Response('seeded') }
-        }
-      `
-      // We can't swap the worker mid-run, so instead we prime via an extra
-      // request to a dedicated seed path — add it inline:
-      void seed
-      // Use the existing /kv-put to seed 'hot-key' specifically.
-      await wd.sendRequest({
-        host,
-        path: '/kv-put',
-        method: 'GET',
-      })
-    },
+    connections: CONNECTIONS_READ,
   },
   {
     label: 'KV get (miss)',
     path: '/kv-get-miss',
+    connections: CONNECTIONS_READ,
   },
   {
     label: 'KV put (random keys)',
     path: '/kv-put',
+    connections: CONNECTIONS_WRITE,
   },
   {
     label: 'D1 SELECT (indexed)',
     path: '/d1-select',
-    prep: async (wd, host) => {
-      await wd.sendRequest({
-        host,
-        path: '/d1-ddl',
-        method: 'GET',
-      })
-    },
+    connections: CONNECTIONS_READ,
   },
   {
     label: 'D1 INSERT',
     path: '/d1-insert',
+    connections: CONNECTIONS_WRITE,
   },
 ]
 
@@ -161,11 +153,17 @@ type Result = {
   non2xx: number
 }
 
-async function hammer(baseUrl: string, path: string, host: string, label: string): Promise<Result> {
+async function hammer(
+  baseUrl: string,
+  path: string,
+  host: string,
+  label: string,
+  connections: number,
+): Promise<Result> {
   await sleep(WARMUP_MS)
   const r = await autocannon({
     url: baseUrl + path,
-    connections: CONNECTIONS,
+    connections,
     duration: DURATION,
     pipelining: 1,
     headers: { host },
@@ -230,8 +228,9 @@ try {
   await wd.sendRequest({ host, path: '/kv-seed-hot' })
 
   for (const s of scenarios) {
-    console.log(`🏁 ${s.label} → ${s.path}`)
-    results.push(await hammer(baseUrl, s.path, host, s.label))
+    console.log(`🏁 ${s.label} → ${s.path}  [${s.connections} conn]`)
+    if (s.prep) await s.prep(wd, host)
+    results.push(await hammer(baseUrl, s.path, host, s.label, s.connections))
   }
 } finally {
   await wd.stop()

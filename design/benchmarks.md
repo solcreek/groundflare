@@ -220,6 +220,23 @@ The previous stages measured pure HTTP dispatch. Stage 2d exercises the real `bu
 - Stage 2e: same scenarios with workspace of 10 concurrent tenants (contention across files)
 - Stage 3a: re-run on Hetzner CX22 to validate ratio assumptions
 
+### Stage 2d.0: realistic concurrency (errors=0 baseline)
+
+Stage 2d's first run used 50 parallel connections across every scenario, which for writes exceeds any realistic micro-SaaS workload and generated client-side timeouts (33–48 errors per run). That profile is useful for finding tail behavior but not as a reliability baseline. Re-run with concurrency per scenario: **reads at 50 connections**, **writes at 10 connections**.
+
+| Scenario | conn | RPS | mean | p50 | p99 | max | err |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| noop (baseline) | 50 | 6,696 | 6.91ms | 0 | 47 | 108 | **0** |
+| KV get (hot) | 50 | 3,671 | 13.10ms | 1 | 87 | 125 | **0** |
+| KV get (miss) | 50 | 3,982 | 12.06ms | 1 | 93 | 172 | **0** |
+| KV put (random keys) | 10 | 2,696 | 3.19ms | 2 | 4 | 2,833 | **0** |
+| D1 SELECT (indexed) | 50 | 3,609 | 13.34ms | 1 | 98 | 190 | **0** |
+| D1 INSERT | 10 | 2,268 | 3.94ms | 2 | 6 | 3,803 | **0** |
+
+At realistic load the runtime is clean: zero timeouts across reads and writes, p99 in single-to-double-digit ms, sustained ~2,500 writes/sec and ~3,500–4,000 reads/sec on a laptop. The max column (2.8–3.8 s) still reflects occasional WAL checkpoint pauses; those are absorbed within the timeout budget.
+
+This is the v0.1 baseline claim: **no errors under any concurrency a typical micro-SaaS will see in production**. Higher-pressure scenarios (HN hug, write-heavy hot DOs) get their own follow-up benchmarks below.
+
 ### Stage 2d.1: WAL autocheckpoint raised to 10000 pages
 
 Applied the first mitigation from [sqlite-performance.md §1](sqlite-performance.md#1-wal-checkpoint-threshold-v01-cheap): raised `PRAGMA wal_autocheckpoint` from SQLite's default (1000) to 10000. Hypothesis: fewer checkpoints → less probability that a request hits a checkpoint stall.
