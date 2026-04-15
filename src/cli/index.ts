@@ -11,6 +11,7 @@ import destroyCommand from './commands/destroy.js'
 import statusCommand from './commands/status.js'
 import configCommand from './commands/config.js'
 import secretCommand from './commands/secret.js'
+import bunCommand from './commands/bun.js'
 
 interface PackageJsonShape {
   name: string
@@ -45,6 +46,7 @@ export async function buildMain() {
       status: statusCommand,
       config: configCommand,
       secret: secretCommand,
+      bun: bunCommand,
     },
   })
 }
