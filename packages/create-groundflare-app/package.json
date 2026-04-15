@@ -1,0 +1,57 @@
+{
+  "name": "create-groundflare-app",
+  "version": "0.1.0",
+  "description": "Scaffold a new groundflare-ready Cloudflare Worker project.",
+  "keywords": [
+    "cloudflare",
+    "workers",
+    "groundflare",
+    "scaffold",
+    "create",
+    "starter"
+  ],
+  "homepage": "https://github.com/solcreek/groundflare",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/solcreek/groundflare.git",
+    "directory": "packages/create-groundflare-app"
+  },
+  "bugs": {
+    "url": "https://github.com/solcreek/groundflare/issues"
+  },
+  "license": "MIT",
+  "author": "SolCreek",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "bin": {
+    "create-groundflare-app": "./bin/index.js"
+  },
+  "files": [
+    "bin",
+    "dist",
+    "templates",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "check": "tsc --noEmit",
+    "lint": "eslint --no-error-on-unmatched-pattern \"src/**/*.ts\" \"test/**/*.ts\"",
+    "test": "vitest run",
+    "build": "tsc -p tsconfig.build.json",
+    "prepublishOnly": "npm run check && npm run lint && npm run test && npm run build"
+  },
+  "dependencies": {
+    "citty": "^0.1.6",
+    "consola": "^3.2.3"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.6.0",
+    "vitest": "^2.1.0"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

@@ -1,0 +1,16 @@
+name = "{{name}}"
+main = "src/index.ts"
+compatibility_date = "{{compatibility_date}}"
+
+# ── groundflare deploy target ──────────────────────────────────────
+# Fill in a provider (hetzner | digitalocean | linode | vultr | contabo),
+# a region for that provider, and a VPS size. Then:
+#   1. `groundflare secret set provider.<provider>.token <your-token>`
+#   2. `groundflare up`
+[groundflare]
+# provider = "hetzner"
+# region   = "hel1"
+# size     = "cx22"
+# email    = "ops@example.com"
+# domain   = "{{name}}.example.com"
+# runtime  = "workerd"   # or "bun" — see `groundflare bun analyze`
