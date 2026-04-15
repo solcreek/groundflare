@@ -119,22 +119,27 @@ describe('generateBunShim', () => {
     )
   })
 
-  it('D1 and R2 stubs still throw Phase-2 messages (2c / 2d not yet landed)', () => {
+  it('wires D1 facade to the real BunD1Adapter (Phase 2c+)', () => {
     const src = generateBunShim({ entryModule: './user.js' })
+    expect(src).toContain('import { BunD1Adapter } from "./adapters/d1.ts"')
     expect(src).toContain(
-      'D1.${op}() — groundflare Bun adapter not yet implemented (Phase 2)',
+      'return BunD1Adapter.open(`${STATE_BASE_DIR}/d1/${databaseName}.sqlite`)',
     )
+    expect(src).not.toContain(
+      'D1.${op}() — groundflare Bun adapter not yet implemented',
+    )
+  })
+
+  it('R2 stub still throws a Phase-2 message (2d not yet landed)', () => {
+    const src = generateBunShim({ entryModule: './user.js' })
     expect(src).toContain(
       'R2.${op}() — groundflare Bun adapter not yet implemented (Phase 2)',
     )
   })
 
-  it('D1 stub still exposes the full prepared-statement surface', () => {
-    const src = generateBunShim({ entryModule: './user.js' })
-    for (const m of ['prepare:', 'batch:', 'exec:', 'dump:']) {
-      expect(src).toContain(m)
-    }
-  })
+  // D1 stub assertions removed — Phase 2c replaced the stub with
+  // BunD1Adapter.open() which already exposes the full CF D1 surface
+  // via its own class.
 
   it('bakes stateBaseDir into the shim (default /var/lib/groundflare)', () => {
     const src = generateBunShim({ entryModule: './user.js' })

@@ -206,18 +206,27 @@ describe('buildBunArtifact — adapter sources', () => {
   it('always ships adapters/kv.ts alongside server.ts', () => {
     const a = buildBunArtifact(manifest())
     expect(a.adapterSources).toHaveProperty('adapters/kv.ts')
-    // The file must look like the real adapter, not an empty stub.
     expect(a.adapterSources['adapters/kv.ts']).toContain(
       'export class BunKVAdapter',
     )
     expect(a.adapterSources['adapters/kv.ts']).toContain('from \'bun:sqlite\'')
   })
 
-  it('ships KV adapter even when the worker has no KV bindings', () => {
-    // server.ts unconditionally imports it; shipping a dead file is
-    // cheaper than forking the shim template around the import.
+  it('always ships adapters/d1.ts alongside server.ts (Phase 2c+)', () => {
+    const a = buildBunArtifact(manifest())
+    expect(a.adapterSources).toHaveProperty('adapters/d1.ts')
+    expect(a.adapterSources['adapters/d1.ts']).toContain(
+      'export class BunD1Adapter',
+    )
+    expect(a.adapterSources['adapters/d1.ts']).toContain('from \'bun:sqlite\'')
+  })
+
+  it('ships KV + D1 adapters even when the worker declares neither', () => {
+    // server.ts unconditionally imports them; shipping dead files is
+    // cheaper than forking the shim template around each import.
     const a = buildBunArtifact(manifest())
     expect(a.adapterSources['adapters/kv.ts']).toBeDefined()
+    expect(a.adapterSources['adapters/d1.ts']).toBeDefined()
   })
 })
 

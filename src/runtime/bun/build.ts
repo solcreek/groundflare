@@ -13,7 +13,10 @@
  * surface it as a configuration error with a migration hint.
  */
 
-import { BUN_KV_ADAPTER_SOURCE } from './adapters/sources.js'
+import {
+  BUN_D1_ADAPTER_SOURCE,
+  BUN_KV_ADAPTER_SOURCE,
+} from './adapters/sources.js'
 import { generateBunShim, type BunKvBinding } from './shim.js'
 import { generateBunSystemdUnit, type BunUnitOptions } from './systemd.js'
 import type { WorkspaceManifest, WorkspaceWorker } from '../workspace/types.js'
@@ -137,11 +140,12 @@ export function buildBunArtifact(
   })
 
   const adapterSources: Record<string, string> = {}
-  // Always ship the KV adapter source — server.ts unconditionally
-  // imports it, whether or not this particular worker declared a KV
-  // binding. Paying for ~8 KB of source on every Bun deployment is
-  // cheaper than conditionally branching the shim around the import.
+  // Always ship all adapter sources — server.ts unconditionally imports
+  // them, whether or not this particular worker declared the matching
+  // binding. Paying for ~20 KB of source on every Bun deployment is
+  // cheaper than conditionally branching the shim around each import.
   adapterSources['adapters/kv.ts'] = BUN_KV_ADAPTER_SOURCE
+  adapterSources['adapters/d1.ts'] = BUN_D1_ADAPTER_SOURCE
 
   const systemdUnit = generateBunSystemdUnit({
     entryPath: entryModulePath,
