@@ -221,6 +221,33 @@ The previous stages measured pure HTTP dispatch. Stage 2d exercises the real `bu
 - Stage 3a: re-run on Hetzner CX22 to validate ratio assumptions
 - Optimization: investigate whether per-binding WAL checkpoint tuning changes the tail numbers
 
+### Reference: Cloudflare D1 published figures
+
+Cloudflare publishes D1 performance data in a different format from ours — mostly relative improvements and per-query durations rather than absolute sustained RPS. Collected here for calibration, not comparison; groundflare runs a subset of what D1 does, on a single machine, and the two are different shapes of product.
+
+What Cloudflare publishes:
+
+| Metric | Value | Source |
+|---|---|---|
+| Indexed SELECT, SQL duration | < 1ms | [docs limits](https://developers.cloudflare.com/d1/platform/limits/) |
+| INSERT / UPDATE, SQL duration | several ms | [docs limits](https://developers.cloudflare.com/d1/platform/limits/) |
+| Throughput per Worker invocation | ≈ 1 / (avg query time) — 1ms queries → ~1k qps per Worker | [docs limits](https://developers.cloudflare.com/d1/platform/limits/) |
+| Worker→D1 API latency, 2025 improvement | −40% to −60% (network round trips removed) | [release notes](https://developers.cloudflare.com/d1/platform/release-notes/) |
+| New storage backend, 1k-row INSERT | 6.8× faster than previous backend | [blog: turned it up to 11](https://blog.cloudflare.com/d1-turning-it-up-to-11/) |
+| New storage backend, 10k-row INSERT | 10–11× faster | [blog: turned it up to 11](https://blog.cloudflare.com/d1-turning-it-up-to-11/) |
+| Max database size | 10 GB | [docs limits](https://developers.cloudflare.com/d1/platform/limits/) |
+| Concurrent D1 connections per Worker invocation | 6 | [docs limits](https://developers.cloudflare.com/d1/platform/limits/) |
+
+What Cloudflare does not publish: absolute sustained RPS, p99 tail latency under load, or cross-tenant contention numbers. This is a reasonable choice for a managed, evolving service — absolute numbers would fix expectations around a moving target.
+
+How Stage 2d's numbers relate:
+
+- groundflare measures end-to-end HTTP latency (request in → response out, through Router Worker + tenant Worker + SQLite)
+- Cloudflare's "< 1ms SQL duration" measures the SQL engine only, not the Worker→D1 network hop
+- Rough shape lines up: Cloudflare indexed SELECT runs SQL in under a millisecond; Stage 2d end-to-end p50 is 1ms. The extra network hop in Cloudflare's architecture buys global edge routing and horizontal scaling, which is what you want it to buy
+
+The two products are complementary. Cloudflare D1 is the right answer for global-audience workloads and for any application that benefits from the full edge surface. groundflare is the right answer for single-region workloads where local latency + operational control + predictable per-month cost + removing the 10 GB ceiling matter more than global replication.
+
 ## Planned future stages
 
 | Stage | Status | What it measures |
