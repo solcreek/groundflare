@@ -14,6 +14,9 @@
 #   - workerd linux-64 binary at /usr/local/bin/workerd so stage 05's
 #     isComplete() check passes (the real upload is still exercised when
 #     the binary is re-pushed, but a fresh run finds it already present)
+#   - bun linux binary at /usr/local/bin/bun so the Bun-track e2e can
+#     start `bun run server.ts` under systemd without pulling the
+#     installer over the network
 #
 # Run with --privileged so systemd can manage cgroups. Fine for tests;
 # not something we'd do in production (and production doesn't need to).
@@ -26,6 +29,9 @@ ENV DEBIAN_FRONTEND=noninteractive
 ARG TARGETARCH
 
 # Base image: systemd + sshd + sudo + curl + Caddy (Ubuntu universe).
+# `unzip` is added unconditionally because the image is shared between
+# the Mirror (workerd) and Bun tracks — Bun's installer would also need
+# it, and forking the image per-track isn't worth the CI complexity.
 RUN apt-get update && apt-get install -y --no-install-recommends \
       systemd systemd-sysv dbus \
       openssh-server \
@@ -33,6 +39,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
       curl ca-certificates \
       iproute2 \
       less \
+      unzip \
       caddy \
  && rm -rf /var/lib/apt/lists/*
 
@@ -97,6 +104,25 @@ RUN case "${TARGETARCH}" in \
  && install -m 0755 /tmp/package/bin/workerd /usr/local/bin/workerd \
  && rm -rf /tmp/workerd.tgz /tmp/package \
  && /usr/local/bin/workerd --version >/dev/null
+
+# bun — pin to a recent stable so `bun run server.ts` works for the
+# Bun-track e2e test. We bake the binary into the image rather than
+# letting cloud-init install it at boot time because the fake-vps
+# cloud-init is a shim that only pretends to run — real cloud-init
+# would pull the installer from bun.sh, which doesn't exist inside
+# the container. This mirrors the workerd install above.
+ARG BUN_VERSION=1.3.12
+RUN case "${TARGETARCH}" in \
+      amd64) BUN_ARCH=linux-x64 ;; \
+      arm64) BUN_ARCH=linux-aarch64 ;; \
+      *)     echo "unsupported arch ${TARGETARCH}" && exit 1 ;; \
+    esac \
+ && curl -fsSL "https://github.com/oven-sh/bun/releases/download/bun-v${BUN_VERSION}/bun-${BUN_ARCH}.zip" \
+      -o /tmp/bun.zip \
+ && unzip -q /tmp/bun.zip -d /tmp \
+ && install -m 0755 /tmp/bun-${BUN_ARCH}/bun /usr/local/bin/bun \
+ && rm -rf /tmp/bun.zip /tmp/bun-${BUN_ARCH} \
+ && /usr/local/bin/bun --version >/dev/null
 
 EXPOSE 22
 
