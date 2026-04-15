@@ -1,5 +1,37 @@
+/**
+ * `groundflare up` — combined provision + deploy.
+ *
+ * Runs runBootstrap() (provider auth → SSH key → create VPS → wait →
+ * cloud-init → install workerd → install systemd units) followed by
+ * runDeploy() (bundle + upload + restart + health probe). Idempotent:
+ * re-running with the same workspace resumes bootstrap from the last
+ * successful stage, then deploys the latest code.
+ *
+ * Flags mirror bootstrap/deploy + a few escape hatches:
+ *   --skip-bootstrap   skip straight to deploy (for already-up workspaces)
+ *   --skip-deploy      bootstrap only, don't push code
+ */
+
 import { defineCommand } from 'citty'
-import { notImplemented } from '../log.js'
+import { resolve as resolvePath } from 'node:path'
+
+import {
+  BootstrapError,
+  BootstrapStateStore,
+  runBootstrap,
+} from '../../bootstrap/index.js'
+import { DeployError, runDeploy } from '../../deploy/index.js'
+import { resolveConfig } from '../../config/index.js'
+import type { ProviderName } from '../../provider/index.js'
+import { log } from '../log.js'
+
+const SUPPORTED_PROVIDERS: readonly ProviderName[] = [
+  'hetzner',
+  'digitalocean',
+  'linode',
+  'vultr',
+  'contabo',
+]
 
 export default defineCommand({
   meta: {
@@ -7,16 +39,136 @@ export default defineCommand({
     description: 'Provision a VPS (if needed) and deploy the Worker',
   },
   args: {
+    workspace: {
+      type: 'string',
+      required: true,
+      description: 'Workspace name (used for state + DNS naming)',
+    },
+    cwd: {
+      type: 'string',
+      description: 'Directory containing wrangler.toml (default: current directory)',
+    },
     provider: {
       type: 'string',
-      description: 'VPS provider (hetzner | digitalocean | linode | vultr | contabo)',
+      description: 'VPS provider (default: from [groundflare].provider)',
     },
-    region: { type: 'string', description: 'Provider region code' },
-    size: { type: 'string', description: 'VPS size tier' },
-    domain: { type: 'string', description: 'Domain for the Worker' },
-    env: { type: 'string', description: 'Named environment (e.g. production)' },
+    region: {
+      type: 'string',
+      description: 'Provider region (default: from [groundflare].region)',
+    },
+    size: {
+      type: 'string',
+      description: 'VPS size tier (default: from [groundflare].size)',
+    },
+    'acme-email': {
+      type: 'string',
+      description: 'Email for Caddy/ACME registration (default: from [groundflare].email)',
+    },
+    domain: {
+      type: 'string',
+      description: 'Primary domain (default: from [groundflare].domain)',
+    },
+    'skip-bootstrap': {
+      type: 'boolean',
+      description: 'Skip provisioning; assume the VPS is already bootstrapped',
+    },
+    'skip-deploy': {
+      type: 'boolean',
+      description: 'Run bootstrap only; do not bundle + upload Worker code',
+    },
   },
-  async run() {
-    notImplemented('up', 'v0.1 bootstrap pipeline in progress — see design/bootstrap.md')
+  async run({ args }) {
+    const workspace = args.workspace
+    const cwd = resolvePath(args.cwd ?? process.cwd())
+
+    const { groundflare } = await resolveConfig({ cwd })
+
+    const provider = (args.provider ?? groundflare.provider) as ProviderName | undefined
+    if (provider === undefined) {
+      log.error('no provider specified — pass --provider or set [groundflare].provider')
+      process.exit(1)
+    }
+    if (!SUPPORTED_PROVIDERS.includes(provider)) {
+      log.error(`unsupported provider ${JSON.stringify(provider)}`)
+      process.exit(1)
+    }
+
+    const region = args.region ?? groundflare.region
+    const size = args.size ?? groundflare.size
+    const acmeEmail = args['acme-email'] ?? groundflare.email
+    const domain = args.domain ?? groundflare.domain
+
+    if (region === undefined || size === undefined || acmeEmail === undefined) {
+      log.error(
+        'missing required fields: region, size, and acme-email must be set ' +
+          '(via flags or [groundflare] section)',
+      )
+      process.exit(1)
+    }
+
+    const logFn = (level: 'info' | 'warn' | 'error' | 'debug', message: string): void => {
+      if (level === 'error') log.error(message)
+      else if (level === 'warn') log.warn(message)
+      else if (level === 'debug') log.debug(message)
+      else log.info(message)
+    }
+
+    // ─── Bootstrap ─────────────────────────────────────────────────
+    const stateStore = new BootstrapStateStore()
+    let state
+    if (args['skip-bootstrap'] === true) {
+      state = await stateStore.load(workspace)
+      if (state === null) {
+        log.error(
+          `--skip-bootstrap set but no state found for ${JSON.stringify(workspace)}`,
+        )
+        process.exit(1)
+      }
+      log.info(`skipping bootstrap (state: ${state.vps?.ipv4 ?? 'no vps'})`)
+    } else {
+      try {
+        state = await runBootstrap({
+          workspace,
+          provider,
+          region,
+          size,
+          acmeEmail,
+          placeholderDomain: domain ?? `${workspace}.invalid`,
+          log: logFn,
+        })
+      } catch (err) {
+        if (err instanceof BootstrapError) {
+          log.error(`${err.message} (${err.code}${err.stageId ? ` @ ${err.stageId}` : ''})`)
+          process.exit(1)
+        }
+        throw err
+      }
+    }
+
+    // ─── Deploy ────────────────────────────────────────────────────
+    if (args['skip-deploy'] === true) {
+      log.info('skipping deploy (--skip-deploy)')
+      return
+    }
+
+    try {
+      const result = await runDeploy({
+        workspace,
+        workingDirectory: cwd,
+        bootstrapState: state,
+        acmeEmail,
+        log: logFn,
+      })
+      log.success(`up complete: ${result.tenants.length} tenant(s) deployed`)
+      if (result.healthCheck) {
+        log.info(`  health: ${result.healthCheck.status} in ${result.healthCheck.durationMs}ms`)
+      }
+    } catch (err) {
+      if (err instanceof DeployError) {
+        log.error(`${err.message} (${err.code})`)
+        process.exit(1)
+      }
+      throw err
+    }
   },
 })

@@ -41,7 +41,7 @@ describe('main command', () => {
         ? await main.subCommands()
         : main.subCommands
     expect(Object.keys(subs ?? {}).sort()).toEqual(
-      ['config', 'deploy', 'destroy', 'estimate', 'status', 'tail', 'up'].sort(),
+      ['config', 'deploy', 'destroy', 'estimate', 'secret', 'status', 'tail', 'up'].sort(),
     )
   })
 

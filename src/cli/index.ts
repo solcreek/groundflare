@@ -10,6 +10,7 @@ import estimateCommand from './commands/estimate.js'
 import destroyCommand from './commands/destroy.js'
 import statusCommand from './commands/status.js'
 import configCommand from './commands/config.js'
+import secretCommand from './commands/secret.js'
 
 interface PackageJsonShape {
   name: string
@@ -43,6 +44,7 @@ export async function buildMain() {
       destroy: destroyCommand,
       status: statusCommand,
       config: configCommand,
+      secret: secretCommand,
     },
   })
 }
