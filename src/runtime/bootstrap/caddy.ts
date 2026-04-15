@@ -46,8 +46,11 @@ export interface CaddyfileOptions {
   readonly adminAddress?: string | null
 
   /**
-   * Persist_config stanza. Default true (recommended — Caddy saves its
-   * active config in the OS storage dir for resume).
+   * Controls Caddy's `persist_config` global option. Default true (which
+   * is Caddy's own default — the active config is saved to the OS storage
+   * dir for resume). Set to false to emit `persist_config off`. Caddy's
+   * Caddyfile adapter accepts `off` only; there is no `persist_config on`
+   * keyword, so we emit nothing when the behaviour is on.
    */
   readonly persistConfig?: boolean
 }
@@ -75,7 +78,7 @@ export function generateCaddyfile(opts: CaddyfileOptions): string {
   if (opts.adminAddress === null) globalLines.push('admin off')
   else if (opts.adminAddress !== undefined)
     globalLines.push(`admin ${opts.adminAddress}`)
-  if (opts.persistConfig !== false) globalLines.push('persist_config on')
+  if (opts.persistConfig === false) globalLines.push('persist_config off')
 
   const siteBlocks = opts.sites.map(renderSite).join('\n\n')
 

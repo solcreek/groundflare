@@ -44,18 +44,20 @@ describe('generateCaddyfile — global block', () => {
     expect(out).toContain('admin localhost:2020')
   })
 
-  it('enables persist_config by default', () => {
+  it('omits persist_config by default (relies on Caddy default = on)', () => {
+    // `persist_config on` is NOT a valid Caddyfile keyword; the adapter only
+    // accepts `off`. Caddy persists by default, so we emit nothing.
     const out = generateCaddyfile({ email: 'ops@example.com', sites: [] })
-    expect(out).toContain('persist_config on')
+    expect(out).not.toContain('persist_config')
   })
 
-  it('omits persist_config when explicitly disabled', () => {
+  it('emits persist_config off when explicitly disabled', () => {
     const out = generateCaddyfile({
       email: 'ops@example.com',
       sites: [],
       persistConfig: false,
     })
-    expect(out).not.toContain('persist_config')
+    expect(out).toContain('persist_config off')
   })
 })
 
