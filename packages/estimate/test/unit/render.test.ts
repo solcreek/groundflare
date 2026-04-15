@@ -5,7 +5,7 @@ import {
   computeEstimate,
   renderEstimate,
   USAGE_DEFAULTS,
-} from '../../../src/estimate/index.js'
+} from '../../src/index.js'
 
 describe('renderEstimate', () => {
   it('produces a multi-line ASCII box', () => {

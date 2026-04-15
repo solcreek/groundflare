@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from 'vitest'
 import {
   fetchHetznerPricing,
   HetznerPricingError,
-} from '../../../../src/estimate/index.js'
+} from '../../../src/index.js'
 
 /** Minimal response shaped like Hetzner's actual /v1/pricing payload. */
 function mockPricingBody() {

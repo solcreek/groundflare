@@ -16,11 +16,11 @@
     "packages/*"
   ],
   "scripts": {
-    "check": "npm run check -w groundflare",
-    "lint": "npm run lint -w groundflare",
-    "test": "npm run test -w groundflare",
+    "check": "npm run check --workspaces --if-present",
+    "lint": "npm run lint --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present",
     "test:bun": "npm run test:bun -w groundflare",
     "test:e2e": "npm run test:e2e -w groundflare",
-    "build": "npm run build -w groundflare"
+    "build": "npm run build --workspaces --if-present"
   }
 }

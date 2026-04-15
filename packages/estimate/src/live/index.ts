@@ -5,7 +5,7 @@
  * worst case we hand back the baked table and note why.
  */
 
-import type { SecretStore } from '../../secret/index.js'
+import type { SecretReader } from '../secrets.js'
 import type { HetznerTier, PriceSource, Prices } from '../types.js'
 
 import { fetchHetznerPricing, HetznerPricingError } from './hetzner.js'
@@ -15,7 +15,7 @@ export type { FetchHetznerOptions, HetznerLivePrices } from './hetzner.js'
 
 export interface RefreshPricesOptions {
   readonly baked: Prices
-  readonly secrets: SecretStore
+  readonly secrets: SecretReader
   /** Skip live fetch entirely (e.g. CLI --no-live flag). */
   readonly disableLive?: boolean
   /** For tests. Passed through to each provider fetcher. */

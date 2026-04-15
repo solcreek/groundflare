@@ -1,10 +1,10 @@
 import { describe, expect, it, vi } from 'vitest'
 
-import { MemorySecretStore } from '../../../../src/secret/index.js'
 import {
   BAKED_PRICES,
+  MemorySecretReader,
   refreshPrices,
-} from '../../../../src/estimate/index.js'
+} from '../../../src/index.js'
 
 const MOCK_OK_BODY = {
   pricing: {
@@ -41,7 +41,7 @@ describe('refreshPrices', () => {
   it('falls back to baked with reason when no token is configured', async () => {
     const { prices, sources } = await refreshPrices({
       baked: BAKED_PRICES,
-      secrets: new MemorySecretStore(),
+      secrets: new MemorySecretReader(),
     })
     expect(prices).toBe(BAKED_PRICES)
     expect(sources[0]).toEqual({
@@ -54,7 +54,7 @@ describe('refreshPrices', () => {
   it('falls back to baked with "live disabled" when disableLive', async () => {
     const { prices, sources } = await refreshPrices({
       baked: BAKED_PRICES,
-      secrets: new MemorySecretStore({ 'provider.hetzner.token': 'x' }),
+      secrets: new MemorySecretReader({ 'provider.hetzner.token': 'x' }),
       disableLive: true,
     })
     expect(prices).toBe(BAKED_PRICES)
@@ -62,7 +62,7 @@ describe('refreshPrices', () => {
   })
 
   it('merges live hetzner prices over baked, preserving vcpu/ram/disk', async () => {
-    const secrets = new MemorySecretStore({ 'provider.hetzner.token': 'abc' })
+    const secrets = new MemorySecretReader({ 'provider.hetzner.token': 'abc' })
     const { prices, sources } = await refreshPrices({
       baked: BAKED_PRICES,
       secrets,
@@ -81,7 +81,7 @@ describe('refreshPrices', () => {
   })
 
   it('falls back to baked + carries the error reason on fetch failure', async () => {
-    const secrets = new MemorySecretStore({ 'provider.hetzner.token': 'bad' })
+    const secrets = new MemorySecretReader({ 'provider.hetzner.token': 'bad' })
     const { prices, sources } = await refreshPrices({
       baked: BAKED_PRICES,
       secrets,

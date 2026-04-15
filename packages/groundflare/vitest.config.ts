@@ -1,6 +1,17 @@
 import { defineConfig } from 'vitest/config'
+import { fileURLToPath } from 'node:url'
 
 export default defineConfig({
+  resolve: {
+    alias: {
+      // In dev, resolve the sibling workspace package to its TS source
+      // so tests don't require a prior `npm run build` of the dep.
+      // Published consumers import from dist per the package's exports.
+      'groundflare-estimate': fileURLToPath(
+        new URL('../estimate/src/index.ts', import.meta.url),
+      ),
+    },
+  },
   test: {
     include: ['test/**/*.test.ts', 'src/**/*.test.ts'],
     // e2e tests run under a dedicated config (vitest.config.e2e.ts) with

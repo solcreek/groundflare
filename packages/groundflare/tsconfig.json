@@ -15,7 +15,11 @@
     "isolatedModules": true,
     "verbatimModuleSyntax": true,
     "noEmit": true,
-    "types": ["node"]
+    "types": ["node"],
+    "baseUrl": ".",
+    "paths": {
+      "groundflare-estimate": ["../estimate/src/index.ts"]
+    }
   },
   "include": ["src/**/*", "test/**/*"],
   "exclude": [

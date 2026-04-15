@@ -22,6 +22,11 @@ export {
 } from './live/index.js'
 export { promptUsage, USAGE_DEFAULTS } from './prompts.js'
 export { renderEstimate } from './render.js'
+export {
+  EnvSecretReader,
+  MemorySecretReader,
+  type SecretReader,
+} from './secrets.js'
 export type {
   Confidence,
   CostLine,

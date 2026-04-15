@@ -16,7 +16,7 @@ import {
   promptUsage,
   refreshPrices,
   renderEstimate,
-} from '../../estimate/index.js'
+} from 'groundflare-estimate'
 import { FileSecretStore } from '../../secret/index.js'
 import { log } from '../log.js'
 

@@ -13,7 +13,7 @@ import {
   sumLines,
   USAGE_DEFAULTS,
   type Usage,
-} from '../../../src/estimate/index.js'
+} from '../../src/index.js'
 
 function u(partial: Partial<Usage> = {}): Usage {
   return { ...USAGE_DEFAULTS, ...partial }

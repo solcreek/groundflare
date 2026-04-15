@@ -1,0 +1,70 @@
+{
+  "name": "groundflare-estimate",
+  "version": "0.1.0",
+  "description": "Compare your Cloudflare Workers bill against a self-hosted VPS. Standalone tool; also used by the groundflare CLI.",
+  "keywords": [
+    "cloudflare",
+    "workers",
+    "cost",
+    "estimate",
+    "pricing",
+    "hetzner",
+    "vps",
+    "self-host"
+  ],
+  "homepage": "https://github.com/solcreek/groundflare/tree/main/packages/estimate",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/solcreek/groundflare.git",
+    "directory": "packages/estimate"
+  },
+  "bugs": {
+    "url": "https://github.com/solcreek/groundflare/issues"
+  },
+  "license": "MIT",
+  "author": "SolCreek",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "bin": {
+    "groundflare-estimate": "./bin/groundflare-estimate.js"
+  },
+  "files": [
+    "bin",
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "check": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "eslint --no-error-on-unmatched-pattern \"src/**/*.ts\" \"test/**/*.ts\"",
+    "prepublishOnly": "npm run check && npm run lint && npm run test && npm run build"
+  },
+  "dependencies": {
+    "consola": "^3.2.3"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.15.0",
+    "@types/node": "^22.0.0",
+    "eslint": "^9.15.0",
+    "eslint-config-prettier": "^9.1.0",
+    "typescript": "^5.6.0",
+    "typescript-eslint": "^8.15.0",
+    "vitest": "^2.1.0"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}
