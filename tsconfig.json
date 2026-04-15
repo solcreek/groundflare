@@ -18,5 +18,22 @@
     "types": ["node"]
   },
   "include": ["src/**/*", "test/**/*"],
-  "exclude": ["node_modules", "dist", "src/poc/**", "examples/**"]
+  "exclude": [
+    "node_modules",
+    "dist",
+    "src/poc/**",
+    "examples/**",
+    // Bun-runtime adapter sources ship as raw text to the VPS and are
+    // executed by `bun run` there — not by Node. They import `bun:sqlite`
+    // and reference BodyInit/BufferSource from Bun's type surface, which
+    // the Node tsconfig can't satisfy. Behaviour is verified by the Bun
+    // conformance suites (`test/bun/**` under `bun test`, and
+    // `test/conformance/**` under vitest against the Node-side parity
+    // adapters) — see design/testing.md.
+    "src/runtime/bun/adapters/kv.ts",
+    "src/runtime/bun/adapters/d1.ts",
+    "src/runtime/bun/adapters/r2.ts",
+    "src/runtime/bun/adapters/sigv4.ts",
+    "test/bun/**"
+  ]
 }

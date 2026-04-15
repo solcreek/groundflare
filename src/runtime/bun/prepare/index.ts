@@ -15,7 +15,6 @@
 import {
   analyzeWorkspace,
   type AnalyzeFs,
-  type AnalysisReport,
 } from '../analyze/index.js'
 import type { WranglerConfig } from '../../../config/schema.js'
 import { patchRuntimeInWranglerToml, TomlPatchError } from './toml-patch.js'

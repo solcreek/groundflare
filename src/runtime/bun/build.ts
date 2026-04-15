@@ -21,7 +21,7 @@ import {
 } from './adapters/sources.js'
 import { generateBunShim, type BunKvBinding } from './shim.js'
 import { generateBunSystemdUnit, type BunUnitOptions } from './systemd.js'
-import type { WorkspaceManifest, WorkspaceWorker } from '../workspace/types.js'
+import type { WorkspaceManifest } from '../workspace/types.js'
 
 export interface BuildBunOptions {
   /**

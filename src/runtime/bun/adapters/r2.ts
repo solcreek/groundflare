@@ -367,7 +367,9 @@ async function toR2Error(
   let body = ''
   try {
     body = await res.text()
-  } catch {}
+  } catch {
+    // Body read failed — fall back to status/statusText below.
+  }
   const msg = body
     ? body.replace(/\n+/g, ' ').slice(0, 400)
     : `${res.status} ${res.statusText}`
