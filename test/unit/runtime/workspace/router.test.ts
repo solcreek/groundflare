@@ -193,6 +193,9 @@ describe('generated router body — executes correctly in V8', () => {
       expect(events).toHaveLength(1)
       expect(events[0]?.cron).toBe('0 * * * *')
       expect(typeof events[0]?.scheduledTime).toBe('number')
+      // Event only — no env/ctx passed across the boundary (workerd would
+      // reject ServiceStub serialization without the experimental flag).
+      expect(Object.keys(events[0] ?? {}).sort()).toEqual(['cron', 'scheduledTime'])
     })
 
     it('returns 404 when __scheduled is reached via a non-localhost hostname', async () => {

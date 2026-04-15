@@ -78,7 +78,7 @@ function plain(body, status) {
   })
 }
 
-async function dispatchScheduled(url, env, ctx) {
+async function dispatchScheduled(url, env) {
   if (url.hostname !== '127.0.0.1' && url.hostname !== 'localhost') {
     return plain('not found', 404)
   }
@@ -91,11 +91,10 @@ async function dispatchScheduled(url, env, ctx) {
     return plain('target has no scheduled handler', 404)
   }
   const cron = url.searchParams.get('cron') || ''
-  await target.scheduled(
-    { cron, scheduledTime: Date.now(), type: 'scheduled' },
-    env,
-    ctx,
-  )
+  // Only pass the event itself across the service-binding boundary. env/ctx
+  // are not serializable across workers without the experimental compat flag
+  // and the target gets its own runtime env anyway.
+  await target.scheduled({ cron, scheduledTime: Date.now() })
   return plain('ok', 200)
 }
 
@@ -113,7 +112,7 @@ export default {
           headers: { allow: 'POST', 'content-type': 'text/plain; charset=utf-8' },
         })
       }
-      return dispatchScheduled(url, env, ctx)
+      return dispatchScheduled(url, env)
     }
 
     // Normal host-based dispatch to tenant Workers.
