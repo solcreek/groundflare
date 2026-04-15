@@ -9,7 +9,7 @@
 
 Run any Cloudflare Worker on your own hardware. Same code, your machine, no vendor lock-in.
 
-**Status** — v0.1 Mirror track is feature-complete in-tree and passes an end-to-end Docker e2e suite; the npm release is imminent. v0.2 parallel release with the Bun track is in progress.
+**Status** — v0.1 Mirror track is feature-complete in-tree and passes an end-to-end Docker e2e suite. v0.2 adds the Bun track: `bun:sqlite` KV/D1 adapters, S3-compat R2 passthrough, `groundflare bun analyze` + `bun prepare` CLI, and a matching Tier-3 e2e — all exercised by a shared conformance spec against the Mirror-track adapters. Parallel release prep in progress.
 
 ## Quick start
 
@@ -40,11 +40,29 @@ Runs `workerd` with your Worker unchanged. Bug-for-bug Cloudflare semantics, inc
 
 ### Bun track (opt-in, v0.2)
 
-Runs `Bun.serve` with LLM-assisted one-time migration of bindings to Bun-native equivalents (bun:sqlite, ioredis, S3 SDK).
+Runs `Bun.serve` with Cloudflare-shaped adapters: `bun:sqlite` for KV and D1, S3-compat passthrough to Cloudflare R2. Most Workers migrate with no source changes — `env.DB.prepare(...)`, `env.CACHE.put(...)`, `env.ASSETS.get(...)` all keep working.
 
 - **~7,300–9,900 rps per binding on any $6+ VPS**, zero errors through 1000-concurrent HN burst ([`design/benchmarks.md`](design/benchmarks.md) §Stage 3c)
 - Best for: high-throughput or bursty workloads, no Durable-Object dependency
-- Opt in via `[groundflare] runtime = "bun"` in `wrangler.toml`; `groundflare bun prepare` drives the migration
+- Opt in via `[groundflare] runtime = "bun"` in `wrangler.toml`
+
+```bash
+# 1. See which bindings & features can migrate to Bun
+groundflare bun analyze
+#   ✓ KV binding CACHE → bun:sqlite (one file per binding)
+#   ✓ D1 binding DB    → bun:sqlite
+#   ✓ R2 binding ASSETS → S3-compat passthrough
+#   Ready for the Bun track. Run `groundflare bun prepare` next.
+
+# 2. Flip wrangler.toml to runtime = "bun" (source untouched)
+groundflare bun prepare
+#   ✔ set [groundflare].runtime = "bun" (was "workerd")
+
+# 3. Provision + deploy on the Bun track
+groundflare up
+```
+
+Blockers the analyzer refuses to migrate (stay on Mirror): `HTMLRewriter`, `WebSocketPair`, `class extends DurableObject`, and any DO binding declarations.
 
 ## Supported bindings
 
@@ -59,7 +77,7 @@ Status refers to the version where each binding is promoted from "works" to "v0.
 | Durable Objects | ✅ v0.1 | ❌ Mirror-only | workerd native `ctx.storage` |
 | Cache API | ✅ v0.1 | ⚠️ v0.3 | in-memory |
 | Service Bindings | ✅ v0.1 | ⚠️ v0.4 | same-process dispatch |
-| Cron Triggers | ✅ v0.1 | ✅ v0.2 | systemd `.timer` → `__scheduled` |
+| Cron Triggers | ✅ v0.1 | 🚧 v0.3 | systemd `.timer` → `__scheduled` (Bun-track shim lands in v0.3) |
 | HTMLRewriter | ✅ v0.1 | ⚠️ v0.3 | workerd native · linkedom (Bun) |
 | WebSocketPair | ✅ v0.1 | ⚠️ v0.3 | workerd native · Bun WebSocket |
 | Queues | 🚧 v0.4 | 🚧 v0.4 | SQLite (default) · Redis Streams (opt-in) |
