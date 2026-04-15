@@ -1,18 +1,16 @@
 /**
- * ed25519 keypair generation + OpenSSH public key encoding.
+ * ed25519 keypair generation + OpenSSH public/private encoding.
  *
  * Why hand-roll instead of using `sshpk` or `ssh2`?
  *   - One npm dep avoided per design principle "minimal native or chunky
  *     surface in the CLI".
- *   - The format is small and stable: SPKI/PKCS#8 from Node's crypto
- *     module, then a 30-line conversion to OpenSSH wire format.
+ *   - The format is small and stable.
  *
- * The private key is written as PKCS#8 PEM, which OpenSSH 7.8+ accepts
- * directly via `ssh -i <path>` without needing to convert to the newer
- * "OPENSSH PRIVATE KEY" wrapper.
+ * OpenSSH (10.x at least) does NOT accept PKCS#8 PEM keys for ed25519.
+ * We emit the key in OpenSSH's own "OPENSSH PRIVATE KEY" format instead.
  */
 
-import { createHash, generateKeyPair, type KeyObject } from 'node:crypto'
+import { createHash, generateKeyPair, randomBytes, type KeyObject } from 'node:crypto'
 import { writeFile, mkdir, chmod, access } from 'node:fs/promises'
 import { join } from 'node:path'
 import { homedir } from 'node:os'
@@ -25,7 +23,11 @@ const FILE_MODE_PUBLIC = 0o644
 const DIR_MODE = 0o700
 
 export interface GeneratedKeypair {
-  /** Private key in PKCS#8 PEM. */
+  /**
+   * Private key in the OpenSSH "OPENSSH PRIVATE KEY" format, unencrypted.
+   * This is what `ssh -i <path>` expects — PKCS#8 PEM does NOT work for
+   * ed25519 with modern OpenSSH.
+   */
   readonly privateKeyPem: string
   /** Public key in OpenSSH single-line format ("ssh-ed25519 AAAA... <comment>"). */
   readonly publicKeyOpenSsh: string
@@ -39,10 +41,110 @@ export interface GeneratedKeypair {
  */
 export async function generateEd25519Keypair(comment: string): Promise<GeneratedKeypair> {
   const { publicKey, privateKey } = await generateKeyPairAsync('ed25519')
-  const privateKeyPem = privateKey.export({ type: 'pkcs8', format: 'pem' }) as string
+  const rawPriv = extractRawEd25519PrivateKey(privateKey)
+  const rawPub = extractRawEd25519PublicKey(publicKey)
+  const privateKeyPem = encodeOpenSshPrivateKey(rawPriv, rawPub, comment)
   const publicKeyOpenSsh = encodeOpenSshPublicKey(publicKey, comment)
   const fingerprint = sha256Fingerprint(publicKeyOpenSsh)
   return { privateKeyPem, publicKeyOpenSsh, fingerprint }
+}
+
+/**
+ * Extract the 32-byte raw seed from Node's PKCS#8 DER export.
+ * PKCS#8 for ed25519 is 48 bytes: 16 bytes of ASN.1 wrapping + 32 bytes key.
+ */
+function extractRawEd25519PrivateKey(privateKey: KeyObject): Buffer {
+  const der = privateKey.export({ type: 'pkcs8', format: 'der' })
+  if (!Buffer.isBuffer(der) || der.length !== 48) {
+    throw new TypeError(`expected 48-byte ed25519 PKCS#8 DER, got ${der.length} bytes`)
+  }
+  return Buffer.from(der.subarray(16))
+}
+
+function extractRawEd25519PublicKey(publicKey: KeyObject): Buffer {
+  const der = publicKey.export({ type: 'spki', format: 'der' })
+  if (!Buffer.isBuffer(der) || der.length !== 44) {
+    throw new TypeError(`expected 44-byte ed25519 SPKI DER, got ${der.length} bytes`)
+  }
+  return Buffer.from(der.subarray(12))
+}
+
+/**
+ * Serialize an unencrypted ed25519 key in OpenSSH's native format.
+ *
+ * Wire layout (all length-prefixed strings use uint32 BE lengths):
+ *   "openssh-key-v1\0"
+ *   string "none"                     (cipher)
+ *   string "none"                     (kdf)
+ *   string ""                         (kdf options, empty)
+ *   uint32 1                          (number of keys)
+ *   string <pubkey block>             (ssh-ed25519 wire format)
+ *   string <private section>:
+ *      uint32 checkint | uint32 checkint  (same random value, twice)
+ *      string "ssh-ed25519"
+ *      string <32-byte pub>
+ *      string <64-byte priv||pub>
+ *      string <comment>
+ *      padding 1,2,3...N to cipher blocksize (8 for "none")
+ */
+function encodeOpenSshPrivateKey(
+  rawPriv: Buffer,
+  rawPub: Buffer,
+  comment: string,
+): string {
+  const sanitizedComment = comment.replace(/[\r\n]+/g, ' ').trim()
+  const algo = Buffer.from('ssh-ed25519', 'ascii')
+
+  const pubBlock = Buffer.concat([lengthPrefix(algo), lengthPrefix(rawPub)])
+  const privPayload = Buffer.concat([lengthPrefix(rawPriv), lengthPrefix(rawPub)])
+
+  const checkint = randomBytes(4)
+  const privSection = Buffer.concat([
+    checkint,
+    checkint,
+    lengthPrefix(algo),
+    lengthPrefix(rawPub),
+    // OpenSSH stores the 64-byte "expanded" ed25519 secret (seed || pub).
+    lengthPrefix(Buffer.concat([rawPriv, rawPub])),
+    lengthPrefix(Buffer.from(sanitizedComment, 'utf-8')),
+  ])
+  void privPayload
+  const padded = padToBlocksize(privSection, 8)
+
+  const magic = Buffer.from('openssh-key-v1\0', 'binary')
+  const body = Buffer.concat([
+    magic,
+    lengthPrefix(Buffer.from('none', 'ascii')),
+    lengthPrefix(Buffer.from('none', 'ascii')),
+    lengthPrefix(Buffer.alloc(0)),
+    uint32BE(1),
+    lengthPrefix(pubBlock),
+    lengthPrefix(padded),
+  ])
+
+  return toPem(body, 'OPENSSH PRIVATE KEY')
+}
+
+function padToBlocksize(buf: Buffer, blocksize: number): Buffer {
+  const rem = buf.length % blocksize
+  if (rem === 0) return buf
+  const padLen = blocksize - rem
+  const padding = Buffer.alloc(padLen)
+  for (let i = 0; i < padLen; i++) padding[i] = i + 1
+  return Buffer.concat([buf, padding])
+}
+
+function uint32BE(n: number): Buffer {
+  const b = Buffer.alloc(4)
+  b.writeUInt32BE(n)
+  return b
+}
+
+function toPem(body: Buffer, label: string): string {
+  const b64 = body.toString('base64')
+  // Wrap at 70 columns — ssh-keygen itself uses 70.
+  const wrapped = b64.match(/.{1,70}/g) ?? [b64]
+  return `-----BEGIN ${label}-----\n${wrapped.join('\n')}\n-----END ${label}-----\n`
 }
 
 /**

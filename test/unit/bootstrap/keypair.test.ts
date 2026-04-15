@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { mkdtemp, rm, readFile, stat } from 'node:fs/promises'
 import { tmpdir, platform } from 'node:os'
 import { join } from 'node:path'
-import { createPublicKey } from 'node:crypto'
+import { generateKeyPairSync } from 'node:crypto'
 
 import {
   generateEd25519Keypair,
@@ -23,10 +23,17 @@ afterEach(async () => {
 })
 
 describe('generateEd25519Keypair', () => {
-  it('produces a PKCS#8 PEM private key', async () => {
+  it('produces an OpenSSH-format private key (not PKCS#8)', async () => {
     const kp = await generateEd25519Keypair('test')
-    expect(kp.privateKeyPem).toMatch(/^-----BEGIN PRIVATE KEY-----/)
-    expect(kp.privateKeyPem).toMatch(/-----END PRIVATE KEY-----[\r\n]*$/)
+    // OpenSSH 10+ rejects PKCS#8 ed25519; we must emit the native wrapper.
+    expect(kp.privateKeyPem).toMatch(/^-----BEGIN OPENSSH PRIVATE KEY-----/)
+    expect(kp.privateKeyPem).toMatch(/-----END OPENSSH PRIVATE KEY-----[\r\n]*$/)
+    // Body should start with the "openssh-key-v1\0" magic after base64 decode.
+    const body = kp.privateKeyPem
+      .replace(/-----(BEGIN|END) OPENSSH PRIVATE KEY-----/g, '')
+      .replace(/\s+/g, '')
+    const decoded = Buffer.from(body, 'base64')
+    expect(decoded.subarray(0, 15).toString('binary')).toBe('openssh-key-v1\0')
   })
 
   it('produces a single-line OpenSSH public key starting with ssh-ed25519', async () => {
@@ -69,13 +76,21 @@ describe('generateEd25519Keypair', () => {
 })
 
 describe('encodeOpenSshPublicKey', () => {
-  it('round-trips a Node KeyObject', async () => {
-    const kp = await generateEd25519Keypair('comment')
-    // Re-encode the public key directly from a KeyObject and confirm match.
-    // Reconstruct PublicKey from the PKCS#8 private's exported public part.
-    const fromPem = createPublicKey(kp.privateKeyPem)
-    const reEncoded = encodeOpenSshPublicKey(fromPem, 'comment')
-    expect(reEncoded).toBe(kp.publicKeyOpenSsh)
+  it('is deterministic for the same KeyObject + comment', () => {
+    const { publicKey } = generateKeyPairSync('ed25519')
+    const a = encodeOpenSshPublicKey(publicKey, 'comment')
+    const b = encodeOpenSshPublicKey(publicKey, 'comment')
+    expect(a).toBe(b)
+    expect(a).toMatch(/^ssh-ed25519 [A-Za-z0-9+/]+=* comment$/)
+  })
+
+  it('changes only the trailing comment when given different labels', () => {
+    const { publicKey } = generateKeyPairSync('ed25519')
+    const a = encodeOpenSshPublicKey(publicKey, 'one')
+    const b = encodeOpenSshPublicKey(publicKey, 'two')
+    expect(a.split(/\s+/).slice(0, 2)).toEqual(b.split(/\s+/).slice(0, 2))
+    expect(a.endsWith(' one')).toBe(true)
+    expect(b.endsWith(' two')).toBe(true)
   })
 })
 
