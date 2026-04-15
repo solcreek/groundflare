@@ -39,12 +39,28 @@ export interface SqlitePreludeOptions {
    * application layer has to implement retry itself.
    */
   busyTimeoutMs?: number
+
+  /**
+   * Threshold (in WAL frames / SQLite pages) at which the write path
+   * triggers an auto-checkpoint. SQLite's default is 1000. We raise it
+   * to 10000 so checkpoint pauses fire roughly 10× less often, reducing
+   * the probability of any given request hitting a checkpoint stall.
+   *
+   * Trade-off: the WAL file grows larger between checkpoints
+   * (~40 MB at 4 KB page size) — harmless for performance, matters only
+   * for free disk calculation. See design/sqlite-performance.md §1.
+   *
+   * Only meaningful after journal_mode=WAL is active; the prelude emits
+   * this PRAGMA immediately after the WAL statement.
+   */
+  walAutocheckpointPages?: number
 }
 
 export const PRELUDE_DEFAULTS = Object.freeze({
   cacheSizeKb: 64_000,
   mmapSizeBytes: 268_435_456, // 256 MB
   busyTimeoutMs: 5000,
+  walAutocheckpointPages: 10_000,
 })
 
 /**
@@ -56,9 +72,12 @@ export function preludeStatements(opts: SqlitePreludeOptions = {}): string[] {
   const cacheSize = -(opts.cacheSizeKb ?? PRELUDE_DEFAULTS.cacheSizeKb)
   const mmapSize = opts.mmapSizeBytes ?? PRELUDE_DEFAULTS.mmapSizeBytes
   const busyTimeout = opts.busyTimeoutMs ?? PRELUDE_DEFAULTS.busyTimeoutMs
+  const walCheckpoint =
+    opts.walAutocheckpointPages ?? PRELUDE_DEFAULTS.walAutocheckpointPages
 
   return [
     'PRAGMA journal_mode = WAL',
+    `PRAGMA wal_autocheckpoint = ${walCheckpoint}`,
     'PRAGMA synchronous = NORMAL',
     `PRAGMA busy_timeout = ${busyTimeout}`,
     `PRAGMA cache_size = ${cacheSize}`,
@@ -81,6 +100,7 @@ export function preludeStatements(opts: SqlitePreludeOptions = {}): string[] {
  */
 export interface PreludeState {
   journal_mode: string
+  wal_autocheckpoint: number
   synchronous: number
   busy_timeout: number
   cache_size: number
@@ -103,6 +123,7 @@ export interface PragmaReader {
 export function readPreludeState(reader: PragmaReader): PreludeState {
   return {
     journal_mode: String(reader.read('journal_mode')).toLowerCase(),
+    wal_autocheckpoint: numberOrZero(reader.read('wal_autocheckpoint')),
     synchronous: Number(reader.read('synchronous')),
     busy_timeout: Number(reader.read('busy_timeout')),
     cache_size: Number(reader.read('cache_size')),
@@ -150,6 +171,17 @@ export function assertPreludeApplied(
   const validJournal = opts.allowMemoryJournal ? ['wal', 'memory'] : ['wal']
   if (!validJournal.includes(state.journal_mode)) {
     problems.push(`journal_mode=${state.journal_mode}, want ${validJournal.join('|')}`)
+  }
+
+  const expectedCheckpoint =
+    opts.walAutocheckpointPages ?? PRELUDE_DEFAULTS.walAutocheckpointPages
+  // wal_autocheckpoint reads back as 0 on :memory: DBs (no WAL file);
+  // skip the check there for the same reason we skip mmap.
+  const skipCheckpoint = opts.allowMemoryJournal === true && state.journal_mode === 'memory'
+  if (!skipCheckpoint && state.wal_autocheckpoint !== expectedCheckpoint) {
+    problems.push(
+      `wal_autocheckpoint=${state.wal_autocheckpoint}, want ${expectedCheckpoint}`,
+    )
   }
 
   if (state.synchronous !== 1) {

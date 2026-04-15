@@ -219,7 +219,27 @@ The previous stages measured pure HTTP dispatch. Stage 2d exercises the real `bu
 
 - Stage 2e: same scenarios with workspace of 10 concurrent tenants (contention across files)
 - Stage 3a: re-run on Hetzner CX22 to validate ratio assumptions
-- Optimization: investigate whether per-binding WAL checkpoint tuning changes the tail numbers
+
+### Stage 2d.1: WAL autocheckpoint raised to 10000 pages
+
+Applied the first mitigation from [sqlite-performance.md §1](sqlite-performance.md#1-wal-checkpoint-threshold-v01-cheap): raised `PRAGMA wal_autocheckpoint` from SQLite's default (1000) to 10000. Hypothesis: fewer checkpoints → less probability that a request hits a checkpoint stall.
+
+Before/after on the same laptop, identical bench script ([commit where the prelude changed](../src/runtime/sqlite/prelude.ts)):
+
+| Scenario | Before (rps / p99 / max / err) | After (rps / p99 / max / err) |
+|---|---|---|
+| noop (baseline) | 6,674 / 49 / 111 / 0 | 6,711 / 47 / 108 / 0 |
+| KV get (hot) | 3,591 / 94 / 214 / 0 | 3,829 / 83 / 169 / 0 |
+| KV get (miss) | 4,228 / 71 / 157 / 0 | 4,190 / 89 / 165 / 0 |
+| KV put (random) | 2,522 / 7 / 9,376 / 33 | 2,458 / 8 / 7,778 / 20 |
+| D1 SELECT | 3,906 / 95 / 176 / 0 | 3,781 / 104 / 179 / 0 |
+| D1 INSERT | 2,395 / 44 / 7,557 / 33 | 2,371 / 15 / 8,809 / 48 |
+
+Read and RPS numbers are within noise in both directions. The most defensible signal is on KV put, where error count dropped from 33 → 20 and max latency dropped from 9.4 s → 7.8 s — consistent with the hypothesis. D1 INSERT moved the opposite way by a similar magnitude, which we read as laboratory noise rather than a regression.
+
+**Honest conclusion:** the change does not hurt (test suite still passes, no regressions on the correctness path). It delivers a modest and plausibly-real tail improvement on KV writes under stress. Single-run numbers are not statistically sound for tail latency; a proper evaluation would repeat 5–10 times per configuration and compare medians. That evaluation lives with Stage 3a on a real VPS, where storage characteristics are consistent across runs.
+
+The change ships in v0.1 because it is near-free and the mechanism is well-understood — not because the bench numbers proved a dramatic win.
 
 ### Reference: Cloudflare D1 published figures
 

@@ -29,6 +29,22 @@ describe('preludeStatements', () => {
     )
   })
 
+  it('uses default wal_autocheckpoint of 10000 pages', () => {
+    expect(preludeStatements()).toContain('PRAGMA wal_autocheckpoint = 10000')
+  })
+
+  it('accepts custom walAutocheckpointPages', () => {
+    expect(preludeStatements({ walAutocheckpointPages: 5000 })).toContain(
+      'PRAGMA wal_autocheckpoint = 5000',
+    )
+  })
+
+  it('emits wal_autocheckpoint immediately after journal_mode', () => {
+    const stmts = preludeStatements()
+    const walIdx = stmts.findIndex((s) => s === 'PRAGMA journal_mode = WAL')
+    expect(stmts[walIdx + 1]).toMatch(/^PRAGMA wal_autocheckpoint = /)
+  })
+
   it('encodes cache_size in negative KB form (default 64000 -> -64000)', () => {
     expect(preludeStatements()).toContain('PRAGMA cache_size = -64000')
   })
@@ -53,11 +69,12 @@ describe('preludeStatements', () => {
     expect(stmts).toContain('PRAGMA foreign_keys = ON')
   })
 
-  it('returns a stable order: WAL → sync → busy → cache → mmap → temp → fk', () => {
+  it('returns a stable order: WAL → checkpoint → sync → busy → cache → mmap → temp → fk', () => {
     const stmts = preludeStatements()
     const subjects = stmts.map((s) => s.replace(/^PRAGMA\s+(\w+).*/, '$1'))
     expect(subjects).toEqual([
       'journal_mode',
+      'wal_autocheckpoint',
       'synchronous',
       'busy_timeout',
       'cache_size',
@@ -83,6 +100,7 @@ describe('readPreludeState', () => {
     const state = readPreludeState(
       fakeReader({
         journal_mode: 'WAL',
+        wal_autocheckpoint: 10000,
         synchronous: 1,
         busy_timeout: 5000,
         cache_size: -64000,
@@ -98,6 +116,7 @@ describe('readPreludeState', () => {
     const state = readPreludeState(
       fakeReader({
         journal_mode: 'wal',
+        wal_autocheckpoint: '10000',
         synchronous: '1',
         busy_timeout: '5000',
         cache_size: '-64000',
@@ -108,12 +127,14 @@ describe('readPreludeState', () => {
     )
     expect(typeof state.synchronous).toBe('number')
     expect(typeof state.busy_timeout).toBe('number')
+    expect(typeof state.wal_autocheckpoint).toBe('number')
   })
 })
 
 describe('assertPreludeApplied', () => {
   const happy: PreludeState = {
     journal_mode: 'wal',
+    wal_autocheckpoint: 10000,
     synchronous: 1,
     busy_timeout: 5000,
     cache_size: -64000,
@@ -180,6 +201,7 @@ describe('assertPreludeApplied', () => {
   it('reports all problems in one error, not just the first', () => {
     const bad: PreludeState = {
       journal_mode: 'delete',
+      wal_autocheckpoint: 0,
       synchronous: 0,
       busy_timeout: 0,
       cache_size: 0,
@@ -193,7 +215,7 @@ describe('assertPreludeApplied', () => {
     } catch (err) {
       expect(err).toBeInstanceOf(PreludeAssertionError)
       const problems = (err as PreludeAssertionError).problems
-      expect(problems.length).toBe(7)
+      expect(problems.length).toBe(8)
     }
   })
 })
