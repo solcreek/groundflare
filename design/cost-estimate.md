@@ -248,7 +248,27 @@ Misc:
 
 ## Pricing data
 
-`prices.json` shipped with CLI, structure:
+### Strategy: hybrid (baked fallback + API refresh)
+
+Ship a `prices.json` in the package so `estimate` works offline and from a cold install. On each invocation, try to refresh from each provider's live API and cache to `~/.cache/groundflare/prices.json` (stamped with fetched-at). If the fetch fails or auth isn't configured, fall back to the baked table and warn with the age.
+
+This keeps the UX zero-setup while avoiding the long-term drift of a quarterly-refresh-only file.
+
+### Provider pricing APIs — audit
+
+Quick read of what each provider actually exposes. Auth requirements matter — an endpoint that needs a token we don't have isn't useful for a freshly-installed CLI user who hasn't run `groundflare secret set provider.X.token` yet.
+
+| Provider | Endpoint | Auth | Granularity | Gotchas |
+|---|---|---|---|---|
+| **Hetzner** | `GET /v1/pricing` | Bearer token (any project token works) | Every server type, hourly + monthly, EUR gross/net, per-location | Cleanest of the bunch — one call, one response, covers all SKUs. Needs a token though, so we can only refresh after the user has configured Hetzner. |
+| **DigitalOcean** | `GET /v2/sizes` | Bearer PAT | Each size carries `price_monthly` + `price_hourly` (USD) | No dedicated `/pricing` — pricing is embedded in the catalog. DO's own docs warn "prices may change"; no formal SLA on the field. |
+| **Linode** | `GET /v4/linode/types` | Bearer PAT | `price.monthly`/`price.hourly`, `region_prices[]` for per-region overrides | Well-shaped, region-aware. Public docs are explicit these are display prices. |
+| **Vultr** | `GET /v2/plans` | API key | `monthly_cost`, `hourly_cost` per plan | No region-specific pricing in response — Vultr charges the same everywhere per their model. |
+| **Contabo** | — | — | Not in their API | Contabo's public API doesn't expose pricing. Would have to scrape the pricing page or hand-maintain. |
+
+All four API-exposing providers gate the endpoint behind their standard customer token. That's fine for returning users, but pre-onboarding we have no token to hit them with — the baked table covers that case.
+
+### `prices.json` structure
 
 ```json
 {
@@ -270,7 +290,25 @@ Misc:
 }
 ```
 
-CI task updates quarterly; stale prices warn user with timestamp in output.
+### Refresh flow
+
+```
+on `groundflare estimate`:
+  1. load baked prices.json
+  2. for each provider in (user's selection):
+       if token configured:
+         try fetch live pricing → merge into working copy, cache to disk
+       else:
+         use baked values, set `source: "baked"` in breakdown
+  3. render estimate with `fetched_at` timestamps per provider
+  4. if any source older than 90 days: print warning with provider + age
+```
+
+Cloudflare prices stay baked only — CF has no customer-facing pricing API. We revisit if that ever changes.
+
+### Keeping the baked table honest
+
+A CI workflow (monthly cron) runs against the providers' pricing APIs with a CI-only token and opens a PR updating `prices.json` if anything drifts by more than 1%. Humans review before merge — prevents a silent price change from shipping without anyone noticing.
 
 ## Roadmap
 
