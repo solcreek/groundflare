@@ -43,7 +43,17 @@ export function workspaceWorkerFromConfig(
     entryPath: `workers/${wrangler.name}/code/current/${entryName}`,
   }
 
-  if (groundflare.domain !== undefined) worker.domain = groundflare.domain
+  // Domain resolution: [groundflare].domain takes precedence; fall back
+  // to the first custom_domain route from wrangler's [[routes]] section.
+  if (groundflare.domain !== undefined) {
+    worker.domain = groundflare.domain
+  } else if (wrangler.routes !== undefined) {
+    const customDomain = wrangler.routes.find(
+      (r): r is { pattern: string; custom_domain?: boolean } =>
+        typeof r === 'object' && r.custom_domain === true,
+    )
+    if (customDomain !== undefined) worker.domain = customDomain.pattern
+  }
   if (wrangler.compatibility_date !== undefined) {
     worker.compatibilityDate = wrangler.compatibility_date
   }

@@ -47,6 +47,17 @@ export interface WranglerTriggers {
   crons?: string[]
 }
 
+export interface WranglerRoute {
+  /** Domain or path pattern, e.g. "shop.example.com" or "example.com/*". */
+  pattern: string
+  /** When true, this is a Custom Domain (all paths → Worker). */
+  custom_domain?: boolean
+  /** Zone ID (only for zone-scoped routes, ignored by groundflare). */
+  zone_id?: string
+  /** Zone name (only for zone-scoped routes, ignored by groundflare). */
+  zone_name?: string
+}
+
 export interface WranglerWorkerLoader {
   binding: string
   /** emdash calls this field `name` in its config; we accept both. */
@@ -77,6 +88,15 @@ export interface WranglerConfig {
   main?: string
   compatibility_date?: string
   compatibility_flags?: string[]
+  /**
+   * Routes including Custom Domains. groundflare reads entries where
+   * `custom_domain: true` and uses their `pattern` as the tenant's
+   * domain — same semantics as `[groundflare].domain` but using
+   * wrangler's native syntax so existing configs work unchanged.
+   *
+   * Accepts both array-of-objects (`[[routes]]`) and string shorthand.
+   */
+  routes?: Array<WranglerRoute | string>
   build?: WranglerBuild
   assets?: WranglerAssets
   vars?: Record<string, VarValue>

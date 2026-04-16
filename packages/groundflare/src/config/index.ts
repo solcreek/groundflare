@@ -42,6 +42,7 @@ export type {
   WranglerBuild,
   WranglerConfig,
   WranglerD1Database,
+  WranglerRoute,
   WranglerDOBinding,
   WranglerDurableObjects,
   WranglerKVNamespace,

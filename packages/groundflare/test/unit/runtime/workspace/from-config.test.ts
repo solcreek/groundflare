@@ -26,6 +26,56 @@ describe('workspaceWorkerFromConfig', () => {
     expect(w.domain).toBe('api.example.com')
   })
 
+  it('reads domain from routes with custom_domain: true', () => {
+    const w = workspaceWorkerFromConfig(
+      minimalWrangler({
+        routes: [
+          { pattern: 'shop.example.com', custom_domain: true },
+        ],
+      }),
+      {},
+    )
+    expect(w.domain).toBe('shop.example.com')
+  })
+
+  it('[groundflare].domain takes precedence over routes', () => {
+    const w = workspaceWorkerFromConfig(
+      minimalWrangler({
+        routes: [
+          { pattern: 'shop.example.com', custom_domain: true },
+        ],
+      }),
+      { domain: 'override.example.com' },
+    )
+    expect(w.domain).toBe('override.example.com')
+  })
+
+  it('ignores routes without custom_domain: true', () => {
+    const w = workspaceWorkerFromConfig(
+      minimalWrangler({
+        routes: [
+          { pattern: 'example.com/*' },
+          'other.example.com/*',
+        ],
+      }),
+      {},
+    )
+    expect(w.domain).toBeUndefined()
+  })
+
+  it('picks the first custom_domain route when multiple exist', () => {
+    const w = workspaceWorkerFromConfig(
+      minimalWrangler({
+        routes: [
+          { pattern: 'first.example.com', custom_domain: true },
+          { pattern: 'second.example.com', custom_domain: true },
+        ],
+      }),
+      {},
+    )
+    expect(w.domain).toBe('first.example.com')
+  })
+
   it('passes through compatibility_date + flags', () => {
     const w = workspaceWorkerFromConfig(
       minimalWrangler({
