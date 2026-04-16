@@ -37,6 +37,7 @@ import { renderCapnpConfig } from '../runtime/workerd/capnp/index.js'
 import { OpenSshClient, type SshClient } from '../ssh/index.js'
 
 import { bundleWorker } from './bundle.js'
+import { detectBuildCommand } from './detect-pm.js'
 import { stageBunArtifact } from './bun-track.js'
 import {
   DeployError,
@@ -78,16 +79,26 @@ export async function runDeploy(opts: RunDeployOptions): Promise<DeployResult> {
     )
   }
 
-  // If [build].command is set, run it first (like wrangler deploy does).
-  // The build command produces output at the `main` path; esbuild then
-  // re-bundles it into a single ES module. This handles frameworks like
-  // Astro that produce multi-file output (dist/_worker.js/ with chunks/).
-  const hasCustomBuild = wrangler.build?.command !== undefined && wrangler.build.command.length > 0
+  // Resolve the build command: explicit [build].command takes precedence;
+  // if absent AND `main` points to a path that doesn't exist yet (i.e.
+  // a build output), auto-detect the package manager and generate one.
+  let buildCmd = wrangler.build?.command
+  if (buildCmd === undefined || buildCmd.length === 0) {
+    const entryExists = await import('node:fs').then(
+      (fs) => fs.existsSync(resolvePath(cwd, wrangler.main!)),
+    )
+    if (!entryExists) {
+      const detected = detectBuildCommand(cwd)
+      if (detected?.hasBuildScript) {
+        buildCmd = detected.command
+        log('info', `auto-detected ${detected.pm} project with build script`)
+      }
+    }
+  }
 
-  if (hasCustomBuild) {
-    const buildCmd = wrangler.build!.command!
-    const buildCwd = wrangler.build!.cwd
-      ? resolvePath(cwd, wrangler.build!.cwd)
+  if (buildCmd !== undefined && buildCmd.length > 0) {
+    const buildCwd = wrangler.build?.cwd
+      ? resolvePath(cwd, wrangler.build.cwd)
       : cwd
     log('info', `running build command: ${buildCmd}`)
     try {
