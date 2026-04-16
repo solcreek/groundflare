@@ -62,7 +62,9 @@ export class OpenSshClient implements SshClient {
   }
 
   async ping(): Promise<void> {
-    const result = await this.run('true', { timeoutMs: 5_000 })
+    // 30s: on fresh VPS running cloud-init, CPU can be saturated by apt
+    // upgrades — SSH handshake + key exchange + auth takes >5s under load.
+    const result = await this.run('true', { timeoutMs: 30_000 })
     if (result.exitCode !== 0) {
       throw new SshError(
         `ssh ping to ${this.target.host} failed (exit ${result.exitCode}): ${result.stderr || result.stdout}`,

@@ -10,10 +10,10 @@ describe('generateCloudInit — header and basic shape', () => {
     expect(out.split('\n')[0]).toBe('#cloud-config')
   })
 
-  it('enables package_update and package_upgrade', () => {
+  it('enables package_update but skips package_upgrade (handled by unattended-upgrades)', () => {
     const out = generateCloudInit({ sshAuthorizedKeys: [SAMPLE_KEY] })
     expect(out).toContain('package_update: true')
-    expect(out).toContain('package_upgrade: true')
+    expect(out).not.toContain('package_upgrade')
   })
 
   it('always ends with a newline', () => {

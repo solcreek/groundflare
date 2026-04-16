@@ -122,7 +122,9 @@ export function generateCloudInit(opts: CloudInitOptions): string {
 
   const lines: string[] = ['#cloud-config']
   lines.push('package_update: true')
-  lines.push('package_upgrade: true')
+  // Skip package_upgrade — it adds 3-8 minutes to first boot downloading
+  // hundreds of security patches. unattended-upgrades (installed below)
+  // handles this in the background after the VPS is ready.
   lines.push('packages:')
   for (const pkg of packages) {
     lines.push(`  - ${pkg}`)
