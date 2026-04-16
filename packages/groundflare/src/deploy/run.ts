@@ -79,9 +79,10 @@ export async function runDeploy(opts: RunDeployOptions): Promise<DeployResult> {
   }
 
   // If [build].command is set, run it first (like wrangler deploy does).
-  // Then read the built output from `main` instead of esbuild-bundling.
+  // The build command produces output at the `main` path; esbuild then
+  // re-bundles it into a single ES module. This handles frameworks like
+  // Astro that produce multi-file output (dist/_worker.js/ with chunks/).
   const hasCustomBuild = wrangler.build?.command !== undefined && wrangler.build.command.length > 0
-  let bundle: { code: string; bytes: number; warnings: readonly string[] }
 
   if (hasCustomBuild) {
     const buildCmd = wrangler.build!.command!
@@ -106,28 +107,14 @@ export async function runDeploy(opts: RunDeployOptions): Promise<DeployResult> {
         { cause: err },
       )
     }
-    const builtPath = resolvePath(cwd, wrangler.main)
-    log('info', `reading pre-built output from ${builtPath}`)
-    let code: string
-    try {
-      code = await readFile(builtPath, 'utf-8')
-    } catch (err) {
-      throw new DeployError(
-        `build command ran but \`main\` output not found at ${builtPath}`,
-        'bundle_failed',
-        { cause: err },
-      )
-    }
-    bundle = { code, bytes: Buffer.byteLength(code, 'utf-8'), warnings: [] }
-    log('info', `pre-built bundle: ${bundle.bytes} bytes`)
-  } else {
-    const entry = resolvePath(cwd, wrangler.main)
-    log('info', `bundling ${entry}`)
-    const result = await bundleWorker({ entry })
-    bundle = result
-    log('info', `bundle: ${bundle.bytes} bytes, ${bundle.warnings.length} warnings`)
-    for (const w of bundle.warnings) log('warn', `esbuild: ${w}`)
+    log('info', 'build complete; re-bundling output via esbuild')
   }
+
+  const entry = resolvePath(cwd, wrangler.main)
+  log('info', `bundling ${entry}`)
+  const bundle = await bundleWorker({ entry })
+  log('info', `bundle: ${bundle.bytes} bytes, ${bundle.warnings.length} warnings`)
+  for (const w of bundle.warnings) log('warn', `esbuild: ${w}`)
 
   // ─── 2b. Unsupported binding warnings ──────────────────────────
   const unsupported = detectUnsupportedBindings(wrangler)
