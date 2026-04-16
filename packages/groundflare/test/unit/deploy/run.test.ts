@@ -344,14 +344,15 @@ describe('runDeploy', () => {
         `compatibility_date = "2026-04-01"`,
         ``,
         `[build]`,
-        `command = "mkdir -p dist && echo 'export default { async fetch() { return new Response(\\\"built\\\") } }' > dist/worker.js"`,
+        `command = "mkdir -p dist && echo 'export default { async fetch() { return new Response(\\"built\\") } }' > dist/worker.js"`,
         ``,
-        `[groundflare]`,
-        `domain = "app.example.com"`,
+        `[[routes]]`,
+        `pattern = "app.example.com"`,
+        `custom_domain = true`,
       ].join('\n'),
       'utf-8',
     )
-    const { client, runCalls } = mockSsh({
+    const { client } = mockSsh({
       runs: [
         { exitCode: 0 }, // ensureRemoteDir
         { exitCode: 0 }, // install bundle

@@ -131,7 +131,6 @@ export function resolveLocalWorkerdVersion(): string {
   const require = createRequire(import.meta.url)
   try {
     const pkgPath = require.resolve('workerd/package.json')
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
     const pkg = require(pkgPath) as { version: string }
     return pkg.version
   } catch {
