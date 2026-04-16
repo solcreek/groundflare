@@ -24,35 +24,19 @@ import {
   type VPS,
   type VPSStatus,
 } from './types.js'
+import { HttpProvider, type HttpProviderOptions } from './http-base.js'
 
 const DO_API_BASE = 'https://api.digitalocean.com/v2'
 const DEFAULT_IMAGE = 'ubuntu-24-04-x64'
-const DEFAULT_TIMEOUT_MS = 30_000
 
-export interface DigitalOceanClientOptions {
-  readonly token: string
-  readonly baseUrl?: string
-  readonly fetchImpl?: typeof fetch
-  readonly timeoutMs?: number
-}
+export type DigitalOceanClientOptions = HttpProviderOptions
 
-export class DigitalOceanProvider implements Provider {
+export class DigitalOceanProvider extends HttpProvider implements Provider {
   readonly name = 'digitalocean' as const
   readonly displayName = 'DigitalOcean'
 
-  private readonly token: string
-  private readonly baseUrl: string
-  private readonly fetchImpl: typeof fetch
-  private readonly timeoutMs: number
-
   constructor(opts: DigitalOceanClientOptions) {
-    if (!opts.token || opts.token.length === 0) {
-      throw new TypeError('DigitalOceanProvider: token is required')
-    }
-    this.token = opts.token
-    this.baseUrl = opts.baseUrl ?? DO_API_BASE
-    this.fetchImpl = opts.fetchImpl ?? fetch
-    this.timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS
+    super(opts, { brand: 'DigitalOcean', defaultBaseUrl: DO_API_BASE })
   }
 
   // ─── Auth ─────────────────────────────────────────────────────
@@ -171,89 +155,15 @@ export class DigitalOceanProvider implements Provider {
     return DO_PRICE_TABLE.get(opts.size) ?? 0
   }
 
-  // ─── Internal HTTP transport ─────────────────────────────────
-
-  private async request<T = unknown>(
-    method: string,
-    path: string,
-    body?: unknown,
-  ): Promise<T> {
-    const url = `${this.baseUrl}${path}`
-    const controller = new AbortController()
-    const timer = setTimeout(() => controller.abort(), this.timeoutMs)
-
-    const headers: Record<string, string> = {
-      authorization: `Bearer ${this.token}`,
-      accept: 'application/json',
+  // ─── Error translation ───────────────────────────────────────
+  //
+  // DO returns { id, message, ... } on failed requests (NOT nested in
+  // an `error` object the way Hetzner does).
+  protected parseError(body: unknown): { code: string; message: string } {
+    return {
+      code: pickErrorCode(body),
+      message: pickErrorMessage(body),
     }
-    let bodyText: string | undefined
-    if (body !== undefined) {
-      headers['content-type'] = 'application/json'
-      bodyText = JSON.stringify(body)
-    }
-
-    let response: Response
-    try {
-      response = await this.fetchImpl(url, {
-        method,
-        headers,
-        body: bodyText,
-        signal: controller.signal,
-      })
-    } catch (err) {
-      clearTimeout(timer)
-      if (err instanceof Error && err.name === 'AbortError') {
-        throw new ProviderError(
-          `DigitalOcean ${method} ${path} timed out after ${this.timeoutMs}ms`,
-          'timeout',
-          undefined,
-          true,
-          { cause: err },
-        )
-      }
-      throw new ProviderError(
-        `DigitalOcean ${method} ${path}: network error`,
-        'network',
-        undefined,
-        true,
-        { cause: err },
-      )
-    } finally {
-      clearTimeout(timer)
-    }
-
-    if (response.status === 204) {
-      return undefined as T
-    }
-
-    const text = await response.text()
-    let json: unknown
-    if (text.length > 0) {
-      try {
-        json = JSON.parse(text)
-      } catch (err) {
-        throw new ProviderError(
-          `DigitalOcean ${method} ${path}: malformed response body`,
-          'bad_response',
-          response.status,
-          false,
-          { cause: err },
-        )
-      }
-    }
-
-    if (response.status >= 200 && response.status < 300) {
-      return json as T
-    }
-
-    const code = pickErrorCode(json)
-    const message = pickErrorMessage(json)
-    throw new ProviderError(
-      `DigitalOcean ${method} ${path}: ${response.status} ${code} — ${message}`,
-      code,
-      response.status,
-      isRetryableStatus(response.status),
-    )
   }
 }
 
@@ -393,10 +303,6 @@ function pickErrorMessage(body: unknown): string {
     return (body as { message: string }).message
   }
   return 'no message'
-}
-
-function isRetryableStatus(status: number): boolean {
-  return status === 429 || (status >= 500 && status < 600)
 }
 
 // ─── Static price table (USD cents/month) ─────────────────────────

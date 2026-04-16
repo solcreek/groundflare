@@ -36,38 +36,19 @@ import {
   type VPS,
   type VPSStatus,
 } from './types.js'
+import { HttpProvider, type HttpProviderOptions } from './http-base.js'
 
 const HETZNER_API_BASE = 'https://api.hetzner.cloud/v1'
 const DEFAULT_IMAGE = 'ubuntu-24.04'
-const DEFAULT_TIMEOUT_MS = 30_000
 
-export interface HetznerClientOptions {
-  readonly token: string
-  /** Override base URL (for the test suite — no production reason to set this). */
-  readonly baseUrl?: string
-  /** Inject a fetch implementation; defaults to globalThis.fetch. */
-  readonly fetchImpl?: typeof fetch
-  /** Per-request timeout in milliseconds. Default 30s. */
-  readonly timeoutMs?: number
-}
+export type HetznerClientOptions = HttpProviderOptions
 
-export class HetznerProvider implements Provider {
+export class HetznerProvider extends HttpProvider implements Provider {
   readonly name = 'hetzner' as const
   readonly displayName = 'Hetzner Cloud'
 
-  private readonly token: string
-  private readonly baseUrl: string
-  private readonly fetchImpl: typeof fetch
-  private readonly timeoutMs: number
-
   constructor(opts: HetznerClientOptions) {
-    if (!opts.token || opts.token.length === 0) {
-      throw new TypeError('HetznerProvider: token is required')
-    }
-    this.token = opts.token
-    this.baseUrl = opts.baseUrl ?? HETZNER_API_BASE
-    this.fetchImpl = opts.fetchImpl ?? fetch
-    this.timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS
+    super(opts, { brand: 'Hetzner', defaultBaseUrl: HETZNER_API_BASE })
   }
 
   // ─── Auth ─────────────────────────────────────────────────────
@@ -184,91 +165,14 @@ export class HetznerProvider implements Provider {
     return cents ?? 0
   }
 
-  // ─── Internal HTTP transport ─────────────────────────────────
-
-  private async request<T = unknown>(
-    method: string,
-    path: string,
-    body?: unknown,
-  ): Promise<T> {
-    const url = `${this.baseUrl}${path}`
-    const controller = new AbortController()
-    const timer = setTimeout(() => controller.abort(), this.timeoutMs)
-
-    const headers: Record<string, string> = {
-      authorization: `Bearer ${this.token}`,
-      accept: 'application/json',
+  // ─── Error translation ───────────────────────────────────────
+  //
+  // Hetzner returns { error: { code, message, ... } } on failed requests.
+  protected parseError(body: unknown): { code: string; message: string } {
+    return {
+      code: pickErrorCode(body),
+      message: pickErrorMessage(body),
     }
-    let bodyText: string | undefined
-    if (body !== undefined) {
-      headers['content-type'] = 'application/json'
-      bodyText = JSON.stringify(body)
-    }
-
-    let response: Response
-    try {
-      response = await this.fetchImpl(url, {
-        method,
-        headers,
-        body: bodyText,
-        signal: controller.signal,
-      })
-    } catch (err) {
-      clearTimeout(timer)
-      if (err instanceof Error && err.name === 'AbortError') {
-        throw new ProviderError(
-          `Hetzner ${method} ${path} timed out after ${this.timeoutMs}ms`,
-          'timeout',
-          undefined,
-          true,
-          { cause: err },
-        )
-      }
-      throw new ProviderError(
-        `Hetzner ${method} ${path}: network error`,
-        'network',
-        undefined,
-        true,
-        { cause: err },
-      )
-    } finally {
-      clearTimeout(timer)
-    }
-
-    if (response.status === 204) {
-      // No content, success.
-      return undefined as T
-    }
-
-    const text = await response.text()
-    let json: unknown
-    if (text.length > 0) {
-      try {
-        json = JSON.parse(text)
-      } catch (err) {
-        throw new ProviderError(
-          `Hetzner ${method} ${path}: malformed response body`,
-          'bad_response',
-          response.status,
-          false,
-          { cause: err },
-        )
-      }
-    }
-
-    if (response.status >= 200 && response.status < 300) {
-      return json as T
-    }
-
-    // Error path. Hetzner returns { error: { code, message, ... } }.
-    const code = pickErrorCode(json)
-    const message = pickErrorMessage(json)
-    throw new ProviderError(
-      `Hetzner ${method} ${path}: ${response.status} ${code} — ${message}`,
-      code,
-      response.status,
-      isRetryableStatus(response.status),
-    )
   }
 }
 
@@ -413,12 +317,6 @@ function pickErrorMessage(body: unknown): string {
     return body.error.message
   }
   return 'no message'
-}
-
-function isRetryableStatus(status: number): boolean {
-  // 5xx and 429 are retryable; 4xx (other than 429) signals the caller
-  // needs to fix the request.
-  return status === 429 || (status >= 500 && status < 600)
 }
 
 // ─── Account synthesis ─────────────────────────────────────────────
