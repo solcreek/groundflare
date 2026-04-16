@@ -9,7 +9,7 @@
 
 Run any Cloudflare Worker on your own hardware. Same code, your machine, no vendor lock-in.
 
-**Status** — v0.3 is the current release. Two runtime tracks from one CLI: **Mirror** (workerd, zero source change, bug-for-bug CF semantics) and **Bun** (`Bun.serve` + `bun:sqlite` KV/D1 + S3-compat R2, 7K–9K rps/binding on a $6 VPS). Three-track conformance spec, OIDC-published with SLSA provenance. Providers: Hetzner + DigitalOcean.
+**Status** — v0.4 is the current release. Two runtime tracks from one CLI: **Mirror** (workerd, zero source change, bug-for-bug CF semantics) and **Bun** (`Bun.serve` + `bun:sqlite` KV/D1 + S3-compat R2, 7K–9K rps/binding on a $6 VPS). v0.4 adds the DigitalOcean provider (live-validated end-to-end), framework support via wrangler-native `[build]` + `[assets]` + `[[routes]] custom_domain`, auto-detected package manager, and the `WorkerLoader` binding for plugin sandboxing — apps like emdash CMS that use CF's "Workers for Platforms" pattern run unmodified. Providers: Hetzner + DigitalOcean. OIDC-published with SLSA provenance.
 
 ## Quick start
 
