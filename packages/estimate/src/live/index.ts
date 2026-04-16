@@ -6,19 +6,20 @@
  */
 
 import type { SecretReader } from '../secrets.js'
-import type { HetznerTier, PriceSource, Prices } from '../types.js'
+import type { PriceSource, Prices, VPSTierSpec } from '../types.js'
 
+import { fetchDOPricing, DOPricingError } from './digitalocean.js'
 import { fetchHetznerPricing, HetznerPricingError } from './hetzner.js'
 
+export { fetchDOPricing, DOPricingError } from './digitalocean.js'
+export type { FetchDOPricingOptions, DOLivePrices } from './digitalocean.js'
 export { fetchHetznerPricing, HetznerPricingError } from './hetzner.js'
 export type { FetchHetznerOptions, HetznerLivePrices } from './hetzner.js'
 
 export interface RefreshPricesOptions {
   readonly baked: Prices
   readonly secrets: SecretReader
-  /** Skip live fetch entirely (e.g. CLI --no-live flag). */
   readonly disableLive?: boolean
-  /** For tests. Passed through to each provider fetcher. */
   readonly fetchImpl?: typeof fetch
 }
 
@@ -35,60 +36,88 @@ export async function refreshPrices(
 
   if (opts.disableLive === true) {
     sources.push({ provider: 'hetzner', kind: 'baked', reason: 'live disabled' })
+    sources.push({ provider: 'digitalocean', kind: 'baked', reason: 'live disabled' })
     return { prices, sources }
   }
 
+  // ─── Hetzner ────────────────────────────────────────────────
   const hetznerToken = await opts.secrets.get('provider.hetzner.token')
   if (hetznerToken === null || hetznerToken.length === 0) {
     sources.push({ provider: 'hetzner', kind: 'baked', reason: 'no token configured' })
-    return { prices, sources }
+  } else {
+    try {
+      const live = await fetchHetznerPricing({
+        token: hetznerToken,
+        ...(opts.fetchImpl !== undefined ? { fetchImpl: opts.fetchImpl } : {}),
+      })
+      prices = mergeLiveTiers(prices, 'hetzner', live.tiers)
+      if (live.egressOverageUsdPerTb > 0) {
+        prices = {
+          ...prices,
+          extras: { ...prices.extras, hetzner_egress_overage_per_tb: live.egressOverageUsdPerTb },
+        }
+      }
+      sources.push({ provider: 'hetzner', kind: 'live', fetchedAt: live.fetchedAt })
+    } catch (err) {
+      const reason =
+        err instanceof HetznerPricingError
+          ? `${err.code}: ${err.message}`
+          : err instanceof Error
+            ? err.message
+            : String(err)
+      sources.push({ provider: 'hetzner', kind: 'baked', reason })
+    }
   }
 
-  try {
-    const live = await fetchHetznerPricing({
-      token: hetznerToken,
-      ...(opts.fetchImpl !== undefined ? { fetchImpl: opts.fetchImpl } : {}),
-    })
-    prices = mergeHetznerLive(prices, live.tiers, live.egressOverageUsdPerTb)
-    sources.push({
-      provider: 'hetzner',
-      kind: 'live',
-      fetchedAt: live.fetchedAt,
-    })
-  } catch (err) {
-    const reason =
-      err instanceof HetznerPricingError
-        ? `${err.code}: ${err.message}`
-        : err instanceof Error
-          ? err.message
-          : String(err)
-    sources.push({ provider: 'hetzner', kind: 'baked', reason })
+  // ─── DigitalOcean ───────────────────────────────────────────
+  const doToken = await opts.secrets.get('provider.digitalocean.token')
+  if (doToken === null || doToken.length === 0) {
+    sources.push({ provider: 'digitalocean', kind: 'baked', reason: 'no token configured' })
+  } else {
+    try {
+      const live = await fetchDOPricing({
+        token: doToken,
+        ...(opts.fetchImpl !== undefined ? { fetchImpl: opts.fetchImpl } : {}),
+      })
+      prices = mergeLiveTiers(prices, 'digitalocean', live.tiers)
+      sources.push({ provider: 'digitalocean', kind: 'live', fetchedAt: live.fetchedAt })
+    } catch (err) {
+      const reason =
+        err instanceof DOPricingError
+          ? `${err.code}: ${err.message}`
+          : err instanceof Error
+            ? err.message
+            : String(err)
+      sources.push({ provider: 'digitalocean', kind: 'baked', reason })
+    }
   }
 
   return { prices, sources }
 }
 
-function mergeHetznerLive(
-  baked: Prices,
-  liveTiers: Partial<Record<HetznerTier, { price: number; traffic_tb: number }>>,
-  egressUsdPerTb: number,
+function mergeLiveTiers(
+  prices: Prices,
+  provider: 'hetzner' | 'digitalocean',
+  liveTiers: Partial<Record<string, VPSTierSpec>>,
 ): Prices {
-  const hetzner = { ...baked.hetzner }
-  for (const [tier, live] of Object.entries(liveTiers) as [
-    HetznerTier,
-    { price: number; traffic_tb: number },
-  ][]) {
-    // Preserve vcpu/ram/disk from baked (not in /v1/pricing), override
-    // price + included traffic from live.
-    hetzner[tier] = {
-      ...baked.hetzner[tier],
-      price: live.price,
-      traffic_tb: live.traffic_tb,
+  const bakedTable = prices[provider]
+  const merged = { ...bakedTable }
+  for (const [tier, live] of Object.entries(liveTiers)) {
+    if (live === undefined) continue
+    const bakedSpec = bakedTable[tier]
+    if (bakedSpec !== undefined) {
+      // Keep vcpu/ram/disk from baked when the live source doesn't provide
+      // them (Hetzner /pricing omits these; DO /sizes includes them).
+      merged[tier] = {
+        vcpu: live.vcpu || bakedSpec.vcpu,
+        ram_gb: live.ram_gb || bakedSpec.ram_gb,
+        disk_gb: live.disk_gb || bakedSpec.disk_gb,
+        price: live.price,
+        traffic_tb: live.traffic_tb,
+      }
+    } else {
+      merged[tier] = live
     }
   }
-  const extras =
-    egressUsdPerTb > 0
-      ? { ...baked.extras, hetzner_egress_overage_per_tb: egressUsdPerTb }
-      : baked.extras
-  return { ...baked, hetzner, extras }
+  return { ...prices, [provider]: merged }
 }

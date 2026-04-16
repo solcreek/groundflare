@@ -1,20 +1,27 @@
 export { computeEstimate, type ComputeOptions } from './compute.js'
 export {
   chooseHetznerTier,
+  chooseTier,
   classifyProfile,
   collectWarnings,
   computeSizingDemand,
   costCloudflare,
   costHetzner,
+  costTarget,
   estimateEgressTB,
   sumLines,
   type SizingDemand,
+  type TierChoice,
 } from './cost.js'
 export { BAKED_PRICES, loadBakedPrices, priceAgeDays } from './prices.js'
 export {
+  DOPricingError,
   HetznerPricingError,
+  fetchDOPricing,
   fetchHetznerPricing,
   refreshPrices,
+  type DOLivePrices,
+  type FetchDOPricingOptions,
   type FetchHetznerOptions,
   type HetznerLivePrices,
   type RefreshPricesOptions,
@@ -38,6 +45,8 @@ export type {
   PriceSource,
   Prices,
   Profile,
+  TargetProvider,
   Usage,
+  VPSTierSpec,
   Warning,
 } from './types.js'

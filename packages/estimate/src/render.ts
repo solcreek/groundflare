@@ -26,7 +26,7 @@ export function renderEstimate(estimate: Estimate): string {
 
   lines.push(
     costRow(
-      `Target: Hetzner ${estimate.target.tier.toUpperCase()}`,
+      `Target: ${providerDisplayName(estimate.target.provider)} ${estimate.target.tier.toUpperCase()}`,
       estimate.target.monthly,
       estimate.currency,
       true,
@@ -132,6 +132,17 @@ function profileLabel(profile: string): string {
       return 'D (data-heavy)'
     default:
       return profile
+  }
+}
+
+function providerDisplayName(provider: string): string {
+  switch (provider) {
+    case 'digitalocean':
+      return 'DigitalOcean'
+    case 'hetzner':
+      return 'Hetzner'
+    default:
+      return provider
   }
 }
 

@@ -24,39 +24,50 @@ import { refreshPrices } from './live/index.js'
 
 const STALE_AFTER_DAYS = 90
 
+import type { TargetProvider } from './types.js'
+
 interface ParsedArgs {
   readonly noLive: boolean
   readonly json: boolean
   readonly help: boolean
+  readonly provider: TargetProvider
 }
 
 function parseArgs(argv: readonly string[]): ParsedArgs {
   let noLive = false
   let json = false
   let help = false
-  for (const a of argv) {
+  let provider: TargetProvider = 'hetzner'
+  for (let i = 0; i < argv.length; i++) {
+    const a = argv[i]!
     if (a === '--no-live') noLive = true
     else if (a === '--json') json = true
     else if (a === '-h' || a === '--help') help = true
+    else if (a === '--provider' && i + 1 < argv.length) {
+      const v = argv[++i]!
+      if (v === 'digitalocean' || v === 'do') provider = 'digitalocean'
+      else if (v === 'hetzner') provider = 'hetzner'
+    }
   }
-  return { noLive, json, help }
+  return { noLive, json, help, provider }
 }
 
 function printHelp(): void {
   process.stdout.write(
     [
-      'Usage: groundflare-estimate [--no-live] [--json]',
+      'Usage: groundflare-estimate [--provider hetzner|do] [--no-live] [--json]',
       '',
       'Compare your Cloudflare usage cost against a self-hosted VPS.',
       '',
       'Flags:',
-      '  --no-live     Skip live pricing refresh; use the baked table only.',
-      '  --json        Emit JSON to stdout instead of the ASCII summary.',
-      '  -h, --help    Show this help.',
+      '  --provider <p>  Target VPS provider: hetzner (default) or do/digitalocean.',
+      '  --no-live       Skip live pricing refresh; use the baked table only.',
+      '  --json          Emit JSON to stdout instead of the ASCII summary.',
+      '  -h, --help      Show this help.',
       '',
       'Environment:',
-      '  HCLOUD_TOKEN  Hetzner Cloud API token (any project token works).',
-      '                Enables live /v1/pricing refresh. Safe to omit.',
+      '  HCLOUD_TOKEN     Hetzner Cloud API token. Enables live pricing.',
+      '  DO_API_KEY       DigitalOcean API token. Enables live pricing.',
       '',
     ].join('\n'),
   )
@@ -97,6 +108,7 @@ export async function run(argv: readonly string[] = process.argv.slice(2)): Prom
   const estimate = computeEstimate(usage, prices, {
     confidence: 'low',
     priceSources: sources,
+    targetProvider: args.provider,
   })
 
   if (args.json) {

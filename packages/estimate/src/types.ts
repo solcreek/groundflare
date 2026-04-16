@@ -59,13 +59,24 @@ export type Profile =
 
 export type HetznerTier = 'cx22' | 'cx32' | 'cx42' | 'cx52'
 
+export type TargetProvider = 'hetzner' | 'digitalocean'
+
 export type Confidence = 'high' | 'medium' | 'low'
+
+export interface VPSTierSpec {
+  readonly price: number
+  readonly vcpu: number
+  readonly ram_gb: number
+  readonly disk_gb: number
+  readonly traffic_tb: number
+}
 
 export interface Prices {
   readonly updated: string
   readonly currency: 'USD' | 'EUR'
   readonly cloudflare: CloudflarePrices
-  readonly hetzner: Record<HetznerTier, HetznerTierSpec>
+  readonly hetzner: Record<string, VPSTierSpec>
+  readonly digitalocean: Record<string, VPSTierSpec>
   readonly extras: ExtrasPrices
 }
 
@@ -89,16 +100,12 @@ export interface CloudflarePrices {
   readonly do_storage_per_gb: number
 }
 
-export interface HetznerTierSpec {
-  readonly price: number
-  readonly vcpu: number
-  readonly ram_gb: number
-  readonly disk_gb: number
-  readonly traffic_tb: number
-}
+/** @deprecated Use VPSTierSpec — kept for backwards compat. */
+export type HetznerTierSpec = VPSTierSpec
 
 export interface ExtrasPrices {
   readonly hetzner_egress_overage_per_tb: number
+  readonly do_egress_overage_per_tb: number
   readonly restic_b2_monthly_flat: number
   readonly bunny_cdn_per_gb: number
 }
@@ -119,8 +126,8 @@ export interface Estimate {
     readonly breakdown: readonly CostLine[]
   }
   readonly target: {
-    readonly provider: 'hetzner'
-    readonly tier: HetznerTier
+    readonly provider: TargetProvider
+    readonly tier: string
     readonly monthly: number
     readonly breakdown: readonly CostLine[]
   }
@@ -139,7 +146,7 @@ export interface Estimate {
 }
 
 export interface PriceSource {
-  readonly provider: 'hetzner'
+  readonly provider: TargetProvider
   readonly kind: 'live' | 'baked'
   readonly fetchedAt?: string
   readonly reason?: string

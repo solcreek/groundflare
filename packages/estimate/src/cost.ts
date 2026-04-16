@@ -8,16 +8,27 @@
 import type {
   CostLine,
   HetznerTier,
-  HetznerTierSpec,
   Prices,
   Profile,
+  TargetProvider,
   Usage,
+  VPSTierSpec,
   Warning,
 } from './types.js'
 
 const BYTES_PER_KB = 1000
 const BYTES_PER_TB = BYTES_PER_KB * BYTES_PER_KB * BYTES_PER_KB * BYTES_PER_KB
+
 const HETZNER_TIERS: readonly HetznerTier[] = ['cx22', 'cx32', 'cx42', 'cx52']
+const DO_TIERS: readonly string[] = [
+  's-1vcpu-512mb-10gb',
+  's-1vcpu-1gb',
+  's-1vcpu-2gb',
+  's-2vcpu-2gb',
+  's-2vcpu-4gb',
+  's-4vcpu-8gb',
+  's-8vcpu-16gb',
+]
 
 /** ─── Classification ─────────────────────────────────────────── */
 
@@ -47,42 +58,62 @@ export interface SizingDemand {
 }
 
 export function computeSizingDemand(usage: Usage): SizingDemand {
-  // Peak RPS heuristic: assume 10× average when we have no observed peak.
   const avgRps = usage.requestsPerMonth / (30 * 24 * 3600)
   const peakRps = avgRps * 10
   const coresNeeded = Math.max(
     1,
     Math.ceil((peakRps * usage.cpuMsPerRequest) / 1000 * 1.5),
   )
-
-  // 1 GB base + 0.5 GB per DO + rough KV cache allocation.
   const ramGBNeeded =
     1 + 0.5 * Math.min(usage.doInstanceCount, 200) + Math.min(usage.kvStorageGB, 4)
-
-  // Double for WAL + growth headroom.
   const diskGBNeeded =
     2 * (usage.d1StorageGB + usage.kvStorageGB + usage.r2StorageGB)
-
   return { coresNeeded, ramGBNeeded, diskGBNeeded }
 }
 
+export interface TierChoice {
+  readonly tier: string
+  readonly spec: VPSTierSpec
+  readonly fits: boolean
+}
+
+function tierList(provider: TargetProvider): readonly string[] {
+  return provider === 'digitalocean' ? DO_TIERS : HETZNER_TIERS
+}
+
+function tierTable(provider: TargetProvider, prices: Prices): Record<string, VPSTierSpec> {
+  return provider === 'digitalocean' ? prices.digitalocean : prices.hetzner
+}
+
+/** @deprecated Use chooseTier with explicit provider. */
 export function chooseHetznerTier(
   demand: SizingDemand,
   prices: Prices,
-): { tier: HetznerTier; spec: HetznerTierSpec; fits: boolean } {
-  for (const tier of HETZNER_TIERS) {
-    const spec = prices.hetzner[tier]
+): TierChoice {
+  return chooseTier(demand, 'hetzner', prices)
+}
+
+export function chooseTier(
+  demand: SizingDemand,
+  provider: TargetProvider,
+  prices: Prices,
+): TierChoice {
+  const tiers = tierList(provider)
+  const table = tierTable(provider, prices)
+  for (const tier of tiers) {
+    const spec = table[tier]
+    if (spec === undefined) continue
     if (
       demand.coresNeeded <= spec.vcpu &&
       demand.ramGBNeeded <= spec.ram_gb &&
-      demand.diskGBNeeded <= spec.disk_gb * 0.875 // leave 12.5% OS headroom
+      demand.diskGBNeeded <= spec.disk_gb * 0.875
     ) {
       return { tier, spec, fits: true }
     }
   }
-  // Overflow: return largest, flag unfit.
-  const topTier = HETZNER_TIERS[HETZNER_TIERS.length - 1]!
-  return { tier: topTier, spec: prices.hetzner[topTier], fits: false }
+  const topTier = tiers[tiers.length - 1]!
+  const topSpec = table[topTier]!
+  return { tier: topTier, spec: topSpec, fits: false }
 }
 
 /** ─── CF cost ────────────────────────────────────────────────── */
@@ -151,39 +182,52 @@ export function costCloudflare(usage: Usage, prices: Prices): CostLine[] {
   return lines
 }
 
-/** ─── Hetzner cost ───────────────────────────────────────────── */
+/** ─── Target VPS cost (generic across providers) ────────────── */
 
+/** @deprecated Use costTarget. */
 export function costHetzner(
-  tier: HetznerTier,
-  spec: HetznerTierSpec,
+  tier: string,
+  spec: VPSTierSpec,
   usage: Usage,
   profile: Profile,
   prices: Prices,
 ): CostLine[] {
+  return costTarget('hetzner', tier, spec, usage, profile, prices)
+}
+
+export function costTarget(
+  provider: TargetProvider,
+  tier: string,
+  spec: VPSTierSpec,
+  usage: Usage,
+  profile: Profile,
+  prices: Prices,
+): CostLine[] {
+  const providerName = provider === 'digitalocean' ? 'DigitalOcean' : 'Hetzner'
   const lines: CostLine[] = []
   lines.push({
     label: `VPS (${tier}, ${spec.vcpu} vCPU / ${spec.ram_gb} GB)`,
     amount: spec.price,
   })
 
-  // Egress overage — only charged when user actually exceeds the tier's
-  // included traffic.
   const egressTB = estimateEgressTB(usage)
   const overageTB = Math.max(0, egressTB - spec.traffic_tb)
   if (overageTB > 0) {
+    const ratePerTB =
+      provider === 'digitalocean'
+        ? prices.extras.do_egress_overage_per_tb
+        : prices.extras.hetzner_egress_overage_per_tb
     lines.push({
-      label: `Egress overage (${overageTB.toFixed(1)} TB over ${spec.traffic_tb} TB)`,
-      amount: overageTB * prices.extras.hetzner_egress_overage_per_tb,
+      label: `${providerName} egress overage (${overageTB.toFixed(1)} TB)`,
+      amount: overageTB * ratePerTB,
     })
   }
 
-  // Always recommend backups — a flat $3/mo keeps the estimate honest.
   lines.push({
     label: 'Backups (restic → B2)',
     amount: prices.extras.restic_b2_monthly_flat,
   })
 
-  // For media-heavy workloads, recommend a CDN in front of the VPS.
   if (profile === 'B') {
     const assetGB = Math.max(0, usage.r2StorageGB + egressTB * 1024)
     lines.push({
@@ -230,7 +274,7 @@ export function collectWarnings(usage: Usage, tierFits: boolean): Warning[] {
   if (!tierFits) {
     warnings.push({
       code: 'single-node-too-small',
-      message: 'Workload exceeds CX52 — single-node self-host is not recommended; keep on CF or go multi-node.',
+      message: 'Workload exceeds the largest available tier — single-node self-host is not recommended.',
       impact: 'not-recommended',
     })
   }

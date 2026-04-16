@@ -69,11 +69,11 @@ describe('refreshPrices', () => {
       fetchImpl: fakeFetch(MOCK_OK_BODY),
     })
     // Live price was merged (not equal to the baked 4.80).
-    expect(prices.hetzner.cx22.price).not.toBe(BAKED_PRICES.hetzner.cx22.price)
+    expect(prices.hetzner.cx22!.price).not.toBe(BAKED_PRICES.hetzner.cx22!.price)
     // vcpu/ram/disk preserved from baked (not in /v1/pricing).
-    expect(prices.hetzner.cx22.vcpu).toBe(BAKED_PRICES.hetzner.cx22.vcpu)
-    expect(prices.hetzner.cx22.ram_gb).toBe(BAKED_PRICES.hetzner.cx22.ram_gb)
-    expect(prices.hetzner.cx22.disk_gb).toBe(BAKED_PRICES.hetzner.cx22.disk_gb)
+    expect(prices.hetzner.cx22!.vcpu).toBe(BAKED_PRICES.hetzner.cx22!.vcpu)
+    expect(prices.hetzner.cx22!.ram_gb).toBe(BAKED_PRICES.hetzner.cx22!.ram_gb)
+    expect(prices.hetzner.cx22!.disk_gb).toBe(BAKED_PRICES.hetzner.cx22!.disk_gb)
     // Tiers not in the live response (cx32/42/52) are left at baked values.
     expect(prices.hetzner.cx32).toEqual(BAKED_PRICES.hetzner.cx32)
     expect(sources[0]?.kind).toBe('live')

@@ -151,7 +151,7 @@ describe('costCloudflare', () => {
 
 describe('costHetzner', () => {
   it('includes the tier base price + backups', () => {
-    const lines = costHetzner('cx22', BAKED_PRICES.hetzner.cx22, u(), 'A', BAKED_PRICES)
+    const lines = costHetzner('cx22', BAKED_PRICES.hetzner.cx22!, u(), 'A', BAKED_PRICES)
     const vps = lines.find((l) => l.label.startsWith('VPS'))
     const backups = lines.find((l) => l.label.startsWith('Backups'))
     expect(vps?.amount).toBe(4.8)
@@ -161,7 +161,7 @@ describe('costHetzner', () => {
   it('adds CDN cost for profile B', () => {
     const lines = costHetzner(
       'cx22',
-      BAKED_PRICES.hetzner.cx22,
+      BAKED_PRICES.hetzner.cx22!,
       u({ r2StorageGB: 50 }),
       'B',
       BAKED_PRICES,
@@ -170,7 +170,7 @@ describe('costHetzner', () => {
   })
 
   it('adds no CDN line for profile A', () => {
-    const lines = costHetzner('cx22', BAKED_PRICES.hetzner.cx22, u(), 'A', BAKED_PRICES)
+    const lines = costHetzner('cx22', BAKED_PRICES.hetzner.cx22!, u(), 'A', BAKED_PRICES)
     expect(lines.find((l) => l.label.includes('CDN'))).toBeUndefined()
   })
 
@@ -178,12 +178,12 @@ describe('costHetzner', () => {
     // 100M × 500 KB ≈ 50 TB → 30 TB over on cx22's 20 TB included
     const lines = costHetzner(
       'cx22',
-      BAKED_PRICES.hetzner.cx22,
+      BAKED_PRICES.hetzner.cx22!,
       u({ requestsPerMonth: 100_000_000, avgResponseKB: 500 }),
       'B',
       BAKED_PRICES,
     )
-    const overage = lines.find((l) => l.label.startsWith('Egress overage'))
+    const overage = lines.find((l) => l.label.includes('egress overage'))
     expect(overage).toBeDefined()
     expect(overage!.amount).toBeGreaterThan(0)
   })
