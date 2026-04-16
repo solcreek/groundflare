@@ -30,7 +30,6 @@ const SUPPORTED_PROVIDERS: readonly ProviderName[] = [
   'digitalocean',
   'linode',
   'vultr',
-  'contabo',
 ]
 
 export default defineCommand({

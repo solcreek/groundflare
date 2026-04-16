@@ -9,8 +9,7 @@
  * from that code path.
  *
  * Collect the {name → constructor} mapping in a single place so callers
- * go through `createProvider()`. Adding Linode/Vultr/Contabo is now one
- * map entry.
+ * go through `createProvider()`. Adding a new provider is one map entry.
  */
 
 import { DigitalOceanProvider } from './digitalocean.js'
@@ -25,10 +24,9 @@ export const PROVIDER_REGISTRY: Readonly<Partial<Record<ProviderName, ProviderFa
   hetzner: (opts) => new HetznerProvider(opts),
   digitalocean: (opts) => new DigitalOceanProvider(opts),
   linode: (opts) => new LinodeProvider(opts),
-  // vultr, contabo: not yet implemented — README lists them as planned.
-  // ProviderName includes them so config validation and CLI help stay
-  // consistent; attempting to use one throws the "not implemented" path
-  // below.
+  // `vultr`: README lists it as planned. ProviderName includes it so
+  // config validation and CLI help stay consistent; attempting to use it
+  // throws the "not implemented" path below.
 }
 
 export class UnknownProviderError extends Error {

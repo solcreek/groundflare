@@ -99,7 +99,7 @@ const bunBlockSchema = z
 
 const sectionFields = {
   provider: z
-    .enum(['hetzner', 'digitalocean', 'linode', 'vultr', 'contabo'])
+    .enum(['hetzner', 'digitalocean', 'linode', 'vultr'])
     .optional(),
   region: z.string().optional(),
   size: z.string().optional(),

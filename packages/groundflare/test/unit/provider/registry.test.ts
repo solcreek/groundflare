@@ -59,7 +59,6 @@ describe('listImplementedProviders', () => {
     expect(names).toContain('linode')
     // Planned-but-unimplemented providers are absent.
     expect(names).not.toContain('vultr')
-    expect(names).not.toContain('contabo')
   })
 
   it('stays in sync with PROVIDER_REGISTRY', () => {

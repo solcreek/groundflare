@@ -3,7 +3,7 @@
 // plain data interfaces so they can be consumed from both runtime
 // code (adapters, capnp generator) and CLI commands.
 
-export type ProviderName = 'hetzner' | 'digitalocean' | 'linode' | 'vultr' | 'contabo'
+export type ProviderName = 'hetzner' | 'digitalocean' | 'linode' | 'vultr'
 
 export type RuntimeKind = 'workerd' | 'bun'
 

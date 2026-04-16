@@ -140,7 +140,7 @@ describe('validateGroundflareSection — enum values', () => {
       expect(err).toBeInstanceOf(ConfigValidationError)
       const msg = (err as Error).message
       expect(msg).toContain('linodee')
-      expect(msg).toMatch(/hetzner|digitalocean|linode|vultr|contabo/)
+      expect(msg).toMatch(/hetzner|digitalocean|linode|vultr/)
     }
   })
 

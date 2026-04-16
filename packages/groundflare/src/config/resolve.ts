@@ -92,7 +92,6 @@ const VALID_PROVIDERS: ReadonlySet<ProviderName> = new Set([
   'digitalocean',
   'linode',
   'vultr',
-  'contabo',
 ])
 
 const VALID_RUNTIMES: ReadonlySet<RuntimeKind> = new Set(['workerd', 'bun'])

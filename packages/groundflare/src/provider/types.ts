@@ -18,7 +18,6 @@ export type ProviderName =
   | 'digitalocean'
   | 'linode'
   | 'vultr'
-  | 'contabo'
 
 // ─── Errors ────────────────────────────────────────────────────────
 
