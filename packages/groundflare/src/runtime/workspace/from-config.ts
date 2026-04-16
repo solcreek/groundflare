@@ -21,7 +21,7 @@ import type {
   VarValue as ConfigVarValue,
   WranglerConfig,
 } from '../../config/index.js'
-import type { WorkspaceWorker } from './types.js'
+import type { WorkspaceWorker, WorkerLoaderSpec } from './types.js'
 
 export interface FromConfigOptions {
   /**
@@ -84,7 +84,39 @@ export function workspaceWorkerFromConfig(
     })
   }
 
+  if (wrangler.worker_loaders && wrangler.worker_loaders.length > 0) {
+    worker.workerLoaders = wrangler.worker_loaders.map((wl): WorkerLoaderSpec => ({
+      binding: wl.binding ?? wl.name ?? 'LOADER',
+    }))
+  }
+
   return worker as WorkspaceWorker
+}
+
+/**
+ * Detect known-unsupported Cloudflare binding types in a wrangler config
+ * and return warning strings. Callers should print these but not abort.
+ */
+export function detectUnsupportedBindings(wrangler: WranglerConfig): string[] {
+  const warnings: string[] = []
+  const UNSUPPORTED: ReadonlyArray<[keyof WranglerConfig, string]> = [
+    ['ai', 'Workers AI — no local runtime; keep this binding on CF'],
+    ['vectorize', 'Vectorize — not supported; self-host Qdrant/Weaviate or keep on CF'],
+    ['browser', 'Browser Rendering — not supported; use Browserless or similar'],
+    ['queues', 'Queues — not yet supported; roadmap v0.5+'],
+    ['hyperdrive', 'Hyperdrive — not supported; connect to Postgres directly'],
+    ['analytics_engine_datasets', 'Analytics Engine — not supported; use Prometheus/Grafana'],
+    ['send_email', 'Email Workers — not supported; use Resend/Postmark'],
+  ]
+  for (const [key, message] of UNSUPPORTED) {
+    if (wrangler[key] !== undefined) {
+      warnings.push(`binding "${key}": ${message}`)
+    }
+  }
+  if (wrangler.observability !== undefined) {
+    warnings.push('observability: CF-specific telemetry ignored; use groundflare metrics')
+  }
+  return warnings
 }
 
 type Mutable<T> = { -readonly [K in keyof T]: T[K] }

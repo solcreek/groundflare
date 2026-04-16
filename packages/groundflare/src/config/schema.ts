@@ -47,6 +47,12 @@ export interface WranglerTriggers {
   crons?: string[]
 }
 
+export interface WranglerWorkerLoader {
+  binding: string
+  /** emdash calls this field `name` in its config; we accept both. */
+  name?: string
+}
+
 export interface WranglerConfig {
   name: string
   main?: string
@@ -57,8 +63,19 @@ export interface WranglerConfig {
   kv_namespaces?: WranglerKVNamespace[]
   r2_buckets?: WranglerR2Bucket[]
   durable_objects?: WranglerDurableObjects
+  worker_loaders?: WranglerWorkerLoader[]
   migrations?: WranglerMigration[]
   triggers?: WranglerTriggers
+  /** Observability config (CF-specific, ignored by groundflare). */
+  observability?: unknown
+  /** Catch-all for known-unsupported binding sections. */
+  ai?: unknown
+  vectorize?: unknown
+  browser?: unknown
+  queues?: unknown
+  hyperdrive?: unknown
+  analytics_engine_datasets?: unknown
+  send_email?: unknown
 }
 
 // ─── Groundflare extensions ────────────────────────────────────────

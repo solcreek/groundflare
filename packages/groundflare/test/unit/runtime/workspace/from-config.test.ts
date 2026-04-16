@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { workspaceWorkerFromConfig } from '../../../../src/runtime/workspace/index.js'
+import { detectUnsupportedBindings, workspaceWorkerFromConfig } from '../../../../src/runtime/workspace/index.js'
 import type { GroundflareSection, WranglerConfig } from '../../../../src/config/index.js'
 
 function minimalWrangler(overrides: Partial<WranglerConfig> = {}): WranglerConfig {
@@ -127,11 +127,63 @@ describe('workspaceWorkerFromConfig', () => {
     expect(w.entryPath).toBe('workers/api/code/current/bundle.mjs')
   })
 
+  it('maps worker_loaders to workerLoaders', () => {
+    const w = workspaceWorkerFromConfig(
+      minimalWrangler({
+        worker_loaders: [{ binding: 'LOADER' }],
+      }),
+      {},
+    )
+    expect(w.workerLoaders).toEqual([{ binding: 'LOADER' }])
+  })
+
+  it('omits workerLoaders when none configured', () => {
+    const w = workspaceWorkerFromConfig(minimalWrangler(), {})
+    expect(w.workerLoaders).toBeUndefined()
+  })
+
   it('omits binding arrays when the config has none', () => {
     const w = workspaceWorkerFromConfig(minimalWrangler(), {} as GroundflareSection)
     expect(w.kvNamespaces).toBeUndefined()
     expect(w.d1Databases).toBeUndefined()
     expect(w.r2Buckets).toBeUndefined()
     expect(w.durableObjects).toBeUndefined()
+  })
+})
+
+describe('detectUnsupportedBindings', () => {
+  it('returns empty for a clean config', () => {
+    expect(detectUnsupportedBindings(minimalWrangler())).toEqual([])
+  })
+
+  it('warns about ai binding', () => {
+    const warnings = detectUnsupportedBindings(minimalWrangler({ ai: { binding: 'AI' } }))
+    expect(warnings).toHaveLength(1)
+    expect(warnings[0]).toMatch(/Workers AI/)
+  })
+
+  it('warns about multiple unsupported bindings', () => {
+    const warnings = detectUnsupportedBindings(
+      minimalWrangler({ ai: {}, vectorize: {}, queues: {} }),
+    )
+    expect(warnings).toHaveLength(3)
+  })
+
+  it('warns about observability config', () => {
+    const warnings = detectUnsupportedBindings(
+      minimalWrangler({ observability: { enabled: true } }),
+    )
+    expect(warnings).toHaveLength(1)
+    expect(warnings[0]).toMatch(/observability/)
+  })
+
+  it('does not warn about supported bindings', () => {
+    const warnings = detectUnsupportedBindings(
+      minimalWrangler({
+        d1_databases: [{ binding: 'DB', database_name: 'main' }],
+        worker_loaders: [{ binding: 'LOADER' }],
+      }),
+    )
+    expect(warnings).toEqual([])
   })
 })

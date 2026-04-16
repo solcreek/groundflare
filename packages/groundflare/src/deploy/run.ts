@@ -28,6 +28,7 @@ import {
 import { buildBunArtifact } from '../runtime/bun/build.js'
 import {
   buildCapnpFromWorkspace,
+  detectUnsupportedBindings,
   workspaceWorkerFromConfig,
   type WorkspaceManifest,
 } from '../runtime/workspace/index.js'
@@ -80,6 +81,10 @@ export async function runDeploy(opts: RunDeployOptions): Promise<DeployResult> {
   const bundle = await bundleWorker({ entry })
   log('info', `bundle: ${bundle.bytes} bytes, ${bundle.warnings.length} warnings`)
   for (const w of bundle.warnings) log('warn', `esbuild: ${w}`)
+
+  // ─── 2b. Unsupported binding warnings ──────────────────────────
+  const unsupported = detectUnsupportedBindings(wrangler)
+  for (const w of unsupported) log('warn', `unsupported: ${w}`)
 
   // ─── 3. Manifest ───────────────────────────────────────────────
   const worker = workspaceWorkerFromConfig(wrangler, groundflare)
