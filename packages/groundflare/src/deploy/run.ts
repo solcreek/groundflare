@@ -14,6 +14,7 @@
  * Tests inject a mock SshClient to avoid needing a live VPS.
  */
 
+import { execSync } from 'node:child_process'
 import { readFile, rm, writeFile } from 'node:fs/promises'
 import { mkdtemp } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
@@ -69,18 +70,64 @@ export async function runDeploy(opts: RunDeployOptions): Promise<DeployResult> {
   const { wrangler, groundflare, source } = wranglerRead
   log('info', `deploying from ${source.file}`)
 
-  // ─── 2. Bundle ─────────────────────────────────────────────────
+  // ─── 2. Build + Bundle ─────────────────────────────────────────
   if (wrangler.main === undefined) {
     throw new DeployError(
       `wrangler config has no \`main\` entry; add \`main = "src/index.ts"\` and retry`,
       'config_missing',
     )
   }
-  const entry = resolvePath(cwd, wrangler.main)
-  log('info', `bundling ${entry}`)
-  const bundle = await bundleWorker({ entry })
-  log('info', `bundle: ${bundle.bytes} bytes, ${bundle.warnings.length} warnings`)
-  for (const w of bundle.warnings) log('warn', `esbuild: ${w}`)
+
+  // If [build].command is set, run it first (like wrangler deploy does).
+  // Then read the built output from `main` instead of esbuild-bundling.
+  const hasCustomBuild = wrangler.build?.command !== undefined && wrangler.build.command.length > 0
+  let bundle: { code: string; bytes: number; warnings: readonly string[] }
+
+  if (hasCustomBuild) {
+    const buildCmd = wrangler.build!.command!
+    const buildCwd = wrangler.build!.cwd
+      ? resolvePath(cwd, wrangler.build!.cwd)
+      : cwd
+    log('info', `running build command: ${buildCmd}`)
+    try {
+      execSync(buildCmd, {
+        cwd: buildCwd,
+        stdio: ['ignore', 'pipe', 'pipe'],
+        timeout: 5 * 60_000,
+        env: { ...process.env, WRANGLER_COMMAND: 'deploy' },
+      })
+    } catch (err) {
+      const stderr = err instanceof Error && 'stderr' in err
+        ? String((err as { stderr: unknown }).stderr).slice(0, 2000)
+        : ''
+      throw new DeployError(
+        `build command failed: ${buildCmd}\n${stderr}`,
+        'bundle_failed',
+        { cause: err },
+      )
+    }
+    const builtPath = resolvePath(cwd, wrangler.main)
+    log('info', `reading pre-built output from ${builtPath}`)
+    let code: string
+    try {
+      code = await readFile(builtPath, 'utf-8')
+    } catch (err) {
+      throw new DeployError(
+        `build command ran but \`main\` output not found at ${builtPath}`,
+        'bundle_failed',
+        { cause: err },
+      )
+    }
+    bundle = { code, bytes: Buffer.byteLength(code, 'utf-8'), warnings: [] }
+    log('info', `pre-built bundle: ${bundle.bytes} bytes`)
+  } else {
+    const entry = resolvePath(cwd, wrangler.main)
+    log('info', `bundling ${entry}`)
+    const result = await bundleWorker({ entry })
+    bundle = result
+    log('info', `bundle: ${bundle.bytes} bytes, ${bundle.warnings.length} warnings`)
+    for (const w of bundle.warnings) log('warn', `esbuild: ${w}`)
+  }
 
   // ─── 2b. Unsupported binding warnings ──────────────────────────
   const unsupported = detectUnsupportedBindings(wrangler)

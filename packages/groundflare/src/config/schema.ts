@@ -53,11 +53,32 @@ export interface WranglerWorkerLoader {
   name?: string
 }
 
+export interface WranglerBuild {
+  /** Shell command to run before deploying. Same semantics as wrangler's
+   *  `[build].command`: runs in sh on Linux/macOS, cmd on Windows.
+   *  When set, groundflare executes this instead of its own esbuild
+   *  bundler and reads the built output from `main`. */
+  command?: string
+  /** Working directory for the build command. Default: wrangler config dir. */
+  cwd?: string
+  /** Directory to watch for changes during `groundflare dev` (future). */
+  watch_dir?: string | string[]
+}
+
+export interface WranglerAssets {
+  /** Directory containing static files to serve alongside the Worker. */
+  directory?: string
+  /** Binding name exposed to the Worker as env.ASSETS. */
+  binding?: string
+}
+
 export interface WranglerConfig {
   name: string
   main?: string
   compatibility_date?: string
   compatibility_flags?: string[]
+  build?: WranglerBuild
+  assets?: WranglerAssets
   vars?: Record<string, VarValue>
   d1_databases?: WranglerD1Database[]
   kv_namespaces?: WranglerKVNamespace[]

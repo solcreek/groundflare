@@ -333,6 +333,92 @@ describe('runDeploy', () => {
       }),
     ).rejects.toBeInstanceOf(DeployError)
   })
+
+  it('runs [build].command and reads pre-built output instead of esbuild', async () => {
+    // [build].command writes a file to dist/; main points at that output
+    await writeFile(
+      join(tmp, 'wrangler.toml'),
+      [
+        `name = "astro-app"`,
+        `main = "dist/worker.js"`,
+        `compatibility_date = "2026-04-01"`,
+        ``,
+        `[build]`,
+        `command = "mkdir -p dist && echo 'export default { async fetch() { return new Response(\\\"built\\\") } }' > dist/worker.js"`,
+        ``,
+        `[groundflare]`,
+        `domain = "app.example.com"`,
+      ].join('\n'),
+      'utf-8',
+    )
+    const { client, runCalls } = mockSsh({
+      runs: [
+        { exitCode: 0 }, // ensureRemoteDir
+        { exitCode: 0 }, // install bundle
+        { exitCode: 0 }, // install capnp
+        { exitCode: 0 }, // install Caddyfile
+        { exitCode: 0 }, // systemctl restart
+        { exitCode: 0, stdout: '200' }, // health probe
+      ],
+    })
+    const result = await runDeploy({
+      workspace: 'demo',
+      workingDirectory: tmp,
+      acmeEmail: 'ops@example.com',
+      bootstrapState: baseState(),
+      ssh: client,
+      log: () => {},
+    })
+    expect(result.dryRun).toBe(false)
+    expect(result.tenants[0]?.name).toBe('astro-app')
+    expect(result.healthCheck?.status).toBe(200)
+  })
+
+  it('throws bundle_failed when [build].command exits non-zero', async () => {
+    await writeFile(
+      join(tmp, 'wrangler.toml'),
+      [
+        `name = "broken"`,
+        `main = "dist/worker.js"`,
+        ``,
+        `[build]`,
+        `command = "exit 1"`,
+      ].join('\n'),
+      'utf-8',
+    )
+    await expect(
+      runDeploy({
+        workspace: 'demo',
+        workingDirectory: tmp,
+        acmeEmail: 'ops@example.com',
+        bootstrapState: baseState(),
+        log: () => {},
+      }),
+    ).rejects.toMatchObject({ code: 'bundle_failed' })
+  })
+
+  it('throws bundle_failed when [build] runs but main output missing', async () => {
+    await writeFile(
+      join(tmp, 'wrangler.toml'),
+      [
+        `name = "missing"`,
+        `main = "dist/does-not-exist.js"`,
+        ``,
+        `[build]`,
+        `command = "echo noop"`,
+      ].join('\n'),
+      'utf-8',
+    )
+    await expect(
+      runDeploy({
+        workspace: 'demo',
+        workingDirectory: tmp,
+        acmeEmail: 'ops@example.com',
+        bootstrapState: baseState(),
+        log: () => {},
+      }),
+    ).rejects.toMatchObject({ code: 'bundle_failed' })
+  })
 })
 
 function okRuns(n: number): Partial<RunResult>[] {

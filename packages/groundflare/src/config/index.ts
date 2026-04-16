@@ -38,6 +38,8 @@ export type {
   ReadConfigResult,
   RuntimeKind,
   VarValue,
+  WranglerAssets,
+  WranglerBuild,
   WranglerConfig,
   WranglerD1Database,
   WranglerDOBinding,
