@@ -52,6 +52,8 @@
     "poc:bench-bindings": "tsx src/poc/bench-bindings.ts",
     "poc:bench-bun": "tsx src/poc/bench-bun.ts",
     "poc:bench-bun-burst": "tsx src/poc/bench-bun-burst.ts",
+    "bench": "vitest bench",
+    "bench:bun": "bun run bench/kv-bun.ts",
     "coverage": "vitest run --coverage",
     "lint": "eslint --no-error-on-unmatched-pattern \"src/**/*.ts\" \"test/**/*.ts\"",
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
