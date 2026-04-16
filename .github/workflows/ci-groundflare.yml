@@ -1,0 +1,73 @@
+name: "CI: groundflare"
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'packages/groundflare/**'
+      - 'packages/estimate/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/ci-groundflare.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'packages/groundflare/**'
+      - 'packages/estimate/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/ci-groundflare.yml'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: check (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Typecheck
+        run: npm run check -w groundflare
+
+      - name: Lint
+        run: npm run lint -w groundflare
+
+      - name: Test (unit + integration + conformance)
+        run: npm run test -w groundflare
+
+  e2e:
+    name: e2e (ubuntu)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Docker sanity check
+        run: docker info
+
+      - name: Build fake-vps image
+        run: docker build -t groundflare/fake-vps:test -f packages/groundflare/test/e2e/fixtures/fake-vps/Dockerfile packages/groundflare/test/e2e/fixtures/fake-vps
+
+      - name: Test (Tier 3 e2e)
+        run: npm run test:e2e

@@ -1,0 +1,51 @@
+name: "CI: estimate"
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'packages/estimate/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/ci-estimate.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'packages/estimate/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/ci-estimate.yml'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: check (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 5
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Typecheck
+        run: npm run check -w groundflare-estimate
+
+      - name: Lint
+        run: npm run lint -w groundflare-estimate
+
+      - name: Test
+        run: npm run test -w groundflare-estimate
+
+      - name: Build
+        run: npm run build -w groundflare-estimate

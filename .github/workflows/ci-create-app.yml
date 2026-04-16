@@ -1,0 +1,51 @@
+name: "CI: create-groundflare-app"
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'packages/create-groundflare-app/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/ci-create-app.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'packages/create-groundflare-app/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/ci-create-app.yml'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: check (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 5
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Typecheck
+        run: npm run check -w create-groundflare-app
+
+      - name: Lint
+        run: npm run lint -w create-groundflare-app
+
+      - name: Test
+        run: npm run test -w create-groundflare-app
+
+      - name: Build
+        run: npm run build -w create-groundflare-app
