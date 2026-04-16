@@ -243,13 +243,25 @@ export async function runDeploy(opts: RunDeployOptions): Promise<DeployResult> {
   await uploadAsRoot(ssh, caddyfile, CADDYFILE_REMOTE_PATH, '0644')
 
   // ─── 5b. Upload static assets ─────────────────────────────────
+  // Exclude _worker.js/ from the assets directory — the Worker bundle
+  // was already uploaded via the capnp pipeline. Exposing it via Caddy's
+  // file_server would leak Worker source code.
   if (hasAssets && assetsLocalDir !== undefined) {
+    const { cpSync } = await import('node:fs')
+    const assetsStagingDir = join(
+      await mkdtemp(join(tmpdir(), 'gf-assets-')),
+      'assets',
+    )
+    cpSync(assetsLocalDir, assetsStagingDir, {
+      recursive: true,
+      filter: (src) => !src.includes('_worker.js'),
+    })
+
     for (const w of manifest.workers) {
       const remoteAssetsDir = `/var/lib/groundflare/workers/${w.name}/assets`
       await ensureRemoteDir(ssh, remoteAssetsDir)
-      log('info', `uploading static assets from ${assetsLocalDir} to ${remoteAssetsDir}`)
-      await ssh.upload(assetsLocalDir, remoteAssetsDir, { recursive: true })
-      // Ensure correct ownership
+      log('info', `uploading static assets to ${remoteAssetsDir}`)
+      await ssh.upload(assetsStagingDir, remoteAssetsDir, { recursive: true })
       const chown = await ssh.run(
         `sudo chown -R groundflare:groundflare ${remoteAssetsDir}`,
         { timeoutMs: 30_000 },
@@ -258,6 +270,7 @@ export async function runDeploy(opts: RunDeployOptions): Promise<DeployResult> {
         log('warn', `chown on assets failed: ${chown.stderr}`)
       }
     }
+    await rm(assetsStagingDir, { recursive: true, force: true }).catch(() => {})
   }
 
   // ─── 6. Restart services ───────────────────────────────────────

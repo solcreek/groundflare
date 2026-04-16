@@ -44,7 +44,7 @@ export interface OpenSshClientOptions {
   readonly scpBinary?: string
 }
 
-const DEFAULT_TIMEOUT_MS = 30_000
+const DEFAULT_TIMEOUT_MS = 60_000
 const DEFAULT_PORT = 22
 const DEFAULT_STRICT_HOST_KEY = 'accept-new'
 
