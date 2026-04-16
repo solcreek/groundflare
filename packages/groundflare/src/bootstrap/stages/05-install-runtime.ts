@@ -38,7 +38,7 @@ export function installRuntimeStage(_opts: InstallRuntimeStageOptions = {}): Sta
     async isComplete(ctx) {
       if (!ctx.ssh) return false
       try {
-        const result = await ctx.ssh.run(`test -x ${REMOTE_WORKERD}`, { timeoutMs: 5_000 })
+        const result = await ctx.ssh.run(`test -x ${REMOTE_WORKERD}`, { timeoutMs: 30_000 })
         return result.exitCode === 0
       } catch {
         return false
@@ -57,7 +57,7 @@ export function installRuntimeStage(_opts: InstallRuntimeStageOptions = {}): Sta
       // 1. Verify workerd — cloud-init should have downloaded it.
       //    If not present (cloud-init runcmd failed?), attempt recovery
       //    via curl on the VPS itself.
-      const check = await ctx.ssh.run(`test -x ${REMOTE_WORKERD}`, { timeoutMs: 5_000 })
+      const check = await ctx.ssh.run(`test -x ${REMOTE_WORKERD}`, { timeoutMs: 30_000 })
       if (check.exitCode !== 0) {
         ctx.log('warn', 'workerd not found — cloud-init may have failed; attempting recovery download')
         const version = resolveLocalWorkerdVersion()
