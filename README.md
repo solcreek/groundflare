@@ -3,13 +3,13 @@
 [![npm version](https://img.shields.io/npm/v/groundflare.svg?color=cb0000)](https://www.npmjs.com/package/groundflare)
 [![License](https://img.shields.io/npm/l/groundflare.svg?color=blue)](./LICENSE)
 [![Node.js](https://img.shields.io/node/v/groundflare.svg)](https://nodejs.org)
-[![CI](https://github.com/solcreek/groundflare/actions/workflows/ci.yml/badge.svg)](https://github.com/solcreek/groundflare/actions/workflows/ci.yml)
+[![CI: groundflare](https://github.com/solcreek/groundflare/actions/workflows/ci-groundflare.yml/badge.svg)](https://github.com/solcreek/groundflare/actions/workflows/ci-groundflare.yml)
 
 > Your Cloudflare Worker, grounded.
 
 Run any Cloudflare Worker on your own hardware. Same code, your machine, no vendor lock-in.
 
-**Status** — v0.2 ships both tracks: **Mirror** (workerd, zero source change, bug-for-bug Cloudflare semantics) and **Bun** (`Bun.serve` with `bun:sqlite` KV/D1 adapters + S3-compat R2 passthrough, 7,000–9,000 rps/binding on a $6 VPS). Parallel release, single CLI, dispatch on `[groundflare] runtime = "bun"`.
+**Status** — v0.3 is the current release. Two runtime tracks from one CLI: **Mirror** (workerd, zero source change, bug-for-bug CF semantics) and **Bun** (`Bun.serve` + `bun:sqlite` KV/D1 + S3-compat R2, 7K–9K rps/binding on a $6 VPS). Three-track conformance spec, OIDC-published with SLSA provenance. Providers: Hetzner + DigitalOcean.
 
 ## Quick start
 
@@ -33,7 +33,7 @@ npx groundflare up
 npm create groundflare-app@latest my-worker
 ```
 
-Requires Node.js ≥ 20.
+Requires Node.js ≥ 22.
 
 ## Two tracks, one CLI
 
@@ -70,7 +70,7 @@ Blockers the analyzer refuses to migrate (stay on Mirror): `HTMLRewriter`, `WebS
 |---|---|---|---|
 | Workers runtime | ✅ v0.1 | ✅ v0.2 | workerd / Bun.serve |
 | KV | ✅ v0.1 | ✅ v0.2 | SQLite (WAL, embedded, optional shards=N) |
-| D1 | ✅ v0.1 | ✅ v0.2 | libSQL / SQLite |
+| D1 | ✅ v0.1 | ✅ v0.2 | node:sqlite / bun:sqlite |
 | R2 | ✅ v0.1 | ✅ v0.2 | passthrough to Cloudflare R2 (default) · SeaweedFS (self-host) |
 | Durable Objects | ✅ v0.1 | ❌ Mirror-only | workerd native `ctx.storage` |
 | Cache API | ✅ v0.1 | ⚠️ v0.3 | in-memory |
