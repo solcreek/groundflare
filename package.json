@@ -22,5 +22,15 @@
     "test:bun": "npm run test:bun -w groundflare",
     "test:e2e": "npm run test:e2e -w groundflare",
     "build": "npm run build --workspaces --if-present"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.15.0",
+    "@types/node": "^22.0.0",
+    "eslint": "^9.15.0",
+    "eslint-config-prettier": "^9.1.0",
+    "prettier": "^3.3.0",
+    "typescript": "^5.6.0",
+    "typescript-eslint": "^8.15.0",
+    "vitest": "^2.1.0"
   }
 }
