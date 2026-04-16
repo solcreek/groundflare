@@ -19,7 +19,7 @@ import { sshKeyStage } from './stages/01-ssh-key.js'
 import { provisionStage } from './stages/02-provision.js'
 import { waitSshStage } from './stages/03-wait-ssh.js'
 import { cloudInitStage } from './stages/04-cloud-init.js'
-import { installRuntimeStage } from './stages/05-install-runtime.js'
+import { installRuntimeStage, resolveLocalWorkerdVersion } from './stages/05-install-runtime.js'
 import { installServicesStage } from './stages/06-install-services.js'
 import {
   BootstrapError,
@@ -134,6 +134,7 @@ export async function runBootstrap(opts: RunBootstrapOptions): Promise<Bootstrap
       ...(opts.image !== undefined ? { image: opts.image } : {}),
       notifyEmail: opts.acmeEmail,
       ...(opts.runtime !== undefined ? { runtime: opts.runtime } : {}),
+      workerdVersion: resolveWorkerdVersion(),
     }),
     waitSshStage(),
     cloudInitStage(),
@@ -185,8 +186,12 @@ async function constructProvider(
       return new DigitalOceanProvider({ token })
     default:
       throw new BootstrapError(
-        `provider ${JSON.stringify(name)} not yet supported (Hetzner only in v0.1)`,
+        `provider ${JSON.stringify(name)} not yet supported`,
         'prerequisite',
       )
   }
+}
+
+function resolveWorkerdVersion(): string {
+  return resolveLocalWorkerdVersion()
 }

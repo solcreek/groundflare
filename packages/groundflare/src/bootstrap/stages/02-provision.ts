@@ -8,6 +8,8 @@
  * provider — splitting them would add SSH ceremony for nothing).
  */
 
+import { setTimeout as sleep } from 'node:timers/promises'
+
 import { generateCloudInit } from '../../runtime/bootstrap/index.js'
 import { BootstrapError, type Stage } from '../types.js'
 
@@ -25,13 +27,15 @@ export interface ProvisionStageOptions {
   /** Optional contact email passed into cloud-init's unattended-upgrades. */
   readonly notifyEmail?: string
   /**
-   * Runtime track the workspace targets. When `"bun"`, cloud-init is
-   * asked to install the Bun runtime (via the generator's installBun
-   * option) so the VPS comes up with `/usr/local/bin/bun` already in
-   * place. When `"workerd"` or unset, cloud-init skips Bun — the
-   * Mirror track only needs workerd, which stage 05 uploads.
+   * Runtime track the workspace targets. When `"bun"`, cloud-init
+   * installs Bun + skips workerd. Default `"workerd"`.
    */
   readonly runtime?: 'workerd' | 'bun'
+  /** workerd version for cloud-init to download (e.g. "1.20260415.1"). */
+  readonly workerdVersion?: string
+  /** Max time to wait for a public IPv4 to appear (some providers assign
+   *  it asynchronously). Default 120s. */
+  readonly ipv4PollTimeoutMs?: number
 }
 
 export function provisionStage(opts: ProvisionStageOptions): Stage {
@@ -71,14 +75,18 @@ export function provisionStage(opts: ProvisionStageOptions): Stage {
         )
       }
 
+      const isBun = opts.runtime === 'bun'
       const userData = generateCloudInit({
         sshAuthorizedKeys: [publicKey],
         ...(opts.notifyEmail !== undefined ? { notifyEmail: opts.notifyEmail } : {}),
-        ...(opts.runtime === 'bun' ? { installBun: true } : {}),
+        ...(isBun ? { installBun: true, installWorkerd: false } : {}),
+        ...(!isBun && opts.workerdVersion !== undefined
+          ? { workerdVersion: opts.workerdVersion }
+          : {}),
       })
 
       const hostname = opts.hostnameOverride ?? `gf-${ctx.workspace}`
-      const vps = await ctx.provider.createVPS({
+      let vps = await ctx.provider.createVPS({
         name: hostname,
         size: opts.size,
         region: opts.region,
@@ -91,12 +99,26 @@ export function provisionStage(opts: ProvisionStageOptions): Stage {
         ...(opts.image !== undefined ? { image: opts.image } : {}),
       })
 
+      // Some providers (DigitalOcean) assign the public IPv4 asynchronously
+      // after the create call returns. Poll until it appears.
       if (vps.publicIPv4 === undefined || vps.publicIPv4.length === 0) {
-        throw new BootstrapError(
-          `provider returned a VPS without a public IPv4 (id=${vps.id})`,
-          'stage_failed',
-          STAGE_ID,
-        )
+        ctx.log('info', `waiting for public IPv4 on ${vps.id}…`)
+        const deadline = Date.now() + (opts.ipv4PollTimeoutMs ?? 120_000)
+        while (Date.now() < deadline) {
+          await sleep(3_000)
+          const refreshed = await ctx.provider.getVPS(vps.id)
+          if (refreshed?.publicIPv4 !== undefined && refreshed.publicIPv4.length > 0) {
+            vps = refreshed
+            break
+          }
+        }
+        if (vps.publicIPv4 === undefined || vps.publicIPv4.length === 0) {
+          throw new BootstrapError(
+            `VPS ${vps.id} never received a public IPv4 within ${(opts.ipv4PollTimeoutMs ?? 120_000) / 1000}s`,
+            'stage_failed',
+            STAGE_ID,
+          )
+        }
       }
 
       const stateVps: NonNullable<typeof ctx.state.vps> = {

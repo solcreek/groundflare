@@ -281,22 +281,24 @@ describe('Stage: provider.provision', () => {
     expect(ctx.state.vps?.ipv6).toBe('2001:db8::1')
   })
 
-  it('throws when the provider returns a VPS without an IPv4', async () => {
+  it('throws when the provider never assigns a public IPv4', async () => {
+    const noIpVps = {
+      id: 'vps-2',
+      name: 'gf-test',
+      status: 'initializing' as const,
+      size: 'cx22',
+      region: 'hel1',
+      createdAt: 'now',
+    }
     const provider = makeProvider({
-      createVPS: vi.fn(async (opts) => ({
-        id: 'vps-2',
-        name: opts.name,
-        status: 'initializing' as const,
-        size: opts.size,
-        region: opts.region,
-        createdAt: 'now',
-      })),
+      createVPS: vi.fn(async () => noIpVps),
+      getVPS: vi.fn(async () => noIpVps),
     })
     const ctx = await ctxWithKey(provider)
     await expect(
-      provisionStage({ size: 'cx22', region: 'hel1' }).run(ctx),
+      provisionStage({ size: 'cx22', region: 'hel1', ipv4PollTimeoutMs: 100 }).run(ctx),
     ).rejects.toMatchObject({ code: 'stage_failed' })
-  })
+  }, 10_000)
 
   it('hostnameOverride changes the VPS name', async () => {
     const provider = makeProvider()

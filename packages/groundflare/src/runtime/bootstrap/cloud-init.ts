@@ -52,6 +52,20 @@ export interface CloudInitOptions {
   readonly autoReboot?: boolean
 
   /**
+   * Install workerd on first boot by downloading the correct architecture
+   * binary from npm. Default true (Mirror track needs it). Set to false
+   * for Bun-only VPSes.
+   */
+  readonly installWorkerd?: boolean
+
+  /**
+   * workerd version to install (e.g. "1.20260415.1"). Required when
+   * installWorkerd is true (the CLI reads this from its own
+   * node_modules/workerd/package.json and passes it through).
+   */
+  readonly workerdVersion?: string
+
+  /**
    * Install the Bun runtime on first boot. When true:
    *   - adds `unzip` to the apt package list (Bun's install script requires it)
    *   - runs Bun's official install script as root
@@ -136,6 +150,32 @@ export function generateCloudInit(opts: CloudInitOptions): string {
     '  - sed -i "s/^#*PasswordAuthentication.*/PasswordAuthentication no/" /etc/ssh/sshd_config',
   )
   lines.push('  - systemctl restart ssh')
+
+  // Create state directory layout
+  lines.push(`  - install -d -m 0755 -o ${systemUser} -g ${systemUser} /var/lib/groundflare`)
+  lines.push(`  - install -d -m 0755 -o ${systemUser} -g ${systemUser} /var/lib/groundflare/workers`)
+  lines.push(`  - install -d -m 0755 -o ${systemUser} -g ${systemUser} /var/lib/groundflare/do-state`)
+  lines.push('  - install -d -m 0755 /etc/groundflare')
+
+  if (opts.installWorkerd !== false) {
+    const version = opts.workerdVersion ?? 'latest'
+    // Download workerd for the VPS's own architecture from the npm registry.
+    // dpkg --print-architecture returns "amd64" or "arm64" on Ubuntu.
+    // Cloudflare's npm naming: amd64 → "linux-64", arm64 → "linux-arm64".
+    lines.push('  - |')
+    lines.push('    ARCH=$(dpkg --print-architecture)')
+    lines.push('    case "$ARCH" in')
+    lines.push('      amd64) WPKG=workerd-linux-64 ;;')
+    lines.push('      arm64) WPKG=workerd-linux-arm64 ;;')
+    lines.push('      *)     echo "unsupported arch $ARCH"; exit 1 ;;')
+    lines.push('    esac')
+    lines.push(`    curl -fsSL "https://registry.npmjs.org/@cloudflare/$WPKG/-/$WPKG-${version}.tgz" \\`)
+    lines.push('      -o /tmp/workerd.tgz')
+    lines.push('    tar -xzf /tmp/workerd.tgz -C /tmp')
+    lines.push('    install -m 0755 /tmp/package/bin/workerd /usr/local/bin/workerd')
+    lines.push('    rm -rf /tmp/workerd.tgz /tmp/package')
+    lines.push('    /usr/local/bin/workerd --version')
+  }
 
   if (opts.installBun === true) {
     // Install Bun as root (HOME=/root so the installer writes to /root/.bun),

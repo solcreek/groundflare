@@ -122,66 +122,66 @@ describe('Stage: system.cloud-init', () => {
 // ─── Stage 5: install runtime ─────────────────────────────────────
 
 describe('Stage: system.install-runtime', () => {
-  it('uploads the workerd binary, installs it, and confirms version', async () => {
-    const { client, runCalls, uploadCalls } = mockSshClient({
+  it('verifies workerd + creates state dirs + checks caddy when binary already present', async () => {
+    const { client, runCalls } = mockSshClient({
       runs: [
-        { result: { exitCode: 0 } }, // install
+        { result: { exitCode: 0 } }, // test -x (binary present)
         { result: { exitCode: 0, stdout: 'workerd 2026-04-14\n' } }, // version
         { result: { exitCode: 0 } }, // mkdir
         { result: { exitCode: 0, stdout: '/usr/bin/caddy\nv2.10.0\n' } }, // caddy verify
       ],
     })
     const ctx = makeContext({ ssh: client })
-    await installRuntimeStage({ workerdBinaryPath: '/local/path/workerd' }).run(ctx)
+    await installRuntimeStage().run(ctx)
 
-    expect(uploadCalls).toEqual([
-      { local: '/local/path/workerd', remote: '/tmp/groundflare-workerd.upload' },
-    ])
-    expect(runCalls[0]?.command).toContain(
-      'sudo install -m 0755 -o root -g root /tmp/groundflare-workerd.upload /usr/local/bin/workerd',
-    )
+    expect(runCalls[0]?.command).toContain('test -x /usr/local/bin/workerd')
     expect(runCalls[1]?.command).toBe('/usr/local/bin/workerd --version')
-    expect(runCalls[2]?.command).toContain('mkdir -p /var/lib/groundflare/system')
     expect(runCalls[2]?.command).toContain('chown -R groundflare:groundflare /var/lib/groundflare')
     expect(runCalls[3]?.command).toBe('which caddy && caddy version')
   })
 
-  it('aborts with stage_failed if the install command fails', async () => {
-    const { client } = mockSshClient({
-      runs: [{ result: { exitCode: 1, stderr: 'permission denied' } }],
-    })
-    const ctx = makeContext({ ssh: client })
-    await expect(
-      installRuntimeStage({ workerdBinaryPath: '/x' }).run(ctx),
-    ).rejects.toMatchObject({ code: 'stage_failed' })
-  })
-
-  it('aborts with stage_failed if the workerd binary cannot run', async () => {
-    const { client } = mockSshClient({
+  it('attempts recovery download when workerd binary is missing', async () => {
+    const { client, runCalls } = mockSshClient({
       runs: [
-        { result: { exitCode: 0 } },
-        { result: { exitCode: 1, stderr: 'segfault' } },
+        { result: { exitCode: 1 } }, // test -x (not found)
+        { result: { exitCode: 0 } }, // curl download
+        { result: { exitCode: 0, stdout: 'workerd 2026-04-14\n' } }, // version
+        { result: { exitCode: 0 } }, // mkdir
+        { result: { exitCode: 0, stdout: '/usr/bin/caddy\nv2.10.0\n' } }, // caddy
       ],
     })
     const ctx = makeContext({ ssh: client })
-    await expect(
-      installRuntimeStage({ workerdBinaryPath: '/x' }).run(ctx),
-    ).rejects.toMatchObject({ code: 'stage_failed' })
+    await installRuntimeStage().run(ctx)
+
+    // Second call is the recovery curl
+    expect(runCalls[1]?.command).toContain('curl -fsSL')
+    expect(runCalls[1]?.command).toContain('registry.npmjs.org')
+  })
+
+  it('aborts with stage_failed if recovery download fails', async () => {
+    const { client } = mockSshClient({
+      runs: [
+        { result: { exitCode: 1 } }, // test -x
+        { result: { exitCode: 1, stderr: 'download failed' } }, // curl fails
+      ],
+    })
+    const ctx = makeContext({ ssh: client })
+    await expect(installRuntimeStage().run(ctx)).rejects.toMatchObject({
+      code: 'stage_failed',
+    })
   })
 
   it('aborts when Caddy is missing (cloud-init likely failed)', async () => {
     const { client } = mockSshClient({
       runs: [
-        { result: { exitCode: 0 } }, // install
+        { result: { exitCode: 0 } }, // test -x
         { result: { exitCode: 0, stdout: 'workerd v1' } }, // version
         { result: { exitCode: 0 } }, // mkdir
         { result: { exitCode: 1, stderr: 'caddy: command not found' } }, // caddy
       ],
     })
     const ctx = makeContext({ ssh: client })
-    await expect(
-      installRuntimeStage({ workerdBinaryPath: '/x' }).run(ctx),
-    ).rejects.toThrow(/Caddy not installed/)
+    await expect(installRuntimeStage().run(ctx)).rejects.toThrow(/Caddy not installed/)
   })
 
   it('isComplete returns true when the binary already exists', async () => {
