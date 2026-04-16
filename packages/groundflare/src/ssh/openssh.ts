@@ -45,6 +45,7 @@ export interface OpenSshClientOptions {
 }
 
 const DEFAULT_TIMEOUT_MS = 60_000
+const DEFAULT_UPLOAD_TIMEOUT_MS = 5 * 60_000
 const DEFAULT_PORT = 22
 const DEFAULT_STRICT_HOST_KEY = 'accept-new'
 
@@ -115,7 +116,7 @@ export class OpenSshClient implements SshClient {
       this.scpBinary,
       args,
       undefined,
-      this.target.defaultTimeoutMs ?? DEFAULT_TIMEOUT_MS,
+      this.target.defaultTimeoutMs ?? DEFAULT_UPLOAD_TIMEOUT_MS,
     )
     if (result.exitCode !== 0) {
       throw new SshError(
@@ -140,7 +141,7 @@ export class OpenSshClient implements SshClient {
       this.scpBinary,
       args,
       undefined,
-      this.target.defaultTimeoutMs ?? DEFAULT_TIMEOUT_MS,
+      this.target.defaultTimeoutMs ?? DEFAULT_UPLOAD_TIMEOUT_MS,
     )
     if (result.exitCode !== 0) {
       throw new SshError(
