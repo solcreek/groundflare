@@ -126,8 +126,11 @@ export function generateWorkerSystemdUnit(opts: WorkerUnitOptions): string {
   // the unit must start cleanly without it.
   if (envFile !== null) serviceLines.push(`EnvironmentFile=-${envFile}`)
 
+  // --experimental enables WorkerLoader and other features that workerd
+  // gates behind the flag. Safe for self-hosted use (operator controls
+  // the binary); production Cloudflare doesn't need it.
   serviceLines.push(
-    `ExecStart=${workerdBinary} serve ${opts.capnpPath}`,
+    `ExecStart=${workerdBinary} serve --experimental ${opts.capnpPath}`,
     `Restart=${restart}`,
     `RestartSec=${restartSec}`,
     'StandardOutput=journal',

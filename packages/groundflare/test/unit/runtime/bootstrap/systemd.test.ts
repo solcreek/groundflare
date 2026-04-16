@@ -46,7 +46,7 @@ describe('generateWorkerSystemdUnit — defaults', () => {
   it('uses the default workerd binary and capnp path', () => {
     const s = parseIni(out)
     expect(s.Service).toContain(
-      'ExecStart=/usr/local/bin/workerd serve /var/lib/groundflare/system/worker.capnp',
+      'ExecStart=/usr/local/bin/workerd serve --experimental /var/lib/groundflare/system/worker.capnp',
     )
   })
 

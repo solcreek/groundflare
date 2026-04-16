@@ -109,4 +109,56 @@ describe.skipIf(!dockerAvailable)('e2e: runDeploy end-to-end', () => {
     expect(result.healthCheck).toBeDefined()
     expect(result.healthCheck!.status).toBe(200)
   }, 180_000)
+
+  it('deploys a worker that uses WorkerLoader to dynamically load a sub-worker', async () => {
+    const workerDir = join(tmp, 'loader-worker')
+    await mkdir(join(workerDir, 'src'), { recursive: true })
+    await writeFile(
+      join(workerDir, 'wrangler.toml'),
+      [
+        `name = "loader-test"`,
+        `main = "src/index.ts"`,
+        `compatibility_date = "2026-04-01"`,
+        ``,
+        `[[worker_loaders]]`,
+        `binding = "LOADER"`,
+        ``,
+        `[groundflare]`,
+        `domain = "loader.local"`,
+      ].join('\n'),
+      'utf-8',
+    )
+    await writeFile(
+      join(workerDir, 'src/index.ts'),
+      `export default {
+         async fetch(req, env) {
+           // Dynamically load a sub-worker using WorkerLoader
+           const stub = env.LOADER.get('greeter', () => ({
+             compatibilityDate: '2026-04-01',
+             mainModule: 'greeter.js',
+             modules: {
+               'greeter.js': 'export default { async fetch() { return new Response("hello from dynamically loaded worker") } }'
+             }
+           }));
+           const fetcher = stub.getEntrypoint();
+           return fetcher.fetch(req);
+         }
+       }`,
+      'utf-8',
+    )
+
+    const result = await runDeploy({
+      workspace: 'e2edeploy',
+      workingDirectory: workerDir,
+      bootstrapState: state,
+      acmeEmail: 'ops@example.com',
+      log: () => {},
+    })
+
+    expect(result.dryRun).toBe(false)
+    expect(result.tenants).toHaveLength(1)
+    expect(result.tenants[0]!.name).toBe('loader-test')
+    expect(result.healthCheck).toBeDefined()
+    expect(result.healthCheck!.status).toBe(200)
+  }, 180_000)
 })
