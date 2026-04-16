@@ -11,6 +11,8 @@
  * recognised and the user account is provisioned.
  */
 
+import { setTimeout as sleep } from 'node:timers/promises'
+
 import { OpenSshClient, waitForSshTcpReady } from '../../ssh/index.js'
 import type { SshClient, SshTarget } from '../../ssh/index.js'
 import { BootstrapError, type Stage } from '../types.js'
@@ -72,11 +74,31 @@ export function waitSshStage(opts: WaitSshStageOptions = {}): Stage {
         ? opts.sshClientFactory(target)
         : new OpenSshClient({ target })
 
-      // SSH handshake / auth / minimal command; throws SshError on failure.
-      await client.ping()
-
-      ctx.ssh = client
-      ctx.log('info', `SSH ready as ${ctx.state.vps.user}@${ctx.state.vps.ipv4}`)
+      // Retry the SSH handshake — cloud-init may still be creating the
+      // user account and deploying authorized_keys. TCP is up (sshd runs)
+      // but auth fails until cloud-init finishes the `users:` block.
+      const maxWait = opts.maxWaitMs ?? 5 * 60_000
+      const deadline = Date.now() + maxWait
+      let lastErr: Error | undefined
+      while (Date.now() < deadline) {
+        try {
+          await client.ping()
+          ctx.ssh = client
+          ctx.log('info', `SSH ready as ${ctx.state.vps.user}@${ctx.state.vps.ipv4}`)
+          return
+        } catch (err) {
+          lastErr = err instanceof Error ? err : new Error(String(err))
+          ctx.log('debug', `SSH handshake failed (${lastErr.message}); retrying in 5s…`)
+          if (Date.now() + 5_000 >= deadline) break
+          await sleep(5_000)
+        }
+      }
+      throw new BootstrapError(
+        `SSH handshake did not succeed within ${maxWait / 1000}s: ${lastErr?.message ?? 'unknown'}`,
+        'stage_failed',
+        STAGE_ID,
+        lastErr ? { cause: lastErr } : undefined,
+      )
     },
   }
 }
