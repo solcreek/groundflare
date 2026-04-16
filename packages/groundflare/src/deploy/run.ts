@@ -20,6 +20,7 @@ import { mkdtemp } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve as resolvePath } from 'node:path'
 import { randomBytes } from 'node:crypto'
+import { setTimeout as sleep } from 'node:timers/promises'
 
 import { resolveConfig } from '../config/index.js'
 import {
@@ -35,6 +36,7 @@ import {
 } from '../runtime/workspace/index.js'
 import { renderCapnpConfig } from '../runtime/workerd/capnp/index.js'
 import { OpenSshClient, type SshClient } from '../ssh/index.js'
+import type { LogFn } from '../bootstrap/index.js'
 
 import { bundleWorker } from './bundle.js'
 import { detectBuildCommand } from './detect-pm.js'
@@ -51,6 +53,9 @@ const CAPNP_REMOTE_PATH = '/var/lib/groundflare/worker.capnp'
 const CADDYFILE_REMOTE_PATH = '/etc/caddy/Caddyfile'
 const LISTEN_ADDRESS = '127.0.0.1:8080'
 const HEALTH_TIMEOUT_MS = 30_000
+const HEALTH_DEFAULT_MAX_ATTEMPTS = 6
+const HEALTH_DEFAULT_INTERVAL_MS = 1_500
+const HEALTH_CURL_MAX_TIME_S = 5
 
 export async function runDeploy(opts: RunDeployOptions): Promise<DeployResult> {
   const log = opts.log ?? ((level, m) => process.stderr.write(`[${level}] ${m}\n`))
@@ -316,34 +321,17 @@ export async function runDeploy(opts: RunDeployOptions): Promise<DeployResult> {
   // domain, we send a literal localhost which the router will 404 (still
   // a valid response, proving workerd is listening).
   const probeHost = tenants.find((t) => t.domain !== undefined)?.domain ?? 'localhost'
-  log('info', `probing http://${LISTEN_ADDRESS}/ as Host: ${probeHost}`)
-  const started = Date.now()
-  const probe = await ssh.run(
-    `curl -o /dev/null -s -w "%{http_code}" --max-time 10 -H "Host: ${probeHost}" http://${LISTEN_ADDRESS}/`,
-    { timeoutMs: HEALTH_TIMEOUT_MS },
-  )
-  const probeDuration = Date.now() - started
-  if (probe.exitCode !== 0) {
-    throw new DeployError(
-      `health probe failed: curl exited ${probe.exitCode}: ${probe.stderr}`,
-      'health_failed',
-    )
-  }
-  const status = Number.parseInt(probe.stdout.trim(), 10)
-  if (Number.isNaN(status)) {
-    throw new DeployError(
-      `health probe returned unparsable status: ${JSON.stringify(probe.stdout)}`,
-      'health_failed',
-    )
-  }
-  if (status >= 500) {
-    throw new DeployError(
-      `health probe returned ${status} — workerd is running but erroring`,
-      'health_failed',
-    )
-  }
+  const { status, durationMs: probeDuration, attempts } = await probeHealth({
+    ssh,
+    listenAddress: LISTEN_ADDRESS,
+    probeHost,
+    log,
+    maxAttempts: opts.healthProbe?.maxAttempts ?? HEALTH_DEFAULT_MAX_ATTEMPTS,
+    intervalMs: opts.healthProbe?.intervalMs ?? HEALTH_DEFAULT_INTERVAL_MS,
+    sleep: opts.healthProbe?.sleep ?? ((ms) => sleep(ms)),
+  })
 
-  log('info', `health ok: ${status} in ${probeDuration}ms`)
+  log('info', `health ok: ${status} in ${probeDuration}ms (${attempts} attempt${attempts === 1 ? '' : 's'})`)
 
   return {
     workspace: opts.workspace,
@@ -355,6 +343,82 @@ export async function runDeploy(opts: RunDeployOptions): Promise<DeployResult> {
     healthCheck: { status, durationMs: probeDuration },
     dryRun: false,
   }
+}
+
+// ─── Health probe ──────────────────────────────────────────────────
+//
+// workerd cold-starts in 10–15s after `systemctl restart`. A single
+// probe immediately after restart races that window and often sees
+// ECONNREFUSED (curl exit 7) or a 502 from Caddy. We poll up to
+// `maxAttempts` times with `intervalMs` between attempts, treating both
+// curl-level failures and HTTP 5xx as retryable. We stop on the first
+// non-5xx response (200/302/404/etc — all prove workerd is listening).
+
+interface ProbeHealthOptions {
+  readonly ssh: SshClient
+  readonly listenAddress: string
+  readonly probeHost: string
+  readonly log: LogFn
+  readonly maxAttempts: number
+  readonly intervalMs: number
+  readonly sleep: (ms: number) => Promise<void>
+}
+
+async function probeHealth(
+  opts: ProbeHealthOptions,
+): Promise<{ status: number; durationMs: number; attempts: number }> {
+  const { ssh, listenAddress, probeHost, log, maxAttempts, intervalMs } = opts
+  const started = Date.now()
+  const command =
+    `curl -o /dev/null -s -w "%{http_code}" --max-time ${HEALTH_CURL_MAX_TIME_S} ` +
+    `-H "Host: ${probeHost}" http://${listenAddress}/`
+
+  log('info', `probing http://${listenAddress}/ as Host: ${probeHost} (up to ${maxAttempts} attempts)`)
+
+  let lastExitCode = 0
+  let lastStderr = ''
+  let lastStdout = ''
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    const probe = await ssh.run(command, { timeoutMs: HEALTH_TIMEOUT_MS })
+    lastExitCode = probe.exitCode
+    lastStderr = probe.stderr
+    lastStdout = probe.stdout
+
+    if (probe.exitCode === 0) {
+      const status = Number.parseInt(probe.stdout.trim(), 10)
+      if (!Number.isNaN(status) && status < 500) {
+        return { status, durationMs: Date.now() - started, attempts: attempt }
+      }
+    }
+
+    if (attempt < maxAttempts) {
+      const detail = probe.exitCode !== 0
+        ? `curl exit ${probe.exitCode}`
+        : `status ${probe.stdout.trim() || '?'}`
+      log('info', `health probe attempt ${attempt}/${maxAttempts} not ready (${detail}); retrying in ${intervalMs}ms`)
+      await opts.sleep(intervalMs)
+    }
+  }
+
+  const durationMs = Date.now() - started
+  if (lastExitCode !== 0) {
+    throw new DeployError(
+      `health probe failed after ${maxAttempts} attempts (${durationMs}ms): curl exited ${lastExitCode}: ${lastStderr}`,
+      'health_failed',
+    )
+  }
+  const status = Number.parseInt(lastStdout.trim(), 10)
+  if (Number.isNaN(status)) {
+    throw new DeployError(
+      `health probe returned unparsable status after ${maxAttempts} attempts: ${JSON.stringify(lastStdout)}`,
+      'health_failed',
+    )
+  }
+  throw new DeployError(
+    `health probe returned ${status} after ${maxAttempts} attempts — workerd is running but erroring`,
+    'health_failed',
+  )
 }
 
 // ─── SSH helpers ───────────────────────────────────────────────────

@@ -283,6 +283,7 @@ describe('runDeploy', () => {
         acmeEmail: 'ops@example.com',
         bootstrapState: baseState(),
         ssh: client,
+        healthProbe: { maxAttempts: 1, sleep: () => Promise.resolve() },
         log: () => {},
       }),
     ).rejects.toMatchObject({ code: 'health_failed' })
@@ -309,9 +310,74 @@ describe('runDeploy', () => {
         acmeEmail: 'ops@example.com',
         bootstrapState: baseState(),
         ssh: client,
+        healthProbe: { maxAttempts: 1, sleep: () => Promise.resolve() },
         log: () => {},
       }),
     ).rejects.toMatchObject({ code: 'health_failed' })
+  })
+
+  it('health probe retries through transient 5xx / ECONNREFUSED until workerd is ready', async () => {
+    // workerd cold-start: first two probes see ECONNREFUSED and 502,
+    // third probe succeeds with 200. Deploy should succeed.
+    await scaffoldWorker(
+      `name = "api"\nmain = "src/index.ts"\ncompatibility_date = "2026-04-01"\n`,
+    )
+    const { client, runCalls } = mockSsh({
+      runs: [
+        { exitCode: 0 }, // ensureRemoteDir
+        { exitCode: 0 }, // install bundle
+        { exitCode: 0 }, // install capnp
+        { exitCode: 0 }, // install Caddyfile
+        { exitCode: 0 }, // systemctl restart
+        { exitCode: 7, stderr: 'connection refused' }, // probe 1: ECONNREFUSED
+        { exitCode: 0, stdout: '502' }, // probe 2: bad gateway
+        { exitCode: 0, stdout: '200' }, // probe 3: ready
+      ],
+    })
+    const result = await runDeploy({
+      workspace: 'demo',
+      workingDirectory: tmp,
+      acmeEmail: 'ops@example.com',
+      bootstrapState: baseState(),
+      ssh: client,
+      healthProbe: { maxAttempts: 6, sleep: () => Promise.resolve() },
+      log: () => {},
+    })
+    expect(result.healthCheck?.status).toBe(200)
+    // Three curl calls for the three probe attempts.
+    const probes = runCalls.filter((c) => c.command.startsWith('curl'))
+    expect(probes).toHaveLength(3)
+  })
+
+  it('health probe exhausts attempts when 5xx never clears', async () => {
+    await scaffoldWorker(
+      `name = "api"\nmain = "src/index.ts"\ncompatibility_date = "2026-04-01"\n`,
+    )
+    const { client, runCalls } = mockSsh({
+      runs: [
+        { exitCode: 0 }, // ensureRemoteDir
+        { exitCode: 0 }, // install bundle
+        { exitCode: 0 }, // install capnp
+        { exitCode: 0 }, // install Caddyfile
+        { exitCode: 0 }, // systemctl restart
+        { exitCode: 0, stdout: '503' },
+        { exitCode: 0, stdout: '503' },
+        { exitCode: 0, stdout: '503' },
+      ],
+    })
+    await expect(
+      runDeploy({
+        workspace: 'demo',
+        workingDirectory: tmp,
+        acmeEmail: 'ops@example.com',
+        bootstrapState: baseState(),
+        ssh: client,
+        healthProbe: { maxAttempts: 3, sleep: () => Promise.resolve() },
+        log: () => {},
+      }),
+    ).rejects.toMatchObject({ code: 'health_failed' })
+    const probes = runCalls.filter((c) => c.command.startsWith('curl'))
+    expect(probes).toHaveLength(3)
   })
 
   it('throws DeployError (not a different error type) for bundle failures', async () => {

@@ -43,6 +43,18 @@ export interface RunDeployOptions {
    * push anything. Useful for `groundflare deploy --dry-run` to preview.
    */
   readonly dryRun?: boolean
+
+  /**
+   * Health-probe retry policy. workerd/Bun cold-start takes 10–15s after
+   * `systemctl restart`, so a single curl right after restart often hits
+   * ECONNREFUSED or a 5xx. We poll until we see a non-5xx response or
+   * attempts are exhausted. Tests inject `sleep` to skip real waits.
+   */
+  readonly healthProbe?: {
+    readonly maxAttempts?: number
+    readonly intervalMs?: number
+    readonly sleep?: (ms: number) => Promise<void>
+  }
 }
 
 export interface DeployResult {
