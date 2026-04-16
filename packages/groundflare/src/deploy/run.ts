@@ -304,9 +304,13 @@ export async function runDeploy(opts: RunDeployOptions): Promise<DeployResult> {
         mode: '0644',
       },
     ]
-    const groundflareOwnedDirs = manifest.workers.map(
-      (w) => `/var/lib/groundflare/workers/${w.name}/code/current`,
-    )
+    const groundflareOwnedDirs = manifest.workers.flatMap((w) => [
+      // The worker dir itself must be groundflare-owned so the assets
+      // scp below (running as the groundflare user) can create / replace
+      // the `assets/` subdirectory without sudo.
+      `/var/lib/groundflare/workers/${w.name}`,
+      `/var/lib/groundflare/workers/${w.name}/code/current`,
+    ])
     await atomicInstall(ssh, { files: filesToInstall, groundflareOwnedDirs })
   }
 
@@ -314,6 +318,15 @@ export async function runDeploy(opts: RunDeployOptions): Promise<DeployResult> {
   // Exclude _worker.js/ from the assets directory — the Worker bundle
   // was already uploaded via the capnp pipeline. Exposing it via Caddy's
   // file_server would leak Worker source code.
+  //
+  // Path layout: Caddy's `root * <workerDir>/assets` expects files at
+  // `<workerDir>/assets/<file>`. scp recursive into an already-existing
+  // dir nests the source AS a child of dest (`<workerDir>/assets/assets/
+  // <file>`), so we must upload to the parent workerDir — not to an
+  // ensured-empty assets dir — and let scp create `assets/` at the right
+  // level. We also `rm -rf` any prior assets directory first, both to
+  // avoid double-nesting on redeploys and to drop stale files that a
+  // prior deploy shipped but the current build no longer emits.
   if (hasAssets && assetsLocalDir !== undefined) {
     const { cpSync } = await import('node:fs')
     const assetsStagingDir = join(
@@ -326,17 +339,16 @@ export async function runDeploy(opts: RunDeployOptions): Promise<DeployResult> {
     })
 
     for (const w of manifest.workers) {
-      const remoteAssetsDir = `/var/lib/groundflare/workers/${w.name}/assets`
-      await ensureRemoteDir(ssh, remoteAssetsDir)
-      log('info', `uploading static assets to ${remoteAssetsDir}`)
-      await ssh.upload(assetsStagingDir, remoteAssetsDir, { recursive: true })
-      const chown = await ssh.run(
-        `sudo chown -R groundflare:groundflare ${remoteAssetsDir}`,
+      const workerDir = `/var/lib/groundflare/workers/${w.name}`
+      log('info', `uploading static assets to ${workerDir}/assets`)
+      const clear = await ssh.run(
+        `rm -rf ${workerDir}/assets`,
         { timeoutMs: 30_000 },
       )
-      if (chown.exitCode !== 0) {
-        log('warn', `chown on assets failed: ${chown.stderr}`)
+      if (clear.exitCode !== 0) {
+        log('warn', `could not clear ${workerDir}/assets: ${clear.stderr}`)
       }
+      await ssh.upload(assetsStagingDir, workerDir, { recursive: true })
     }
     await rm(assetsStagingDir, { recursive: true, force: true }).catch(() => {})
   }
@@ -460,21 +472,6 @@ async function probeHealth(
     `health probe returned ${status} after ${maxAttempts} attempts — workerd is running but erroring`,
     'health_failed',
   )
-}
-
-// ─── SSH helpers (assets path) ─────────────────────────────────────
-
-async function ensureRemoteDir(ssh: SshClient, remoteDir: string): Promise<void> {
-  const result = await ssh.run(
-    `sudo mkdir -p ${remoteDir} && sudo chown groundflare:groundflare ${remoteDir}`,
-    { timeoutMs: 30_000 },
-  )
-  if (result.exitCode !== 0) {
-    throw new DeployError(
-      `failed to create ${remoteDir}: ${result.stderr || result.stdout}`,
-      'upload_failed',
-    )
-  }
 }
 
 // Unused import silencer — `readFile` is there for future config ingestion
