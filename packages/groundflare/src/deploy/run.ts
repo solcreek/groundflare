@@ -398,7 +398,7 @@ async function uploadContent(ssh: SshClient, content: string, remotePath: string
 async function ensureRemoteDir(ssh: SshClient, remoteDir: string): Promise<void> {
   const result = await ssh.run(
     `sudo mkdir -p ${remoteDir} && sudo chown groundflare:groundflare ${remoteDir}`,
-    { timeoutMs: 10_000 },
+    { timeoutMs: 30_000 },
   )
   if (result.exitCode !== 0) {
     throw new DeployError(
