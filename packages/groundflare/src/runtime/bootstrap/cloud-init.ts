@@ -134,7 +134,7 @@ export function generateCloudInit(opts: CloudInitOptions): string {
   lines.push(`  - name: ${systemUser}`)
   lines.push('    sudo: ALL=(ALL) NOPASSWD:ALL')
   lines.push('    shell: /bin/bash')
-  lines.push('    ssh-authorized-keys:')
+  lines.push('    ssh_authorized_keys:')
   for (const key of opts.sshAuthorizedKeys) {
     lines.push(`      - ${yamlScalar(key)}`)
   }
