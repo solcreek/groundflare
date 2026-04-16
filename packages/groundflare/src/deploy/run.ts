@@ -149,9 +149,22 @@ export async function runDeploy(opts: RunDeployOptions): Promise<DeployResult> {
     capnpText = renderCapnpConfig(capnpConfig)
   }
 
+  // Resolve assets directory for each worker (from wrangler [assets]).
+  // On the VPS: /var/lib/groundflare/workers/<name>/assets/
+  const hasAssets = wrangler.assets?.directory !== undefined
+  const assetsLocalDir = hasAssets
+    ? resolvePath(cwd, wrangler.assets!.directory!)
+    : undefined
+
   const caddySites: CaddySite[] = manifest.workers
     .filter((w) => w.domain !== undefined)
-    .map((w) => ({ hostname: w.domain!, upstream: LISTEN_ADDRESS }))
+    .map((w) => ({
+      hostname: w.domain!,
+      upstream: LISTEN_ADDRESS,
+      ...(hasAssets
+        ? { assetsPath: `/var/lib/groundflare/workers/${w.name}/assets` }
+        : {}),
+    }))
   const caddyfile = generateCaddyfile({
     email: opts.acmeEmail,
     sites: caddySites,
@@ -228,6 +241,24 @@ export async function runDeploy(opts: RunDeployOptions): Promise<DeployResult> {
     await uploadAsUser(ssh, capnpText, CAPNP_REMOTE_PATH, 'groundflare', '0644')
   }
   await uploadAsRoot(ssh, caddyfile, CADDYFILE_REMOTE_PATH, '0644')
+
+  // ─── 5b. Upload static assets ─────────────────────────────────
+  if (hasAssets && assetsLocalDir !== undefined) {
+    for (const w of manifest.workers) {
+      const remoteAssetsDir = `/var/lib/groundflare/workers/${w.name}/assets`
+      await ensureRemoteDir(ssh, remoteAssetsDir)
+      log('info', `uploading static assets from ${assetsLocalDir} to ${remoteAssetsDir}`)
+      await ssh.upload(assetsLocalDir, remoteAssetsDir, { recursive: true })
+      // Ensure correct ownership
+      const chown = await ssh.run(
+        `sudo chown -R groundflare:groundflare ${remoteAssetsDir}`,
+        { timeoutMs: 30_000 },
+      )
+      if (chown.exitCode !== 0) {
+        log('warn', `chown on assets failed: ${chown.stderr}`)
+      }
+    }
+  }
 
   // ─── 6. Restart services ───────────────────────────────────────
   log('info', 'restarting groundflare-worker + reloading caddy')

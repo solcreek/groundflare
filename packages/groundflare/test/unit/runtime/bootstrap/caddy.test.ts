@@ -126,6 +126,37 @@ describe('generateCaddyfile — site blocks', () => {
     expect(out).toContain('}')
     expect(out).not.toContain('reverse_proxy')
   })
+
+  it('generates file_server + try_files when assetsPath is set', () => {
+    const out = generateCaddyfile({
+      email: 'ops@example.com',
+      sites: [
+        {
+          hostname: 'app.example.com',
+          upstream: '127.0.0.1:8080',
+          assetsPath: '/var/lib/groundflare/workers/app/assets',
+        },
+      ],
+    })
+    expect(out).toContain('root * /var/lib/groundflare/workers/app/assets')
+    expect(out).toContain('@static file')
+    expect(out).toContain('handle @static {')
+    expect(out).toContain('file_server')
+    expect(out).toContain('handle {')
+    expect(out).toContain('reverse_proxy 127.0.0.1:8080')
+  })
+
+  it('omits file_server when assetsPath is not set', () => {
+    const out = generateCaddyfile({
+      email: 'ops@example.com',
+      sites: [
+        { hostname: 'api.example.com', upstream: '127.0.0.1:8080' },
+      ],
+    })
+    expect(out).not.toContain('file_server')
+    expect(out).not.toContain('@static')
+    expect(out).toContain('reverse_proxy 127.0.0.1:8080')
+  })
 })
 
 describe('generateCaddyfile — validation', () => {

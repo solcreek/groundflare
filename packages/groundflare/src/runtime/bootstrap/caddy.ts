@@ -18,6 +18,14 @@ export interface CaddySite {
   readonly upstream: string
 
   /**
+   * Absolute path on the VPS to a directory of static files. When set,
+   * Caddy serves matching files directly (fast, no Worker invocation)
+   * and falls through to the upstream reverse_proxy for everything else.
+   * Matches wrangler's `[assets].directory` semantics.
+   */
+  readonly assetsPath?: string
+
+  /**
    * Enable gzip/zstd response compression. Default true — the workerd
    * router doesn't compress, and most tenant Workers don't either.
    */
@@ -92,7 +100,25 @@ export function generateCaddyfile(opts: CaddyfileOptions): string {
 }
 
 function renderSite(site: CaddySite): string {
-  const lines: string[] = [`reverse_proxy ${site.upstream}`]
+  const lines: string[] = []
+
+  if (site.assetsPath !== undefined) {
+    // Static assets: Caddy serves files from disk first; requests that
+    // don't match a file fall through to the Worker via reverse_proxy.
+    lines.push(`root * ${site.assetsPath}`)
+    lines.push('')
+    lines.push('@static file')
+    lines.push('handle @static {')
+    lines.push('  file_server')
+    lines.push('}')
+    lines.push('')
+    lines.push('handle {')
+    lines.push(`  reverse_proxy ${site.upstream}`)
+    lines.push('}')
+  } else {
+    lines.push(`reverse_proxy ${site.upstream}`)
+  }
+
   if (site.encode !== false) lines.push('encode gzip zstd')
   lines.push('log {')
   lines.push('  output stdout')
