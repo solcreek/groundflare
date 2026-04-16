@@ -179,18 +179,12 @@ describe('runDeploy', () => {
       ].join('\n'),
     )
     // Run-call sequence in order:
-    //   1. ensureRemoteDir for the worker's code dir → mkdir+chown
-    //   2. install bundle
-    //   3. install capnp
-    //   4. install Caddyfile (root)
-    //   5. systemctl daemon-reload + restart workerd + reload caddy
-    //   6. curl health probe (200)
+    //   1. atomic install script (mkdir+chown + install bundle+capnp+caddyfile + rm)
+    //   2. systemctl daemon-reload + restart workerd + reload caddy
+    //   3. curl health probe (200)
     const { client, runCalls, uploads } = mockSsh({
       runs: [
-        { exitCode: 0 }, // ensureRemoteDir
-        { exitCode: 0 }, // install bundle
-        { exitCode: 0 }, // install capnp
-        { exitCode: 0 }, // install Caddyfile
+        { exitCode: 0 }, // atomic install
         { exitCode: 0 }, // systemctl restart
         { exitCode: 0, stdout: '200' }, // health probe
       ],
@@ -205,25 +199,55 @@ describe('runDeploy', () => {
     })
     expect(result.dryRun).toBe(false)
     expect(result.healthCheck?.status).toBe(200)
-    // Three uploads: bundle, capnp, Caddyfile
+    // Three scp uploads: bundle, capnp, Caddyfile — all staged under /tmp.
     expect(uploads).toHaveLength(3)
-    // ensure-dir + 3 installs + systemctl + health = 6 run calls
-    expect(runCalls).toHaveLength(6)
-    expect(runCalls[4]?.command).toContain('systemctl restart groundflare-worker.service')
-    expect(runCalls[4]?.command).toContain('systemctl reload caddy.service')
-    expect(runCalls[5]?.command).toContain('curl -o /dev/null')
-    expect(runCalls[5]?.command).toContain('Host: api.example.com')
+    for (const u of uploads) expect(u.remote).toMatch(/^\/tmp\/gf-stage-/)
+    // atomic install + systemctl + health = 3 run calls
+    expect(runCalls).toHaveLength(3)
+    expect(runCalls[0]?.command).toBe('sudo sh -s')
+    expect(runCalls[0]?.opts?.stdin).toContain('set -e')
+    expect(runCalls[0]?.opts?.stdin).toContain('install -m 0644 -o groundflare -g groundflare')
+    expect(runCalls[0]?.opts?.stdin).toContain('install -m 0644 -o root -g root')
+    expect(runCalls[0]?.opts?.stdin).toContain('/var/lib/groundflare/worker.capnp')
+    expect(runCalls[0]?.opts?.stdin).toContain('/etc/caddy/Caddyfile')
+    expect(runCalls[1]?.command).toContain('systemctl restart groundflare-worker.service')
+    expect(runCalls[1]?.command).toContain('systemctl reload caddy.service')
+    expect(runCalls[2]?.command).toContain('curl -o /dev/null')
+    expect(runCalls[2]?.command).toContain('Host: api.example.com')
   })
 
-  it('propagates upload_failed when sudo install fails', async () => {
+  it('atomic install leaves destinations untouched when staging scp fails', async () => {
+    await scaffoldWorker(
+      `name = "api"\nmain = "src/index.ts"\ncompatibility_date = "2026-04-01"\n`,
+    )
+    const { client, runCalls, uploads } = mockSsh({
+      uploadShouldThrow: new Error('scp: connection reset'),
+    })
+    await expect(
+      runDeploy({
+        workspace: 'demo',
+        workingDirectory: tmp,
+        acmeEmail: 'ops@example.com',
+        bootstrapState: baseState(),
+        ssh: client,
+        log: () => {},
+      }),
+    ).rejects.toMatchObject({ code: 'upload_failed' })
+    // First scp threw → we should see exactly one upload attempt (no
+    // sudo install ran), then a best-effort rm for cleanup.
+    expect(uploads).toHaveLength(1)
+    const installCalls = runCalls.filter((c) => c.command === 'sudo sh -s')
+    expect(installCalls).toHaveLength(0)
+    const cleanupCalls = runCalls.filter((c) => c.command.startsWith('rm -f /tmp/gf-stage-'))
+    expect(cleanupCalls).toHaveLength(1)
+  })
+
+  it('propagates upload_failed when the atomic install script fails', async () => {
     await scaffoldWorker(
       `name = "api"\nmain = "src/index.ts"\ncompatibility_date = "2026-04-01"\n`,
     )
     const { client } = mockSsh({
-      runs: [
-        { exitCode: 0 }, // ensureRemoteDir
-        { exitCode: 1, stderr: 'permission denied' }, // install bundle fails
-      ],
+      runs: [{ exitCode: 1, stderr: 'permission denied' }], // atomic install fails
     })
     await expect(
       runDeploy({
@@ -243,11 +267,8 @@ describe('runDeploy', () => {
     )
     const { client } = mockSsh({
       runs: [
-        { exitCode: 0 }, // ensureRemoteDir
-        { exitCode: 0 }, // install bundle
-        { exitCode: 0 }, // install capnp
-        { exitCode: 0 }, // install Caddyfile
-        { exitCode: 1, stderr: 'Job failed.' },
+        { exitCode: 0 }, // atomic install
+        { exitCode: 1, stderr: 'Job failed.' }, // systemctl
       ],
     })
     await expect(
@@ -268,12 +289,9 @@ describe('runDeploy', () => {
     )
     const { client } = mockSsh({
       runs: [
-        { exitCode: 0 },
-        { exitCode: 0 },
-        { exitCode: 0 },
-        { exitCode: 0 },
-        { exitCode: 0 },
-        { exitCode: 0, stdout: '503' },
+        { exitCode: 0 }, // atomic install
+        { exitCode: 0 }, // systemctl
+        { exitCode: 0, stdout: '503' }, // probe
       ],
     })
     await expect(
@@ -295,12 +313,9 @@ describe('runDeploy', () => {
     )
     const { client } = mockSsh({
       runs: [
-        { exitCode: 0 },
-        { exitCode: 0 },
-        { exitCode: 0 },
-        { exitCode: 0 },
-        { exitCode: 0 },
-        { exitCode: 7, stderr: 'connection refused' },
+        { exitCode: 0 }, // atomic install
+        { exitCode: 0 }, // systemctl
+        { exitCode: 7, stderr: 'connection refused' }, // probe
       ],
     })
     await expect(
@@ -324,10 +339,7 @@ describe('runDeploy', () => {
     )
     const { client, runCalls } = mockSsh({
       runs: [
-        { exitCode: 0 }, // ensureRemoteDir
-        { exitCode: 0 }, // install bundle
-        { exitCode: 0 }, // install capnp
-        { exitCode: 0 }, // install Caddyfile
+        { exitCode: 0 }, // atomic install
         { exitCode: 0 }, // systemctl restart
         { exitCode: 7, stderr: 'connection refused' }, // probe 1: ECONNREFUSED
         { exitCode: 0, stdout: '502' }, // probe 2: bad gateway
@@ -355,11 +367,8 @@ describe('runDeploy', () => {
     )
     const { client, runCalls } = mockSsh({
       runs: [
-        { exitCode: 0 }, // ensureRemoteDir
-        { exitCode: 0 }, // install bundle
-        { exitCode: 0 }, // install capnp
-        { exitCode: 0 }, // install Caddyfile
-        { exitCode: 0 }, // systemctl restart
+        { exitCode: 0 }, // atomic install
+        { exitCode: 0 }, // systemctl
         { exitCode: 0, stdout: '503' },
         { exitCode: 0, stdout: '503' },
         { exitCode: 0, stdout: '503' },
@@ -420,10 +429,7 @@ describe('runDeploy', () => {
     )
     const { client } = mockSsh({
       runs: [
-        { exitCode: 0 }, // ensureRemoteDir
-        { exitCode: 0 }, // install bundle
-        { exitCode: 0 }, // install capnp
-        { exitCode: 0 }, // install Caddyfile
+        { exitCode: 0 }, // atomic install
         { exitCode: 0 }, // systemctl restart
         { exitCode: 0, stdout: '200' }, // health probe
       ],
