@@ -1,3 +1,6 @@
+export { DigitalOceanProvider } from './digitalocean.js'
+export type { DigitalOceanClientOptions } from './digitalocean.js'
+
 export { HetznerProvider } from './hetzner.js'
 export type { HetznerClientOptions } from './hetzner.js'
 
