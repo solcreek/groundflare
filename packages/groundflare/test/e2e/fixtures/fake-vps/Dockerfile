@@ -32,7 +32,12 @@ ARG TARGETARCH
 # `unzip` is added unconditionally because the image is shared between
 # the Mirror (workerd) and Bun tracks — Bun's installer would also need
 # it, and forking the image per-track isn't worth the CI complexity.
-RUN apt-get update && apt-get install -y --no-install-recommends \
+# Retry apt-get update — Ubuntu mirror hash mismatches are a common
+# transient failure on CI runners (the mirror syncs lag behind the
+# Release file). Two attempts with a 5s pause between them cover
+# the vast majority of cases.
+RUN (apt-get update || (sleep 5 && apt-get update)) \
+ && apt-get install -y --no-install-recommends \
       systemd systemd-sysv dbus \
       openssh-server \
       sudo \
