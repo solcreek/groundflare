@@ -4,6 +4,9 @@ export type { DigitalOceanClientOptions } from './digitalocean.js'
 export { HetznerProvider } from './hetzner.js'
 export type { HetznerClientOptions } from './hetzner.js'
 
+export { LinodeProvider } from './linode.js'
+export type { LinodeClientOptions } from './linode.js'
+
 export { HttpProvider } from './http-base.js'
 export type { HttpProviderOptions } from './http-base.js'
 

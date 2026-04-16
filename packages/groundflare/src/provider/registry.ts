@@ -15,6 +15,7 @@
 
 import { DigitalOceanProvider } from './digitalocean.js'
 import { HetznerProvider } from './hetzner.js'
+import { LinodeProvider } from './linode.js'
 import type { HttpProviderOptions } from './http-base.js'
 import type { Provider, ProviderName } from './types.js'
 
@@ -23,10 +24,11 @@ export type ProviderFactory = (opts: HttpProviderOptions) => Provider
 export const PROVIDER_REGISTRY: Readonly<Partial<Record<ProviderName, ProviderFactory>>> = {
   hetzner: (opts) => new HetznerProvider(opts),
   digitalocean: (opts) => new DigitalOceanProvider(opts),
-  // linode, vultr, contabo: not yet implemented — README lists them as
-  // planned. ProviderName includes them so config validation and CLI
-  // help stay consistent; attempting to use one throws the
-  // "not implemented" path below.
+  linode: (opts) => new LinodeProvider(opts),
+  // vultr, contabo: not yet implemented — README lists them as planned.
+  // ProviderName includes them so config validation and CLI help stay
+  // consistent; attempting to use one throws the "not implemented" path
+  // below.
 }
 
 export class UnknownProviderError extends Error {

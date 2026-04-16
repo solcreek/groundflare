@@ -3,6 +3,7 @@ import { describe, it, expect } from 'vitest'
 import {
   DigitalOceanProvider,
   HetznerProvider,
+  LinodeProvider,
   PROVIDER_REGISTRY,
   UnknownProviderError,
   createProvider,
@@ -22,18 +23,24 @@ describe('createProvider', () => {
     expect(p.name).toBe('digitalocean')
   })
 
+  it('returns a LinodeProvider for name="linode"', () => {
+    const p = createProvider('linode', { token: 't' })
+    expect(p).toBeInstanceOf(LinodeProvider)
+    expect(p.name).toBe('linode')
+  })
+
   it('throws UnknownProviderError for a name that has no implementation yet', () => {
-    expect(() => createProvider('linode', { token: 't' })).toThrow(
+    expect(() => createProvider('vultr', { token: 't' })).toThrow(
       UnknownProviderError,
     )
     try {
-      createProvider('linode', { token: 't' })
+      createProvider('vultr', { token: 't' })
     } catch (err) {
       expect(err).toBeInstanceOf(UnknownProviderError)
-      expect((err as UnknownProviderError).providerName).toBe('linode')
-      expect((err as Error).message).toContain('linode')
+      expect((err as UnknownProviderError).providerName).toBe('vultr')
+      expect((err as Error).message).toContain('vultr')
       // Error lists what IS supported, not what isn't.
-      expect((err as Error).message).toMatch(/hetzner|digitalocean/)
+      expect((err as Error).message).toMatch(/hetzner|digitalocean|linode/)
     }
   })
 
@@ -49,8 +56,8 @@ describe('listImplementedProviders', () => {
     const names = listImplementedProviders()
     expect(names).toContain('hetzner')
     expect(names).toContain('digitalocean')
+    expect(names).toContain('linode')
     // Planned-but-unimplemented providers are absent.
-    expect(names).not.toContain('linode')
     expect(names).not.toContain('vultr')
     expect(names).not.toContain('contabo')
   })
