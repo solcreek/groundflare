@@ -16,7 +16,7 @@ function mockFetch(body: unknown, status = 200): typeof fetch {
   }) as unknown as typeof fetch
 }
 
-function mockFetchMulti(responses: Array<{ body: unknown; status?: number }>): typeof fetch {
+function _mockFetchMulti(responses: Array<{ body: unknown; status?: number }>): typeof fetch {
   const queue = [...responses]
   return vi.fn(async () => {
     const next = queue.shift() ?? { body: {}, status: 200 }

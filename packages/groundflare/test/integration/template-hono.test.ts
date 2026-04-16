@@ -27,10 +27,7 @@ import {
 } from '../../src/runtime/bun/analyze/index.js'
 import { scaffoldProject, type ScaffoldFs } from '../../../create-groundflare-app/src/scaffold.js'
 import { readConfigFile } from '../../src/config/index.js'
-import {
-  buildCapnpFromWorkspace,
-  workspaceWorkerFromConfig,
-} from '../../src/runtime/workspace/index.js'
+import { buildCapnpFromWorkspace } from '../../src/runtime/workspace/index.js'
 import { renderCapnpConfig } from '../../src/runtime/workerd/capnp/index.js'
 import { pickFreePort, spawnWorkerd, type SpawnedWorkerd } from './spawn-workerd.js'
 
