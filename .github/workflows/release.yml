@@ -109,8 +109,19 @@ jobs:
       - name: Install
         run: npm ci
 
-      - name: Pre-publish gate (check + lint + test + build)
-        run: npm run prepublishOnly -w ${{ steps.parse.outputs.package }}
+      # Monorepo build order: groundflare imports from
+      # groundflare-estimate, so its dist must exist before groundflare's
+      # own build step can resolve the sibling package's .d.ts. Build
+      # every published workspace first; no-op if the target has no
+      # `build` script or nothing to emit.
+      - name: Build all published workspaces
+        run: npm run build
+
+      - name: Pre-publish gate (check + lint + test)
+        run: |
+          npm run check -w ${{ steps.parse.outputs.package }}
+          npm run lint -w ${{ steps.parse.outputs.package }}
+          npm run test -w ${{ steps.parse.outputs.package }}
 
       - name: Assert tag version matches package.json
         if: startsWith(github.ref, 'refs/tags/')
