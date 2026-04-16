@@ -17,13 +17,17 @@ export { BAKED_PRICES, loadBakedPrices, priceAgeDays } from './prices.js'
 export {
   DOPricingError,
   HetznerPricingError,
+  LinodePricingError,
   fetchDOPricing,
   fetchHetznerPricing,
+  fetchLinodePricing,
   refreshPrices,
   type DOLivePrices,
   type FetchDOPricingOptions,
   type FetchHetznerOptions,
+  type FetchLinodePricingOptions,
   type HetznerLivePrices,
+  type LinodeLivePrices,
   type RefreshPricesOptions,
   type RefreshedPrices,
 } from './live/index.js'

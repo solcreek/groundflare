@@ -10,11 +10,14 @@ import type { PriceSource, Prices, VPSTierSpec } from '../types.js'
 
 import { fetchDOPricing, DOPricingError } from './digitalocean.js'
 import { fetchHetznerPricing, HetznerPricingError } from './hetzner.js'
+import { fetchLinodePricing, LinodePricingError } from './linode.js'
 
 export { fetchDOPricing, DOPricingError } from './digitalocean.js'
 export type { FetchDOPricingOptions, DOLivePrices } from './digitalocean.js'
 export { fetchHetznerPricing, HetznerPricingError } from './hetzner.js'
 export type { FetchHetznerOptions, HetznerLivePrices } from './hetzner.js'
+export { fetchLinodePricing, LinodePricingError } from './linode.js'
+export type { FetchLinodePricingOptions, LinodeLivePrices } from './linode.js'
 
 export interface RefreshPricesOptions {
   readonly baked: Prices
@@ -90,6 +93,29 @@ export async function refreshPrices(
             ? err.message
             : String(err)
       sources.push({ provider: 'digitalocean', kind: 'baked', reason })
+    }
+  }
+
+  // ─── Linode ─────────────────────────────────────────────────
+  const linodeToken = await opts.secrets.get('provider.linode.token')
+  if (linodeToken === null || linodeToken.length === 0) {
+    sources.push({ provider: 'linode', kind: 'baked', reason: 'no token configured' })
+  } else {
+    try {
+      const live = await fetchLinodePricing({
+        token: linodeToken,
+        ...(opts.fetchImpl !== undefined ? { fetchImpl: opts.fetchImpl } : {}),
+      })
+      prices = mergeLiveTiers(prices, 'linode', live.tiers)
+      sources.push({ provider: 'linode', kind: 'live', fetchedAt: live.fetchedAt })
+    } catch (err) {
+      const reason =
+        err instanceof LinodePricingError
+          ? `${err.code}: ${err.message}`
+          : err instanceof Error
+            ? err.message
+            : String(err)
+      sources.push({ provider: 'linode', kind: 'baked', reason })
     }
   }
 

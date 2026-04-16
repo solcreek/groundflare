@@ -91,4 +91,50 @@ describe('refreshPrices', () => {
     expect(sources[0]?.kind).toBe('baked')
     expect(sources[0]?.reason).toMatch(/auth/)
   })
+
+  it('records a linode source entry and attempts live fetch when the token is set', async () => {
+    // Shared fetch mock: all three providers hit this. Linode expects
+    // `{data:[...]}`; DO and Hetzner will shape-reject, which is fine —
+    // we only assert on the Linode entry here.
+    const linodeBody = {
+      data: [
+        {
+          id: 'g6-standard-2',
+          label: 'Linode 4GB',
+          vcpus: 2,
+          memory: 4096,
+          disk: 81920,
+          transfer: 4000,
+          price: { hourly: 0.036, monthly: 22 }, // deliberately different from baked 24
+          class: 'standard',
+        },
+      ],
+      page: 1,
+      pages: 1,
+      results: 1,
+    }
+    const secrets = new MemorySecretReader({ 'provider.linode.token': 'abc' })
+    const { prices, sources } = await refreshPrices({
+      baked: BAKED_PRICES,
+      secrets,
+      fetchImpl: fakeFetch(linodeBody),
+    })
+    // Live price was merged for g6-standard-2.
+    expect(prices.linode['g6-standard-2']?.price).toBe(22)
+    // Baked price for an un-refreshed tier is preserved.
+    expect(prices.linode['g6-nanode-1']).toEqual(BAKED_PRICES.linode['g6-nanode-1'])
+    const linodeSource = sources.find((s) => s.provider === 'linode')
+    expect(linodeSource?.kind).toBe('live')
+    expect(linodeSource?.fetchedAt).toMatch(/^\d{4}-\d{2}-\d{2}T/)
+  })
+
+  it('records linode as baked with "no token" when LINODE_TOKEN is unset', async () => {
+    const { sources } = await refreshPrices({
+      baked: BAKED_PRICES,
+      secrets: new MemorySecretReader(),
+    })
+    const linodeSource = sources.find((s) => s.provider === 'linode')
+    expect(linodeSource?.kind).toBe('baked')
+    expect(linodeSource?.reason).toBe('no token configured')
+  })
 })

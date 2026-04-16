@@ -275,18 +275,12 @@ describe('Linode provider routing', () => {
   })
 
   it('prefers the shared tier over the dedicated sibling at the same spec', () => {
-    // Demand requiring exactly 2 vCPU / 4 GB: both g6-standard-2 and
-    // g6-dedicated-2 satisfy it, but standard is listed first (cheaper
-    // first) so chooseTier picks it.
-    const demand = { coresNeeded: 2, ramGBNeeded: 3, diskGBNeeded: 20 }
-    const prices = BAKED_PRICES
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    const _ = prices // silence unused in types-only expansion below
-    // chooseTier isn't exported on src/index.ts path here; reach via
-    // the computeEstimate round-trip which uses it internally.
+    // A modest workload that fits within 2 vCPU / 4 GB. Both
+    // g6-standard-2 and g6-dedicated-2 satisfy it, but standard is
+    // listed first (cheaper-first ordering) so chooseTier picks it.
     const usage: Usage = u({
       requestsPerMonth: 10_000_000,
-      cpuMsPerRequest: 6, // pushes avg -> ~3.8 rps, peak -> ~38 rps × 6 ms → ~0.23 cores × 1.5 buffer ≈ 1 core
+      cpuMsPerRequest: 6,
       kvStorageGB: 2,
       r2StorageGB: 2,
       d1StorageGB: 2,
@@ -295,9 +289,7 @@ describe('Linode provider routing', () => {
       confidence: 'low',
       targetProvider: 'linode',
     })
-    // Should NOT pick dedicated when a cheaper shared tier fits.
     expect(e.target.tier.startsWith('g6-dedicated')).toBe(false)
-    void demand
   })
 
   it('uses the Linode egress overage rate when traffic exceeds included', () => {
