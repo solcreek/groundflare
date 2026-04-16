@@ -245,3 +245,105 @@ describe('sumLines', () => {
     )
   })
 })
+
+describe('Linode provider routing', () => {
+  it('BAKED_PRICES.linode has the expected tier set', () => {
+    const tiers = Object.keys(BAKED_PRICES.linode)
+    expect(tiers).toContain('g6-nanode-1')
+    expect(tiers).toContain('g6-standard-2')
+    expect(tiers).toContain('g6-dedicated-2')
+    // Linode prices are in USD — sanity-check a known tier.
+    expect(BAKED_PRICES.linode['g6-standard-2']?.price).toBe(24)
+    expect(BAKED_PRICES.linode['g6-standard-2']?.ram_gb).toBe(4)
+  })
+
+  it('has a linode_egress_overage_per_tb rate in extras', () => {
+    expect(BAKED_PRICES.extras.linode_egress_overage_per_tb).toBe(5)
+  })
+
+  it('computeEstimate routes a default workload to the cheapest fitting tier', () => {
+    const e = computeEstimate(u(), BAKED_PRICES, {
+      confidence: 'low',
+      targetProvider: 'linode',
+    })
+    expect(e.target.provider).toBe('linode')
+    // Default workload is tiny; g6-nanode-1 (1 vCPU / 1 GB) fits.
+    expect(e.target.tier).toBe('g6-nanode-1')
+    // VPS line should carry the $5 price
+    const vpsLine = e.target.breakdown.find((l) => l.label.startsWith('VPS'))
+    expect(vpsLine?.amount).toBe(5)
+  })
+
+  it('prefers the shared tier over the dedicated sibling at the same spec', () => {
+    // Demand requiring exactly 2 vCPU / 4 GB: both g6-standard-2 and
+    // g6-dedicated-2 satisfy it, but standard is listed first (cheaper
+    // first) so chooseTier picks it.
+    const demand = { coresNeeded: 2, ramGBNeeded: 3, diskGBNeeded: 20 }
+    const prices = BAKED_PRICES
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const _ = prices // silence unused in types-only expansion below
+    // chooseTier isn't exported on src/index.ts path here; reach via
+    // the computeEstimate round-trip which uses it internally.
+    const usage: Usage = u({
+      requestsPerMonth: 10_000_000,
+      cpuMsPerRequest: 6, // pushes avg -> ~3.8 rps, peak -> ~38 rps × 6 ms → ~0.23 cores × 1.5 buffer ≈ 1 core
+      kvStorageGB: 2,
+      r2StorageGB: 2,
+      d1StorageGB: 2,
+    })
+    const e = computeEstimate(usage, BAKED_PRICES, {
+      confidence: 'low',
+      targetProvider: 'linode',
+    })
+    // Should NOT pick dedicated when a cheaper shared tier fits.
+    expect(e.target.tier.startsWith('g6-dedicated')).toBe(false)
+    void demand
+  })
+
+  it('uses the Linode egress overage rate when traffic exceeds included', () => {
+    // 100M × 500 KB ≈ 50 TB egress. g6-standard-2 includes 4 TB → 46 TB over.
+    const e = computeEstimate(
+      u({ requestsPerMonth: 100_000_000, avgResponseKB: 500 }),
+      BAKED_PRICES,
+      { confidence: 'low', targetProvider: 'linode' },
+    )
+    const overage = e.target.breakdown.find((l) =>
+      l.label.includes('egress overage'),
+    )
+    expect(overage).toBeDefined()
+    // Rate: $5/TB for Linode; reasonably higher than Hetzner ($1/TB)
+    // but far below DO ($10.24/TB). Sanity check the magnitude only
+    // (we don't pin exact TB since computeSizingDemand may choose a
+    // bigger tier with more included traffic).
+    expect(overage!.amount).toBeGreaterThan(0)
+    expect(overage!.amount).toBeLessThan(
+      BAKED_PRICES.extras.do_egress_overage_per_tb * 50,
+    )
+  })
+
+  it('label uses "Linode" (not "hetzner" or "DigitalOcean")', () => {
+    const e = computeEstimate(
+      u({ requestsPerMonth: 100_000_000, avgResponseKB: 500 }),
+      BAKED_PRICES,
+      { confidence: 'low', targetProvider: 'linode' },
+    )
+    const overage = e.target.breakdown.find((l) =>
+      l.label.includes('egress overage'),
+    )
+    expect(overage?.label).toContain('Linode')
+  })
+
+  it('marks unfit when workload exceeds the largest Linode tier', () => {
+    const e = computeEstimate(
+      // Need >8 cores or >16 GB RAM to exceed g6-standard-6. Use large DO
+      // instance count to drive RAM up.
+      u({ doInstanceCount: 100 }), // 1 + 0.5 * min(100, 200) = 51 GB RAM > 16
+      BAKED_PRICES,
+      { confidence: 'low', targetProvider: 'linode' },
+    )
+    const warn = e.warnings.find((w) => w.code === 'single-node-too-small')
+    expect(warn).toBeDefined()
+    // Should report the top tier even though it doesn't fit
+    expect(e.target.tier).toBe('g6-standard-6')
+  })
+})

@@ -29,6 +29,15 @@ const DO_TIERS: readonly string[] = [
   's-4vcpu-8gb',
   's-8vcpu-16gb',
 ]
+const LINODE_TIERS: readonly string[] = [
+  'g6-nanode-1',
+  'g6-standard-1',
+  'g6-standard-2',
+  'g6-dedicated-2',
+  'g6-standard-4',
+  'g6-dedicated-4',
+  'g6-standard-6',
+]
 
 /** ─── Classification ─────────────────────────────────────────── */
 
@@ -78,11 +87,25 @@ export interface TierChoice {
 }
 
 function tierList(provider: TargetProvider): readonly string[] {
-  return provider === 'digitalocean' ? DO_TIERS : HETZNER_TIERS
+  switch (provider) {
+    case 'digitalocean':
+      return DO_TIERS
+    case 'linode':
+      return LINODE_TIERS
+    case 'hetzner':
+      return HETZNER_TIERS
+  }
 }
 
 function tierTable(provider: TargetProvider, prices: Prices): Record<string, VPSTierSpec> {
-  return provider === 'digitalocean' ? prices.digitalocean : prices.hetzner
+  switch (provider) {
+    case 'digitalocean':
+      return prices.digitalocean
+    case 'linode':
+      return prices.linode
+    case 'hetzner':
+      return prices.hetzner
+  }
 }
 
 /** @deprecated Use chooseTier with explicit provider. */
@@ -203,7 +226,7 @@ export function costTarget(
   profile: Profile,
   prices: Prices,
 ): CostLine[] {
-  const providerName = provider === 'digitalocean' ? 'DigitalOcean' : 'Hetzner'
+  const providerName = providerLabel(provider)
   const lines: CostLine[] = []
   lines.push({
     label: `VPS (${tier}, ${spec.vcpu} vCPU / ${spec.ram_gb} GB)`,
@@ -213,10 +236,7 @@ export function costTarget(
   const egressTB = estimateEgressTB(usage)
   const overageTB = Math.max(0, egressTB - spec.traffic_tb)
   if (overageTB > 0) {
-    const ratePerTB =
-      provider === 'digitalocean'
-        ? prices.extras.do_egress_overage_per_tb
-        : prices.extras.hetzner_egress_overage_per_tb
+    const ratePerTB = egressOverageRate(provider, prices)
     lines.push({
       label: `${providerName} egress overage (${overageTB.toFixed(1)} TB)`,
       amount: overageTB * ratePerTB,
@@ -283,4 +303,26 @@ export function collectWarnings(usage: Usage, tierFits: boolean): Warning[] {
 
 export function sumLines(lines: readonly CostLine[]): number {
   return lines.reduce((acc, l) => acc + l.amount, 0)
+}
+
+function providerLabel(provider: TargetProvider): string {
+  switch (provider) {
+    case 'digitalocean':
+      return 'DigitalOcean'
+    case 'linode':
+      return 'Linode'
+    case 'hetzner':
+      return 'Hetzner'
+  }
+}
+
+function egressOverageRate(provider: TargetProvider, prices: Prices): number {
+  switch (provider) {
+    case 'digitalocean':
+      return prices.extras.do_egress_overage_per_tb
+    case 'linode':
+      return prices.extras.linode_egress_overage_per_tb
+    case 'hetzner':
+      return prices.extras.hetzner_egress_overage_per_tb
+  }
 }

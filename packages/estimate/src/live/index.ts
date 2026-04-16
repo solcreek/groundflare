@@ -37,6 +37,7 @@ export async function refreshPrices(
   if (opts.disableLive === true) {
     sources.push({ provider: 'hetzner', kind: 'baked', reason: 'live disabled' })
     sources.push({ provider: 'digitalocean', kind: 'baked', reason: 'live disabled' })
+    sources.push({ provider: 'linode', kind: 'baked', reason: 'live disabled' })
     return { prices, sources }
   }
 
@@ -97,7 +98,7 @@ export async function refreshPrices(
 
 function mergeLiveTiers(
   prices: Prices,
-  provider: 'hetzner' | 'digitalocean',
+  provider: 'hetzner' | 'digitalocean' | 'linode',
   liveTiers: Partial<Record<string, VPSTierSpec>>,
 ): Prices {
   const bakedTable = prices[provider]

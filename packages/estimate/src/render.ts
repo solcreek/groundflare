@@ -139,6 +139,8 @@ function providerDisplayName(provider: string): string {
   switch (provider) {
     case 'digitalocean':
       return 'DigitalOcean'
+    case 'linode':
+      return 'Linode'
     case 'hetzner':
       return 'Hetzner'
     default:

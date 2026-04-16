@@ -52,9 +52,24 @@ export const BAKED_PRICES: Prices = {
     'c-2': { price: 42, vcpu: 2, ram_gb: 4, disk_gb: 25, traffic_tb: 4 },
     'c-4': { price: 84, vcpu: 4, ram_gb: 8, disk_gb: 50, traffic_tb: 5 },
   },
+  linode: {
+    // Shared + dedicated CPU tiers. Specs from Linode's public type catalog.
+    // `chooseTier` iterates in listed order and picks the first that fits,
+    // so shared tiers are listed before their same-spec dedicated siblings —
+    // cheaper-when-possible, dedicated requires explicit sizing demand.
+    'g6-nanode-1': { price: 5, vcpu: 1, ram_gb: 1, disk_gb: 25, traffic_tb: 1 },
+    'g6-standard-1': { price: 12, vcpu: 1, ram_gb: 2, disk_gb: 50, traffic_tb: 2 },
+    'g6-standard-2': { price: 24, vcpu: 2, ram_gb: 4, disk_gb: 80, traffic_tb: 4 },
+    'g6-dedicated-2': { price: 36, vcpu: 2, ram_gb: 4, disk_gb: 80, traffic_tb: 4 },
+    'g6-standard-4': { price: 48, vcpu: 4, ram_gb: 8, disk_gb: 160, traffic_tb: 5 },
+    'g6-dedicated-4': { price: 72, vcpu: 4, ram_gb: 8, disk_gb: 160, traffic_tb: 5 },
+    'g6-standard-6': { price: 96, vcpu: 8, ram_gb: 16, disk_gb: 320, traffic_tb: 8 },
+  },
   extras: {
     hetzner_egress_overage_per_tb: 1.0,
     do_egress_overage_per_tb: 10.24,
+    // Linode: $0.005/GB outbound above the plan allowance = $5/TB.
+    linode_egress_overage_per_tb: 5.0,
     restic_b2_monthly_flat: 3.0,
     bunny_cdn_per_gb: 0.005,
   },
