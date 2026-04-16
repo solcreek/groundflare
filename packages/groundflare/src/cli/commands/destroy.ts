@@ -20,7 +20,13 @@ import { consola } from 'consola'
 import { unlink } from 'node:fs/promises'
 
 import { BootstrapStateStore } from '../../bootstrap/index.js'
-import { DigitalOceanProvider, HetznerProvider, type Provider, ProviderError } from '../../provider/index.js'
+import {
+  ProviderError,
+  UnknownProviderError,
+  createProvider,
+  type Provider,
+  type ProviderName,
+} from '../../provider/index.js'
 import { FileSecretStore } from '../../secret/index.js'
 import { log } from '../log.js'
 
@@ -101,13 +107,13 @@ async function constructProvider(name: string): Promise<Provider> {
     )
     process.exit(1)
   }
-  switch (name) {
-    case 'hetzner':
-      return new HetznerProvider({ token })
-    case 'digitalocean':
-      return new DigitalOceanProvider({ token })
-    default:
-      log.error(`provider ${JSON.stringify(name)} not supported`)
+  try {
+    return createProvider(name as ProviderName, { token })
+  } catch (err) {
+    if (err instanceof UnknownProviderError) {
+      log.error(err.message)
       process.exit(1)
+    }
+    throw err
   }
 }

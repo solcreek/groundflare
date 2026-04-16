@@ -9,7 +9,12 @@
  * collaborator is overridable via options.
  */
 
-import { DigitalOceanProvider, HetznerProvider, type Provider, type ProviderName } from '../provider/index.js'
+import {
+  UnknownProviderError,
+  createProvider,
+  type Provider,
+  type ProviderName,
+} from '../provider/index.js'
 import { FileSecretStore, type SecretStore } from '../secret/index.js'
 
 import { BootstrapOrchestrator } from './orchestrator.js'
@@ -179,16 +184,15 @@ async function constructProvider(
       'prerequisite',
     )
   }
-  switch (name) {
-    case 'hetzner':
-      return new HetznerProvider({ token })
-    case 'digitalocean':
-      return new DigitalOceanProvider({ token })
-    default:
-      throw new BootstrapError(
-        `provider ${JSON.stringify(name)} not yet supported`,
-        'prerequisite',
-      )
+  try {
+    return createProvider(name, { token })
+  } catch (err) {
+    if (err instanceof UnknownProviderError) {
+      throw new BootstrapError(err.message, 'prerequisite', undefined, {
+        cause: err,
+      })
+    }
+    throw err
   }
 }
 

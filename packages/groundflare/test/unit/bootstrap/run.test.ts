@@ -179,6 +179,6 @@ describe('runBootstrap', () => {
         stateStoreOverride: new BootstrapStateStore({ directory: tmp }),
         log: () => {},
       }),
-    ).rejects.toThrow(/not yet supported/)
+    ).rejects.toThrow(/not implemented/)
   })
 })

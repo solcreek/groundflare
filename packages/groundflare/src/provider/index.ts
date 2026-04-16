@@ -4,6 +4,17 @@ export type { DigitalOceanClientOptions } from './digitalocean.js'
 export { HetznerProvider } from './hetzner.js'
 export type { HetznerClientOptions } from './hetzner.js'
 
+export { HttpProvider } from './http-base.js'
+export type { HttpProviderOptions } from './http-base.js'
+
+export {
+  PROVIDER_REGISTRY,
+  UnknownProviderError,
+  createProvider,
+  listImplementedProviders,
+  type ProviderFactory,
+} from './registry.js'
+
 export {
   ProviderError,
   type Account,
