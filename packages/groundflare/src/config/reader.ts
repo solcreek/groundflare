@@ -9,6 +9,7 @@ import type {
   ReadConfigResult,
   WranglerConfig,
 } from './schema.js'
+import { validateGroundflareSection } from './validate.js'
 
 const CANDIDATE_FILENAMES = ['wrangler.toml', 'wrangler.jsonc', 'wrangler.json'] as const
 
@@ -65,7 +66,10 @@ export async function readConfigFile(path: string): Promise<ReadConfigResult> {
   }
 
   const groundflareRaw = parsed.groundflare
-  const groundflare: GroundflareSection = isRecord(groundflareRaw) ? (groundflareRaw as GroundflareSection) : {}
+  const groundflare: GroundflareSection =
+    groundflareRaw === undefined
+      ? {}
+      : validateGroundflareSection(groundflareRaw, path)
 
   // Strip the extension key so the wrangler view only sees fields wrangler
   // itself would recognize.
@@ -103,10 +107,6 @@ function validateWranglerShape(obj: Record<string, unknown>, path: string): Wran
     throw new ConfigParseError(path, new Error('missing required field `name` (string)'))
   }
   return obj as unknown as WranglerConfig
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
 function errorMessage(err: unknown): string {

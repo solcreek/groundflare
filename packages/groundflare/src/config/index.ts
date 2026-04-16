@@ -7,6 +7,11 @@ export {
 } from './reader.js'
 
 export {
+  ConfigValidationError,
+  validateGroundflareSection,
+} from './validate.js'
+
+export {
   BINDING_DEFAULTS,
   STATE_DIR,
   STATIC_DEFAULTS,
