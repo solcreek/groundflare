@@ -8,9 +8,16 @@
  */
 
 import { build as esbuild } from 'esbuild'
+import { builtinModules } from 'node:module'
 import { resolve } from 'node:path'
 
 import { DeployError } from './types.js'
+
+/** Node built-ins, both bare ("path") and prefixed ("node:path"). */
+const NODE_BUILTINS = [
+  ...builtinModules,
+  ...builtinModules.map((m) => `node:${m}`),
+]
 
 export interface BundleOptions {
   /** Absolute path to the Worker's entry file (TS/JS). */
@@ -36,7 +43,20 @@ export interface BundleResult {
  */
 export async function bundleWorker(opts: BundleOptions): Promise<BundleResult> {
   const entry = resolve(opts.entry)
-  const externals = ['cloudflare:workers', ...(opts.external ?? [])]
+  // workerd built-ins / virtual modules — never bundle these:
+  //   - cloudflare:* (CF-namespaced runtime modules)
+  //   - node:* (provided by workerd's nodejs_compat flag)
+  //   - astro:* + virtual:astro:* (Astro's virtual modules; the Astro
+  //     build resolves them and emits real chunks, but inline references
+  //     to the virtual specifiers can survive into the built output)
+  const externals = [
+    'cloudflare:*',
+    'astro:*',
+    'virtual:astro:*',
+    'virtual:astro-cloudflare:*',
+    ...NODE_BUILTINS,
+    ...(opts.external ?? []),
+  ]
 
   const buildOpts: Parameters<typeof esbuild>[0] = {
     entryPoints: [entry],
@@ -48,6 +68,7 @@ export async function bundleWorker(opts: BundleOptions): Promise<BundleResult> {
     sourcemap: false,
     minify: opts.minify ?? false,
     external: externals,
+    conditions: ['workerd', 'worker', 'browser'],
   }
   if (opts.tsconfig !== undefined) buildOpts.tsconfig = opts.tsconfig
 

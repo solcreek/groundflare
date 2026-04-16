@@ -38,6 +38,7 @@ import { OpenSshClient, type SshClient } from '../ssh/index.js'
 
 import { bundleWorker } from './bundle.js'
 import { detectBuildCommand } from './detect-pm.js'
+import { resolveBuiltEntry } from './detect-built-entry.js'
 import { stageBunArtifact } from './bun-track.js'
 import {
   DeployError,
@@ -121,9 +122,19 @@ export async function runDeploy(opts: RunDeployOptions): Promise<DeployResult> {
     log('info', 'build complete; re-bundling output via esbuild')
   }
 
-  const entry = resolvePath(cwd, wrangler.main)
-  log('info', `bundling ${entry}`)
-  const bundle = await bundleWorker({ entry })
+  // After build, the actual deployable entry may live elsewhere than the
+  // configured `main`. Astro keeps `main = "./src/worker.ts"` (source) so
+  // its build pre-flight passes; the real built file lands at
+  // `dist/server/entry.mjs` etc. Detect this and use the built entry.
+  const resolved = resolveBuiltEntry({ cwd, main: wrangler.main })
+  if (resolved.source === 'framework-detected') {
+    log(
+      'info',
+      `detected ${resolved.framework} output: ${resolved.path}`,
+    )
+  }
+  log('info', `bundling ${resolved.path}`)
+  const bundle = await bundleWorker({ entry: resolved.path })
   log('info', `bundle: ${bundle.bytes} bytes, ${bundle.warnings.length} warnings`)
   for (const w of bundle.warnings) log('warn', `esbuild: ${w}`)
 
