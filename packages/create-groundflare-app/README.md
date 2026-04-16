@@ -29,9 +29,8 @@ create-groundflare-app [project-name] [--template=<name>] [--force]
 
 | Name | Description |
 |---|---|
-| `minimal` | Hello-world Worker + commented-out `[groundflare]` section ready to fill in |
-
-More templates land in subsequent releases (Hono, SSR adapters, Durable Object starter).
+| `minimal` | Hello-world Worker + commented-out `[groundflare]` section |
+| `hono` | Hono REST API with D1 CRUD + KV cache — runs on both Cloudflare and groundflare with zero code changes. Includes a [Deploy to CF](https://deploy.workers.cloudflare.com) button. |
 
 ## License
 
