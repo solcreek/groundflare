@@ -90,7 +90,11 @@ function parseRaw(raw: string, format: ConfigFormat): Record<string, unknown> {
   if (format === 'toml') {
     return parseToml(raw) as Record<string, unknown>
   }
-  const source = format === 'jsonc' ? stripJsonComments(raw) : raw
+  let source = format === 'jsonc' ? stripJsonComments(raw) : raw
+  if (format === 'jsonc') {
+    // Strip trailing commas — common in JSONC but rejected by JSON.parse.
+    source = source.replace(/,\s*([}\]])/g, '$1')
+  }
   return JSON.parse(source)
 }
 
