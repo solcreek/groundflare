@@ -29,7 +29,7 @@ npx groundflare up
 #   → bundles your Worker, pushes it, starts workerd/Bun under systemd
 #   → Caddy terminates TLS via Let's Encrypt
 
-# Or start from scratch (coming in v0.3):
+# Or start from scratch:
 npm create groundflare-app@latest my-worker
 ```
 
@@ -120,7 +120,8 @@ This is a monorepo. Published packages live under [`packages/`](./packages):
 | Package | Path | Purpose |
 |---|---|---|
 | [`groundflare`](./packages/groundflare) | `packages/groundflare` | The CLI — bootstrap, deploy, analyze, prepare |
-| `create-groundflare-app` | `packages/create-groundflare-app` | Project scaffold — `npm create groundflare-app` (v0.3) |
+| [`create-groundflare-app`](./packages/create-groundflare-app) | `packages/create-groundflare-app` | Project scaffold — `npm create groundflare-app` |
+| [`groundflare-estimate`](./packages/estimate) | `packages/estimate` | Standalone cost estimator — `npx groundflare-estimate` |
 
 ## Design docs
 
