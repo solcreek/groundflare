@@ -1,0 +1,20 @@
+{
+  "name": "{{name}}",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev src/index.ts",
+    "deploy:cf": "wrangler deploy",
+    "deploy:vps": "groundflare up",
+    "analyze": "groundflare bun analyze"
+  },
+  "dependencies": {
+    "hono": "^4.7.0"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20260401.0",
+    "typescript": "^5.6.0",
+    "wrangler": "^4.0.0"
+  }
+}

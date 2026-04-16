@@ -31,7 +31,7 @@ function locateTemplatesDir(): string {
   return resolvePath(dirname(fileURLToPath(import.meta.url)), '..', 'templates')
 }
 
-const AVAILABLE_TEMPLATES = ['minimal'] as const
+const AVAILABLE_TEMPLATES = ['minimal', 'hono'] as const
 type TemplateName = (typeof AVAILABLE_TEMPLATES)[number]
 
 function isTemplate(x: string): x is TemplateName {
