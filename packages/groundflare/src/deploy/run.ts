@@ -284,6 +284,24 @@ export async function runDeploy(opts: RunDeployOptions): Promise<DeployResult> {
     })
   } else if (capnpText !== null) {
     log('info', `installing bundle + capnp + Caddyfile atomically on ${opts.bootstrapState.vps.ipv4}`)
+    // Per-binding state dirs (D1 sqlite roots, KV stores, etc.) sit outside
+    // the staging→install dance: they persist across deploys and aren't
+    // managed by atomicInstall. workerd refuses to start if any localDisk
+    // path is missing, so create them up-front before the new capnp lands.
+    for (const w of manifest.workers) {
+      for (const d1 of w.d1Databases ?? []) {
+        await ensureRemoteDir(
+          ssh,
+          `/var/lib/groundflare/do-state/${w.name}/d1/${d1.databaseName}`,
+        )
+      }
+      for (const kv of w.kvNamespaces ?? []) {
+        await ensureRemoteDir(
+          ssh,
+          `/var/lib/groundflare/do-state/${w.name}/kv/${kv.binding}`,
+        )
+      }
+    }
     const filesToInstall: AtomicInstallFile[] = [
       ...manifest.workers.map((w) => ({
         content: bundle.code,
