@@ -99,6 +99,7 @@ export class DeployError extends Error {
      * Stable codes:
      *   - `config_missing`       no wrangler.toml in the workingDirectory
      *   - `bundle_failed`        esbuild reported errors
+     *   - `bundle_too_large`     bundle exceeded maxBytes (default 50 MB)
      *   - `not_bootstrapped`     the supplied state has no VPS IP
      *   - `upload_failed`        scp returned non-zero
      *   - `restart_failed`       systemctl restart fell over

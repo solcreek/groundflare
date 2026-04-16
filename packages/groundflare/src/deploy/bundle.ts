@@ -28,14 +28,32 @@ export interface BundleOptions {
   readonly external?: readonly string[]
   /** Minify the output. Default false — keeps stack traces readable. */
   readonly minify?: boolean
+  /**
+   * Hard-fail threshold in bytes. Bundles over this throw
+   * DeployError(bundle_too_large). Default 50 MB — well past any
+   * legitimate Worker, so hitting it almost always means an unintended
+   * node_modules leak or the wrong build output. Set to 0 to disable.
+   */
+  readonly maxBytes?: number
+  /**
+   * Soft-warning threshold in bytes. Bundles over this emit an advisory
+   * into `BundleResult.warnings` (runDeploy surfaces these as `warn`
+   * lines). Default 10 MB — Cloudflare's paid-plan compressed limit, so
+   * dual-deploy users get a heads-up about CF-side rejection before they
+   * push. Set to 0 to disable.
+   */
+  readonly warnBytes?: number
 }
 
 export interface BundleResult {
   readonly code: string
   readonly bytes: number
-  /** Warnings from esbuild. Errors throw DeployError before reaching here. */
+  /** Warnings from esbuild + our own size advisory. Errors throw. */
   readonly warnings: readonly string[]
 }
+
+const DEFAULT_MAX_BYTES = 50 * 1024 * 1024
+const DEFAULT_WARN_BYTES = 10 * 1024 * 1024
 
 /**
  * Bundle the given entry file. Throws DeployError(bundle_failed) with
@@ -99,9 +117,38 @@ export async function bundleWorker(opts: BundleOptions): Promise<BundleResult> {
     )
   }
 
-  return {
-    code: outputFile.text,
-    bytes: Buffer.byteLength(outputFile.text, 'utf-8'),
-    warnings: result.warnings.map((w) => w.text),
+  const bytes = Buffer.byteLength(outputFile.text, 'utf-8')
+  const maxBytes = opts.maxBytes ?? DEFAULT_MAX_BYTES
+  const warnBytes = opts.warnBytes ?? DEFAULT_WARN_BYTES
+
+  if (maxBytes > 0 && bytes > maxBytes) {
+    throw new DeployError(
+      `bundle is ${formatBytes(bytes)} — exceeds the ${formatBytes(maxBytes)} limit. ` +
+        `This usually means a dependency got bundled that should be external ` +
+        `(check \`external\` in wrangler.toml), or the wrong build output is being ` +
+        `used as \`main\`. Pass \`maxBytes: N\` to override if this is intentional.`,
+      'bundle_too_large',
+    )
   }
+
+  const warnings = result.warnings.map((w) => w.text)
+  if (warnBytes > 0 && bytes > warnBytes) {
+    warnings.push(
+      `bundle is ${formatBytes(bytes)} — over the ${formatBytes(warnBytes)} ` +
+        `advisory (Cloudflare's paid-plan compressed limit). Works on self-hosted workerd/Bun, ` +
+        `but will be rejected if you also push to Cloudflare.`,
+    )
+  }
+
+  return { code: outputFile.text, bytes, warnings }
+}
+
+function formatBytes(bytes: number): string {
+  if (bytes >= 1024 * 1024) {
+    return `${(bytes / 1024 / 1024).toFixed(1)} MB`
+  }
+  if (bytes >= 1024) {
+    return `${(bytes / 1024).toFixed(1)} KB`
+  }
+  return `${bytes} B`
 }

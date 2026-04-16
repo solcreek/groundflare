@@ -85,4 +85,64 @@ describe('bundleWorker', () => {
     const minified = await bundleWorker({ entry, minify: true })
     expect(minified.bytes).toBeLessThan(normal.bytes)
   })
+
+  it('throws bundle_too_large when maxBytes is exceeded', async () => {
+    const entry = join(tmp, 'fat.mjs')
+    // Embed a ~2 KB string; set maxBytes to 1 KB to force the failure.
+    const padding = 'x'.repeat(2048)
+    await writeFile(
+      entry,
+      `const P = ${JSON.stringify(padding)}\n` +
+        `export default { async fetch() { return new Response(P) } }`,
+      'utf-8',
+    )
+    await expect(
+      bundleWorker({ entry, maxBytes: 1024 }),
+    ).rejects.toMatchObject({
+      name: 'DeployError',
+      code: 'bundle_too_large',
+    })
+  })
+
+  it('includes a size advisory in warnings when warnBytes is exceeded', async () => {
+    const entry = join(tmp, 'chunky.mjs')
+    const padding = 'y'.repeat(2048)
+    await writeFile(
+      entry,
+      `const P = ${JSON.stringify(padding)}\n` +
+        `export default { async fetch() { return new Response(P) } }`,
+      'utf-8',
+    )
+    const result = await bundleWorker({
+      entry,
+      warnBytes: 1024,
+      maxBytes: 0, // disable hard limit so we reach the warning path
+    })
+    expect(result.warnings.some((w) => /advisory/i.test(w))).toBe(true)
+  })
+
+  it('maxBytes: 0 disables the hard limit', async () => {
+    const entry = join(tmp, 'whatever.mjs')
+    await writeFile(
+      entry,
+      `export default { async fetch() { return new Response('ok') } }`,
+      'utf-8',
+    )
+    await expect(
+      bundleWorker({ entry, maxBytes: 0 }),
+    ).resolves.toBeDefined()
+  })
+
+  it('warnBytes: 0 suppresses the advisory', async () => {
+    const entry = join(tmp, 'quiet.mjs')
+    const padding = 'z'.repeat(2048)
+    await writeFile(
+      entry,
+      `const P = ${JSON.stringify(padding)}\n` +
+        `export default { async fetch() { return new Response(P) } }`,
+      'utf-8',
+    )
+    const result = await bundleWorker({ entry, warnBytes: 0, maxBytes: 0 })
+    expect(result.warnings.every((w) => !/advisory/i.test(w))).toBe(true)
+  })
 })
