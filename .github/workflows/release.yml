@@ -1,34 +1,60 @@
 name: Release
 
-# npm publish via OIDC Trusted Publishers.
+# npm publish via OIDC Trusted Publishers — multi-package monorepo.
 #
-# Triggered on tag pushes matching `v*` (e.g. `v0.2.1`). Also supports
-# manual dispatch for retry-without-re-tagging when a run fails after
-# the version number is burnt on the registry side.
+# Two trigger shapes:
 #
-# Prerequisite — one-time setup on npmjs.com:
-#   1. https://www.npmjs.com/package/groundflare/access
-#   2. Add a Trusted Publisher with:
-#        Publisher         : GitHub Actions
-#        Repository owner  : solcreek
-#        Repository        : groundflare
-#        Workflow filename : release.yml       (just the filename, no path)
-#        Environment       : (leave blank)
+#   1. Tag push:
+#        groundflare@v0.2.2           → publishes packages/groundflare
+#        groundflare-estimate@v0.1.1  → publishes packages/estimate
+#        create-groundflare-app@v0.1.0 → publishes packages/create-groundflare-app
 #
-# Node 24 is required because Trusted Publishers support landed in
-# npm 11.5+ and Node 22 LTS still bundles npm 10.x.
+#      `<package-name>@v<semver>` — matches npm's own tag convention and
+#      is what lerna, changesets, and pnpm publish emit by default.
 #
-# The Trusted Publisher flow adds provenance automatically — we do NOT
-# pass `--provenance` explicitly. Similarly, access=public is already
-# pinned via package.json publishConfig, so `--access public` on the
-# command line is redundant and can interfere with the OIDC-driven
-# publish path.
+#      Legacy `v*` tags (e.g. v0.2.0, v0.2.1) are still honoured and map
+#      to the `groundflare` package so the existing release history
+#      stays meaningful.
+#
+#   2. Manual dispatch:
+#        Actions → Release → Run workflow
+#          package: <choose one>
+#
+#      Publishes whatever version is in that package's package.json at
+#      HEAD. Useful for retries after a burnt-version failure.
+#
+# Prerequisite — each npm package needs its own Trusted Publisher
+# config on npmjs.com. Same fields for all three:
+#
+#   Publisher         : GitHub Actions
+#   Repository owner  : solcreek
+#   Repository        : groundflare
+#   Workflow filename : release.yml   (just the filename, no path)
+#   Environment       : (leave blank)
+#
+# Node 24 is required — Trusted Publishers support landed in npm 11.5+
+# and Node 22 LTS still bundles npm 10.x.
+#
+# Trusted Publisher flow enables provenance automatically; we do NOT
+# pass `--provenance` explicitly.
 
 on:
   push:
     tags:
-      - 'v*'
+      - 'v*'                        # legacy: groundflare
+      - 'groundflare@v*'
+      - 'groundflare-estimate@v*'
+      - 'create-groundflare-app@v*'
   workflow_dispatch:
+    inputs:
+      package:
+        description: 'npm package to publish'
+        required: true
+        type: choice
+        options:
+          - groundflare
+          - groundflare-estimate
+          - create-groundflare-app
 
 concurrency:
   group: release-${{ github.ref }}
@@ -51,22 +77,56 @@ jobs:
           registry-url: https://registry.npmjs.org
           cache: npm
 
+      - name: Derive package + workspace dir from trigger
+        id: parse
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            pkg="${{ inputs.package }}"
+          else
+            tag="${GITHUB_REF_NAME}"
+            if [[ "$tag" == *"@v"* ]]; then
+              pkg="${tag%@v*}"
+            else
+              # Legacy `v*` — always means the main CLI.
+              pkg="groundflare"
+            fi
+          fi
+
+          case "$pkg" in
+            groundflare)              dir="packages/groundflare" ;;
+            groundflare-estimate)     dir="packages/estimate" ;;
+            create-groundflare-app)   dir="packages/create-groundflare-app" ;;
+            *)
+              echo "::error::unknown package $pkg"
+              exit 1
+              ;;
+          esac
+
+          echo "package=$pkg"        >> "$GITHUB_OUTPUT"
+          echo "workspace_dir=$dir"  >> "$GITHUB_OUTPUT"
+          echo "Resolved: package=$pkg dir=$dir"
+
       - name: Install
         run: npm ci
 
       - name: Pre-publish gate (check + lint + test + build)
-        run: npm run prepublishOnly -w groundflare
+        run: npm run prepublishOnly -w ${{ steps.parse.outputs.package }}
 
-      - name: Assert tag matches package.json version
-        if: startsWith(github.ref, 'refs/tags/v')
+      - name: Assert tag version matches package.json
+        if: startsWith(github.ref, 'refs/tags/')
         run: |
-          tag="${GITHUB_REF_NAME#v}"
-          pkg=$(node -p "require('./packages/groundflare/package.json').version")
-          if [ "$tag" != "$pkg" ]; then
-            echo "::error::tag v$tag does not match groundflare package version $pkg"
+          tag="${GITHUB_REF_NAME}"
+          if [[ "$tag" == *"@v"* ]]; then
+            tag_ver="${tag#*@v}"
+          else
+            tag_ver="${tag#v}"
+          fi
+          pkg_ver=$(node -p "require('./${{ steps.parse.outputs.workspace_dir }}/package.json').version")
+          if [ "$tag_ver" != "$pkg_ver" ]; then
+            echo "::error::tag $tag → version $tag_ver, but ${{ steps.parse.outputs.package }}/package.json is $pkg_ver"
             exit 1
           fi
-          echo "tag $GITHUB_REF_NAME matches groundflare package version $pkg"
+          echo "tag $tag matches ${{ steps.parse.outputs.package }} version $pkg_ver"
 
       - name: Publish to npm (OIDC + auto provenance)
-        run: npm publish -w groundflare
+        run: npm publish -w ${{ steps.parse.outputs.package }}
