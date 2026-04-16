@@ -1,9 +1,10 @@
 /**
  * SQLite-backed D1 adapter — the default Mirror-track D1 implementation.
  *
- * better-sqlite3 exposes a synchronous Statement API; we wrap terminal
+ * node:sqlite exposes a synchronous Statement API; we wrap terminal
  * methods in Promises to match CF's async contract. Because the driver
- * is sync, `batch()` is wrapped in a `db.transaction(...)` so failures
+ * is sync, `batch()` is wrapped in a `db.transaction(...)` (shimmed by
+ * src/runtime/sqlite/node.ts over BEGIN/COMMIT/ROLLBACK) so failures
  * roll back atomically — matching CF D1's batch semantics.
  *
  * Paths live under /var/lib/groundflare/workers/<worker>/d1/<db>.sqlite
@@ -11,8 +12,7 @@
  * knows about a single file.
  */
 
-import type { Statement } from 'better-sqlite3'
-import type { BetterSqlite3Database } from '../sqlite/node.js'
+import type { BetterSqlite3Database, Statement } from '../sqlite/node.js'
 import { openSqlite } from '../sqlite/node.js'
 import type { SqlitePreludeOptions } from '../sqlite/prelude.js'
 import type {

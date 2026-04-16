@@ -10,7 +10,7 @@
   "license": "MIT",
   "type": "module",
   "engines": {
-    "node": ">=20"
+    "node": ">=22"
   },
   "workspaces": [
     "packages/*"
@@ -21,7 +21,7 @@
     "test": "npm run test --workspaces --if-present",
     "test:bun": "npm run test:bun -w groundflare",
     "test:e2e": "npm run test:e2e -w groundflare",
-    "build": "npm run build --workspaces --if-present"
+    "build": "npm run build -w groundflare-estimate && npm run build -w groundflare && npm run build -w create-groundflare-app"
   },
   "devDependencies": {
     "@eslint/js": "^9.15.0",

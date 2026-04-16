@@ -1,6 +1,6 @@
 {
   "name": "groundflare",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "description": "Run your Cloudflare Worker on your own hardware. Wrangler-like DX for self-hosted workerd deployments.",
   "keywords": [
     "cloudflare",
@@ -25,7 +25,7 @@
   "author": "SolCreek",
   "type": "module",
   "engines": {
-    "node": ">=20"
+    "node": ">=22"
   },
   "bin": {
     "groundflare": "./bin/groundflare.js",
@@ -59,7 +59,6 @@
     "prepublishOnly": "npm run check && npm run lint && npm run test && npm run build"
   },
   "dependencies": {
-    "better-sqlite3": "^11.5.0",
     "citty": "^0.1.6",
     "consola": "^3.2.3",
     "esbuild": "^0.28.0",
@@ -70,7 +69,6 @@
     "workerd": "^1.20260414.1"
   },
   "devDependencies": {
-    "@types/better-sqlite3": "^7.6.12",
     "@types/update-notifier": "^6.0.8",
     "@vitest/coverage-v8": "^2.1.0",
     "autocannon": "^8.0.0",

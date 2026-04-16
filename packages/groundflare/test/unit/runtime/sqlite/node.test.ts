@@ -3,7 +3,6 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import BetterSqlite3 from 'better-sqlite3'
 import {
   applyPrelude,
   assertPrelude,
@@ -119,16 +118,19 @@ describe('openSqlite — :memory:', () => {
   })
 })
 
-describe('applyPrelude on an externally-opened connection', () => {
-  it('applies all PRAGMAs and returns observed state', () => {
-    // Open the connection ourselves to exercise the "caller already has a
-    // connection" path that applyPrelude supports.
-    const db = new BetterSqlite3(':memory:')
+describe('applyPrelude re-application', () => {
+  it('is idempotent — applying twice leaves state equal', () => {
+    // openSqlite already calls applyPrelude once; calling it a second
+    // time on the same connection must not drift the PRAGMA state or
+    // fail the subsequent assertPrelude.
+    const db = openSqlite(':memory:')
     try {
-      const state = applyPrelude(db)
-      expect(state.busy_timeout).toBe(5000)
-      expect(state.synchronous).toBe(1)
-      expect(state.foreign_keys).toBe(1)
+      const first = applyPrelude(db)
+      const second = applyPrelude(db)
+      expect(second).toEqual(first)
+      expect(second.busy_timeout).toBe(5000)
+      expect(second.synchronous).toBe(1)
+      expect(second.foreign_keys).toBe(1)
     } finally {
       db.close()
     }

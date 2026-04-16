@@ -13,8 +13,7 @@
  * tests to avoid depending on the sweeper timing.
  */
 
-import type { Statement } from 'better-sqlite3'
-import type { BetterSqlite3Database } from '../sqlite/node.js'
+import type { BetterSqlite3Database, Statement } from '../sqlite/node.js'
 import { openSqlite } from '../sqlite/node.js'
 import type { SqlitePreludeOptions } from '../sqlite/prelude.js'
 import {

@@ -3,9 +3,17 @@
   "compilerOptions": {
     "noEmit": false,
     "outDir": "dist",
+    "rootDir": "src",
     "declaration": true,
     "declarationMap": true,
-    "sourceMap": true
+    "sourceMap": true,
+    // Dev (tsconfig.json) maps `groundflare-estimate` straight to its
+    // source tree so `npm run dev` and vitest don't need a built sibling.
+    // At build time we want the published dist/index.d.ts (resolved via
+    // node_modules symlink) so tsc doesn't drag estimate's source
+    // into groundflare's tarball. Clear the mapping and ensure estimate
+    // is built first — see root package.json `build` script.
+    "paths": {}
   },
   "include": ["src/**/*"],
   "exclude": [

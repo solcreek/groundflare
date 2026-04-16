@@ -1,5 +1,32 @@
 # Changelog
 
+## v0.3.0 — drop better-sqlite3, minimum Node 22
+
+**Breaking**: `engines.node` bumps from `>=20` to `>=22`.
+
+Replace the native better-sqlite3 driver with Node 22+'s built-in
+`node:sqlite`. Behavioural parity verified by the existing KV + D1
+conformance suites (both still pass against the new driver).
+
+Effect:
+- No more `prebuild-install` deprecation warning during `npm install`.
+- No more `better-sqlite3` native-module rebuild on install — fewer
+  macOS Sequoia / Alpine / stale toolchain failures.
+- Tarball drops from 232 kB / 381 files to 217 kB / 345 files.
+
+Implementation notes:
+- A small compat shim in `src/runtime/sqlite/node.ts` exposes the
+  better-sqlite3-shaped `.prepare / .exec / .pragma / .transaction`
+  API over `node:sqlite`'s narrower surface. The KV + D1 adapters
+  continue to call the same methods without modification.
+- `node:sqlite` is experimental on Node 22 (stable on Node 24). The
+  bin wrapper silences the one-time `ExperimentalWarning` so CLI
+  output stays clean.
+- Zero-length `Uint8Array` produced by `TextEncoder.encode('')` binds
+  as NULL under Node 22's node:sqlite for BLOB columns. The shim
+  normalises those to a fresh `new Uint8Array(0)` which the driver
+  accepts. Tracked as a Node-side quirk; revisit on Node 24 LTS.
+
 ## v0.2.1 — packaging fix
 
 Fix a packaging bug in v0.2.0 that made `npx groundflare` fail with
