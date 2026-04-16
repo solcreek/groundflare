@@ -27,6 +27,7 @@ export type CapnpBinding =
   | CapnpR2BucketBinding
   | CapnpDurableObjectNamespaceBinding
   | CapnpFromEnvironmentBinding
+  | CapnpWorkerLoaderBinding
 
 export interface CapnpTextBinding {
   readonly name: string
@@ -84,6 +85,26 @@ export interface CapnpFromEnvironmentBinding {
   readonly name: string
   readonly kind: 'fromEnvironment'
   readonly envVar: string
+}
+
+/**
+ * WorkerLoader binding — enables dynamic loading of Workers from code
+ * provided at runtime. Each loaded Worker runs in its own V8 isolate
+ * with optional resource limits, providing real sandboxing.
+ *
+ * Capnp: `(name = "loader", workerLoader = ())`
+ *   or:  `(name = "loader", workerLoader = (id = "shared"))`
+ *
+ * See: workerd.capnp @450-464, api/worker-loader.h
+ */
+export interface CapnpWorkerLoaderBinding {
+  readonly name: string
+  readonly kind: 'workerLoader'
+  /**
+   * Optional cache ID. Multiple bindings with the same `id` share a
+   * worker cache (same name → same isolate). Omit for isolated cache.
+   */
+  readonly id?: string
 }
 
 // ─── Modules ───────────────────────────────────────────────────────

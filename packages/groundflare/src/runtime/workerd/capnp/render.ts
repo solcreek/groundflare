@@ -141,6 +141,12 @@ function nodeForBinding(b: CapnpBinding): CapnpNode {
       if (b.serviceName !== undefined) fields.push(['serviceName', str(b.serviceName)])
       return struct([...head, ['durableObjectNamespace', struct(fields)]])
     }
+    case 'workerLoader': {
+      if (b.id !== undefined) {
+        return struct([...head, ['workerLoader', struct([['id', str(b.id)]])]])
+      }
+      return struct([...head, ['workerLoader', struct([])]])
+    }
   }
 }
 

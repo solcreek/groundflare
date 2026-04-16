@@ -205,6 +205,16 @@ function buildTenantService(
     }
   }
 
+  if (worker.workerLoaders) {
+    for (const wl of worker.workerLoaders) {
+      bindings.push({
+        name: wl.binding,
+        kind: 'workerLoader',
+        ...(wl.id !== undefined ? { id: wl.id } : {}),
+      })
+    }
+  }
+
   if (worker.durableObjects) {
     for (const doBinding of worker.durableObjects) {
       const serviceName =

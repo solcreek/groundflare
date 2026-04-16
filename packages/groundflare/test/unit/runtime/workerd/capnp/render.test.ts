@@ -208,6 +208,21 @@ describe('renderCapnpConfig — bindings', () => {
     expect(out).toContain('serviceName = "worker-counter"')
   })
 
+  it('emits workerLoader binding without id', () => {
+    const out = withBindings([
+      { name: 'LOADER', kind: 'workerLoader' },
+    ])
+    expect(out).toContain('(name = "LOADER", workerLoader = ())')
+  })
+
+  it('emits workerLoader binding with shared cache id', () => {
+    const out = withBindings([
+      { name: 'LOADER', kind: 'workerLoader', id: 'shared' },
+    ])
+    expect(out).toContain('name = "LOADER"')
+    expect(out).toContain('workerLoader = (id = "shared")')
+  })
+
   it('skips the bindings array when empty', () => {
     expect(withBindings([])).not.toContain('bindings = [')
   })

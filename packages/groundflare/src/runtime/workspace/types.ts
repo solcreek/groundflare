@@ -72,6 +72,19 @@ export interface WorkspaceWorker {
 
   /** Cross-tenant service bindings. The `service` must be a worker name in the same workspace. */
   readonly serviceBindings?: readonly ServiceBindingSpec[]
+
+  /**
+   * WorkerLoader bindings for dynamic worker loading. Each creates a
+   * binding that can compile + run arbitrary Worker code in an isolated
+   * V8 isolate at runtime (plugin sandboxing for apps like emdash).
+   */
+  readonly workerLoaders?: readonly WorkerLoaderSpec[]
+}
+
+export interface WorkerLoaderSpec {
+  readonly binding: string
+  /** Optional cache ID — bindings sharing the same ID share a worker cache. */
+  readonly id?: string
 }
 
 export interface KvBindingSpec {

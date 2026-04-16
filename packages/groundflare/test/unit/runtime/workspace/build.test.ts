@@ -301,6 +301,45 @@ describe('buildCapnpFromWorkspace — binding mappings', () => {
       serviceName: tenantServiceName('counters'),
     })
   })
+
+  it('maps workerLoaders to workerLoader capnp bindings', () => {
+    const config = buildCapnpFromWorkspace(
+      manifest([
+        worker('cms', {
+          workerLoaders: [{ binding: 'LOADER' }],
+        }),
+      ]),
+    )
+    const tenant = workerOf(findService(config, tenantServiceName('cms')))
+    expect(tenant.bindings).toContainEqual({
+      name: 'LOADER',
+      kind: 'workerLoader',
+    })
+  })
+
+  it('passes workerLoader id through for shared cache', () => {
+    const config = buildCapnpFromWorkspace(
+      manifest([
+        worker('cms', {
+          workerLoaders: [
+            { binding: 'LOADER1', id: 'shared' },
+            { binding: 'LOADER2', id: 'shared' },
+          ],
+        }),
+      ]),
+    )
+    const tenant = workerOf(findService(config, tenantServiceName('cms')))
+    expect(tenant.bindings).toContainEqual({
+      name: 'LOADER1',
+      kind: 'workerLoader',
+      id: 'shared',
+    })
+    expect(tenant.bindings).toContainEqual({
+      name: 'LOADER2',
+      kind: 'workerLoader',
+      id: 'shared',
+    })
+  })
 })
 
 describe('buildCapnpFromWorkspace — validation', () => {
