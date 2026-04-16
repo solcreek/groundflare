@@ -494,11 +494,6 @@ describe('runDeploy', () => {
   })
 })
 
-function okRuns(n: number): Partial<RunResult>[] {
-  const out: Partial<RunResult>[] = []
-  for (let i = 0; i < n; i++) out.push({ exitCode: 0 })
-  return out
-}
 
 describe('runDeploy — Bun track', () => {
   function bunWrangler(): string {
@@ -536,21 +531,18 @@ describe('runDeploy — Bun track', () => {
     expect(uploads).toHaveLength(0)
   })
 
-  it('uploads server.ts + adapters + user bundle + systemd unit + Caddyfile', async () => {
+  it('uploads server.ts + adapters + user bundle + systemd unit + Caddyfile via single atomic install', async () => {
     await scaffoldWorker(bunWrangler())
     // Expected run-call sequence:
-    //   1. ensureRemoteDir (deployRoot)
-    //   2. ensureRemoteDir (kv)
-    //   3. ensureRemoteDir (adapters)
-    //   4. install server.ts
-    //   5-8. install 4 adapter sources (kv, d1, r2, sigv4)
-    //   9. install user.js
-    //   10. install systemd unit (as root)
-    //   11. install Caddyfile (as root)
-    //   12. systemctl restart
-    //   13. curl health probe
+    //   1. atomic install (sudo sh -s via stdin, covers mkdir + 8 files + cleanup)
+    //   2. systemctl restart
+    //   3. curl health probe
     const { client, runCalls, uploads } = mockSsh({
-      runs: okRuns(12).concat([{ exitCode: 0, stdout: '200' }]),
+      runs: [
+        { exitCode: 0 },
+        { exitCode: 0 },
+        { exitCode: 0, stdout: '200' },
+      ],
     })
     const result = await runDeploy({
       workspace: 'demo',
@@ -563,8 +555,12 @@ describe('runDeploy — Bun track', () => {
     expect(result.runtime).toBe('bun')
     expect(result.healthCheck?.status).toBe(200)
     expect(result.bunArtifactBytes).toBeGreaterThan(0)
-    // 1 user bundle + 1 server.ts + 4 adapter sources + 1 unit + 1 Caddyfile = 8
+    // 8 scp uploads, all staged under /tmp:
+    // 1 server.ts + 4 adapters + 1 user.js + 1 systemd unit + 1 Caddyfile.
     expect(uploads).toHaveLength(8)
+    for (const u of uploads) expect(u.remote).toMatch(/^\/tmp\/gf-stage-/)
+    expect(runCalls).toHaveLength(3)
+    expect(runCalls[0]?.command).toBe('sudo sh -s')
     const restartCall = runCalls.find((c) =>
       c.command.includes('systemctl restart groundflare-worker.service'),
     )
@@ -572,10 +568,14 @@ describe('runDeploy — Bun track', () => {
     expect(restartCall?.command).toContain('systemctl reload caddy.service')
   })
 
-  it('installs the Bun systemd unit at /etc/systemd/system/groundflare-worker.service', async () => {
+  it('installs the Bun systemd unit at /etc/systemd/system/groundflare-worker.service as root', async () => {
     await scaffoldWorker(bunWrangler())
     const { client, runCalls } = mockSsh({
-      runs: okRuns(12).concat([{ exitCode: 0, stdout: '200' }]),
+      runs: [
+        { exitCode: 0 },
+        { exitCode: 0 },
+        { exitCode: 0, stdout: '200' },
+      ],
     })
     await runDeploy({
       workspace: 'demo',
@@ -585,17 +585,20 @@ describe('runDeploy — Bun track', () => {
       ssh: client,
       log: () => {},
     })
-    const unitInstall = runCalls.find(
-      (c) =>
-        c.command.includes('install') &&
-        c.command.includes('/etc/systemd/system/groundflare-worker.service'),
+    const script = runCalls[0]?.opts?.stdin ?? ''
+    // The script must install the unit into /etc/systemd/system as root,
+    // distinct from the groundflare-owned files installed in the same
+    // transaction.
+    expect(script).toMatch(
+      /install -m 0644 -o root -g root \/tmp\/gf-stage-\S+ \/etc\/systemd\/system\/groundflare-worker\.service/,
     )
-    expect(unitInstall).toBeDefined()
-    // Unit must be installed as root (sudo install -o root -g root).
-    expect(unitInstall?.command).toContain('-o root -g root')
+    // Caddyfile also root-owned in the same transaction.
+    expect(script).toMatch(
+      /install -m 0644 -o root -g root \/tmp\/gf-stage-\S+ \/etc\/caddy\/Caddyfile/,
+    )
   })
 
-  it('creates kv/d1/r2 state dirs when bindings demand them', async () => {
+  it('mkdirs deployRoot + kv/d1/r2 + adapters inside the atomic script', async () => {
     await scaffoldWorker(
       [
         `name = "api"`,
@@ -618,11 +621,12 @@ describe('runDeploy — Bun track', () => {
         `bucket_name = "a"`,
       ].join('\n'),
     )
-    // 1 deployRoot + 3 state dirs + 1 adapters dir = 5 mkdir calls
-    // + 1 server.ts + 4 adapters + 1 user.js + 1 unit + 1 caddyfile = 8 installs
-    // + 1 restart + 1 health = 15 run calls total
     const { client, runCalls } = mockSsh({
-      runs: okRuns(14).concat([{ exitCode: 0, stdout: '200' }]),
+      runs: [
+        { exitCode: 0 },
+        { exitCode: 0 },
+        { exitCode: 0, stdout: '200' },
+      ],
     })
     await runDeploy({
       workspace: 'demo',
@@ -632,27 +636,19 @@ describe('runDeploy — Bun track', () => {
       ssh: client,
       log: () => {},
     })
-    const mkdirs = runCalls
-      .filter((c) => c.command.startsWith('sudo mkdir -p'))
-      .map((c) => c.command)
-    expect(mkdirs.some((m) => m.includes('/var/lib/groundflare/kv'))).toBe(true)
-    expect(mkdirs.some((m) => m.includes('/var/lib/groundflare/d1'))).toBe(true)
-    expect(mkdirs.some((m) => m.includes('/var/lib/groundflare/r2'))).toBe(true)
-    expect(mkdirs.some((m) => m.includes('/var/lib/groundflare/adapters'))).toBe(
-      true,
-    )
+    const script = runCalls[0]?.opts?.stdin ?? ''
+    expect(script).toContain('set -e')
+    expect(script).toContain('mkdir -p /var/lib/groundflare/kv')
+    expect(script).toContain('chown groundflare:groundflare /var/lib/groundflare/kv')
+    expect(script).toContain('mkdir -p /var/lib/groundflare/d1')
+    expect(script).toContain('mkdir -p /var/lib/groundflare/r2')
+    expect(script).toContain('mkdir -p /var/lib/groundflare/adapters')
   })
 
-  it('propagates upload_failed when an adapter install fails', async () => {
+  it('propagates upload_failed when the atomic install script fails', async () => {
     await scaffoldWorker(bunWrangler())
     const { client } = mockSsh({
-      runs: [
-        { exitCode: 0 }, // mkdir deployRoot
-        { exitCode: 0 }, // mkdir kv state dir
-        { exitCode: 0 }, // mkdir adapters
-        { exitCode: 0 }, // install server.ts
-        { exitCode: 1, stderr: 'disk full' }, // install first adapter fails
-      ],
+      runs: [{ exitCode: 1, stderr: 'disk full' }], // atomic install fails
     })
     await expect(
       runDeploy({
@@ -664,5 +660,26 @@ describe('runDeploy — Bun track', () => {
         log: () => {},
       }),
     ).rejects.toMatchObject({ code: 'upload_failed' })
+  })
+
+  it('Bun track: scp failure leaves destinations untouched (no install runs)', async () => {
+    await scaffoldWorker(bunWrangler())
+    const { client, runCalls, uploads } = mockSsh({
+      uploadShouldThrow: new Error('scp: connection reset'),
+    })
+    await expect(
+      runDeploy({
+        workspace: 'demo',
+        workingDirectory: tmp,
+        acmeEmail: 'ops@example.com',
+        bootstrapState: baseState(),
+        ssh: client,
+        log: () => {},
+      }),
+    ).rejects.toMatchObject({ code: 'upload_failed' })
+    // First scp attempt throws → no `sudo sh -s` ran, only the cleanup rm.
+    expect(uploads).toHaveLength(1)
+    const installCalls = runCalls.filter((c) => c.command === 'sudo sh -s')
+    expect(installCalls).toHaveLength(0)
   })
 })

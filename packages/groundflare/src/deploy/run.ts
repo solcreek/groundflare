@@ -15,11 +15,9 @@
  */
 
 import { execSync } from 'node:child_process'
-import { readFile, rm, writeFile } from 'node:fs/promises'
-import { mkdtemp } from 'node:fs/promises'
+import { mkdtemp, readFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve as resolvePath } from 'node:path'
-import { randomBytes } from 'node:crypto'
 import { setTimeout as sleep } from 'node:timers/promises'
 
 import { resolveConfig } from '../config/index.js'
@@ -41,7 +39,11 @@ import type { LogFn } from '../bootstrap/index.js'
 import { bundleWorker } from './bundle.js'
 import { detectBuildCommand } from './detect-pm.js'
 import { resolveBuiltEntry } from './detect-built-entry.js'
-import { stageBunArtifact } from './bun-track.js'
+import { planBunStaging } from './bun-track.js'
+import {
+  atomicInstall,
+  type AtomicInstallFile,
+} from './stage.js'
 import {
   DeployError,
   type DeployResult,
@@ -249,28 +251,38 @@ export async function runDeploy(opts: RunDeployOptions): Promise<DeployResult> {
       },
     })
 
-  let bunStage: Awaited<ReturnType<typeof stageBunArtifact>> | null = null
+  // Both tracks: stage every destination under /tmp first, then install
+  // them all in ONE sudo transaction. If staging fails, no destination
+  // is touched. If the transaction fails, `set -e` aborts on the first
+  // install error — at worst we leak half an install, but the common
+  // flaky-scp failure mode (a mid-sequence upload failing after an
+  // earlier one had already landed new content) is eliminated.
+  let bunStage: { artifactBytes: number; userBundleBytes: number; unitBytes: number } | null = null
   if (isBunTrack && bunArtifact) {
-    log('info', `uploading Bun artifact to ${opts.bootstrapState.vps.ipv4}`)
-    bunStage = await stageBunArtifact({
-      ssh,
+    log('info', `installing Bun artifact + Caddyfile atomically on ${opts.bootstrapState.vps.ipv4}`)
+    const bunPlan = planBunStaging({
       artifact: bunArtifact,
       userBundle: bundle.code,
-      log,
     })
-    // Bun track: Caddyfile is installed separately here. Atomicity
-    // across the Bun artifact + Caddyfile is not yet enforced — the
-    // risk window is smaller because bun-track.ts already reaches a
-    // single systemd unit that's idempotent across content swaps.
-    await uploadAsRoot(ssh, caddyfile, CADDYFILE_REMOTE_PATH, '0644')
+    bunStage = {
+      artifactBytes: bunPlan.artifactBytes,
+      userBundleBytes: bunPlan.userBundleBytes,
+      unitBytes: bunPlan.unitBytes,
+    }
+    const files: AtomicInstallFile[] = [
+      ...bunPlan.files,
+      {
+        content: caddyfile,
+        remotePath: CADDYFILE_REMOTE_PATH,
+        owner: 'root' as const,
+        mode: '0644',
+      },
+    ]
+    await atomicInstall(ssh, {
+      files,
+      groundflareOwnedDirs: bunPlan.groundflareOwnedDirs,
+    })
   } else if (capnpText !== null) {
-    // Workerd track: stage every destination under /tmp first, then
-    // install them all in ONE sudo transaction. If staging fails, no
-    // destination is touched. If the transaction fails, `set -e`
-    // aborts on the first install error — at worst we leak half an
-    // install just like the pre-atomic behavior, but the common
-    // flaky-scp failure mode (where a mid-sequence upload fails after
-    // an earlier one had already landed new content) is eliminated.
     log('info', `installing bundle + capnp + Caddyfile atomically on ${opts.bootstrapState.vps.ipv4}`)
     const filesToInstall: AtomicInstallFile[] = [
       ...manifest.workers.map((w) => ({
@@ -450,117 +462,7 @@ async function probeHealth(
   )
 }
 
-// ─── Atomic multi-file install ────────────────────────────────────
-//
-// Given a list of {content, remotePath, owner, mode}, stages every file
-// under /tmp first (destinations untouched on any scp failure), then
-// runs ONE `sudo sh -s` script fed via stdin that:
-//   1. mkdir+chown any groundflare-owned parent dirs
-//   2. `install` each staged file into its final location
-//   3. rm the /tmp staging files
-//
-// `set -e` aborts on the first install failure. Feeding the script via
-// stdin sidesteps shell-quoting of the script body; the embedded paths
-// still inherit the existing assumption that worker names are safe
-// identifiers (Cloudflare only allows `[a-z0-9][a-z0-9-]*`, wrangler
-// enforces this upstream).
-
-interface AtomicInstallFile {
-  readonly content: string
-  readonly remotePath: string
-  readonly owner: 'root' | 'groundflare'
-  readonly mode: string
-}
-
-interface AtomicInstallOptions {
-  readonly files: readonly AtomicInstallFile[]
-  /** Dirs to mkdir + chown groundflare:groundflare before installing. */
-  readonly groundflareOwnedDirs: readonly string[]
-}
-
-async function atomicInstall(
-  ssh: SshClient,
-  opts: AtomicInstallOptions,
-): Promise<void> {
-  const runId = randomBytes(6).toString('hex')
-  const stagedPaths = opts.files.map((_, i) => `/tmp/gf-stage-${runId}-${i}`)
-
-  try {
-    for (let i = 0; i < opts.files.length; i++) {
-      await uploadContent(ssh, opts.files[i]!.content, stagedPaths[i]!)
-    }
-
-    const lines: string[] = ['set -e']
-    for (const dir of opts.groundflareOwnedDirs) {
-      lines.push(`mkdir -p ${dir}`)
-      lines.push(`chown groundflare:groundflare ${dir}`)
-    }
-    opts.files.forEach((f, i) => {
-      lines.push(
-        `install -m ${f.mode} -o ${f.owner} -g ${f.owner} ${stagedPaths[i]} ${f.remotePath}`,
-      )
-    })
-    lines.push(`rm -f ${stagedPaths.join(' ')}`)
-    const script = lines.join('\n') + '\n'
-
-    const result = await ssh.run('sudo sh -s', {
-      stdin: script,
-      timeoutMs: 60_000,
-    })
-    if (result.exitCode !== 0) {
-      throw new DeployError(
-        `atomic install failed: ${result.stderr || result.stdout}`,
-        'upload_failed',
-      )
-    }
-  } catch (err) {
-    // Best-effort cleanup of the staging area so repeated deploys
-    // don't accumulate /tmp junk. Failures here are ignored.
-    await ssh
-      .run(`rm -f ${stagedPaths.join(' ')}`, { timeoutMs: 10_000 })
-      .catch(() => {})
-    throw err
-  }
-}
-
-// ─── SSH helpers ───────────────────────────────────────────────────
-
-async function uploadAsRoot(
-  ssh: SshClient,
-  content: string,
-  remoteFinalPath: string,
-  mode: string,
-): Promise<void> {
-  const tmpPath = `/tmp/groundflare-upload-${randomBytes(6).toString('hex')}`
-  await uploadContent(ssh, content, tmpPath)
-  const installResult = await ssh.run(
-    `sudo install -m ${mode} -o root -g root ${tmpPath} ${remoteFinalPath} && rm -f ${tmpPath}`,
-    { timeoutMs: 30_000 },
-  )
-  if (installResult.exitCode !== 0) {
-    throw new DeployError(
-      `failed to install ${remoteFinalPath}: ${installResult.stderr || installResult.stdout}`,
-      'upload_failed',
-    )
-  }
-}
-
-async function uploadContent(ssh: SshClient, content: string, remotePath: string): Promise<void> {
-  const localDir = await mkdtemp(join(tmpdir(), 'gf-upload-'))
-  const localPath = join(localDir, 'payload')
-  try {
-    await writeFile(localPath, content, 'utf-8')
-    await ssh.upload(localPath, remotePath)
-  } catch (err) {
-    throw new DeployError(
-      `scp ${remotePath} failed: ${err instanceof Error ? err.message : String(err)}`,
-      'upload_failed',
-      { cause: err },
-    )
-  } finally {
-    await rm(localDir, { recursive: true, force: true })
-  }
-}
+// ─── SSH helpers (assets path) ─────────────────────────────────────
 
 async function ensureRemoteDir(ssh: SshClient, remoteDir: string): Promise<void> {
   const result = await ssh.run(
