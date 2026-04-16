@@ -163,10 +163,6 @@ export interface GroundflareSection {
   limits?: GroundflareRuntimeLimits
   observability?: GroundflareObservability
   env?: Record<string, Omit<GroundflareSection, 'env'>>
-  bun?: {
-    main?: string
-    bindings?: Record<string, GroundflareBindingConfig>
-  }
 }
 
 // ─── Config file I/O ───────────────────────────────────────────────

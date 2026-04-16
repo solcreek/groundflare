@@ -13,9 +13,6 @@
  *     `check your config`).
  *   - `.enum()` for provider, runtime, adapter, backend, metrics, logs.
  *     Error messages list valid values for free.
- *   - `superRefine` for the cross-field rule — `[groundflare.bun]`
- *     only parses when the effective runtime (same section or an
- *     enclosing one) is `"bun"`. Previously silent, now loud.
  *
  * Errors surface as `ConfigValidationError` with `{file, configPath}`
  * so the caller can render them however it likes.
@@ -88,14 +85,14 @@ const observabilitySchema = z
   })
   .strict()
 
-const bunBlockSchema = z
-  .object({
-    main: z.string().optional(),
-    bindings: z.record(z.string(), bindingConfigSchema).optional(),
-  })
-  .strict()
-
 // ─── section shape (shared between top-level and [groundflare.env.*]) ──
+//
+// Note: `[groundflare.bun]` (manual-mode Bun entry + per-binding client
+// overrides) is described in design/tracks.md but is not implemented —
+// it was accepted-but-dead-code before, deferred until the manual-mode
+// semantics and the design-doc `client` vs schema `adapter` mismatch
+// are resolved together. Adding the key back will add a strict schema
+// entry here.
 
 const sectionFields = {
   provider: z
@@ -110,43 +107,17 @@ const sectionFields = {
   bindings: z.record(z.string(), bindingConfigSchema).optional(),
   limits: limitsSchema.optional(),
   observability: observabilitySchema.optional(),
-  bun: bunBlockSchema.optional(),
 }
 
 // env children can't declare env themselves.
 const envChildSchema = z.object(sectionFields).strict()
 
-// top-level allows `env`, plus cross-field checks for `bun` → `runtime`.
 const topLevelSchema = z
   .object({
     ...sectionFields,
     env: z.record(z.string(), envChildSchema).optional(),
   })
   .strict()
-  .superRefine((data, ctx) => {
-    const topRuntime = data.runtime
-    if (data.bun && topRuntime !== 'bun') {
-      ctx.addIssue({
-        code: 'custom',
-        path: ['bun'],
-        message:
-          '`[groundflare.bun]` is only valid when `runtime = "bun"` is set in the same section or an enclosing one',
-      })
-    }
-    if (data.env) {
-      for (const [envName, section] of Object.entries(data.env)) {
-        const effective = section.runtime ?? topRuntime
-        if (section.bun && effective !== 'bun') {
-          ctx.addIssue({
-            code: 'custom',
-            path: ['env', envName, 'bun'],
-            message:
-              '`[groundflare.bun]` is only valid when `runtime = "bun"` is set in the same section or an enclosing one',
-          })
-        }
-      }
-    }
-  })
 
 // ─── entry point ──────────────────────────────────────────────────
 

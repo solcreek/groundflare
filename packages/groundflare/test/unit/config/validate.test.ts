@@ -27,16 +27,12 @@ describe('validateGroundflareSection — happy path', () => {
     expect(result.domain).toBe('api.example.com')
   })
 
-  it('accepts a Bun-track config with [groundflare.bun]', () => {
+  it('accepts a Bun-track config', () => {
     const result = validateGroundflareSection(
-      {
-        runtime: 'bun',
-        bun: { main: 'src/server.ts' },
-      },
+      { runtime: 'bun' },
       FILE,
     )
     expect(result.runtime).toBe('bun')
-    expect(result.bun?.main).toBe('src/server.ts')
   })
 
   it('accepts nested bindings + adapter + backend', () => {
@@ -169,45 +165,21 @@ describe('validateGroundflareSection — enum values', () => {
   })
 })
 
-describe('validateGroundflareSection — cross-field bun/runtime', () => {
-  it('rejects [groundflare.bun] when runtime is unset', () => {
-    expect(() =>
-      validateGroundflareSection({ bun: { main: 's.ts' } }, FILE),
-    ).toThrow(/runtime.*"bun"/)
-  })
-
-  it('rejects [groundflare.bun] when runtime = "workerd"', () => {
-    expect(() =>
-      validateGroundflareSection(
-        { runtime: 'workerd', bun: { main: 's.ts' } },
-        FILE,
-      ),
-    ).toThrow(ConfigValidationError)
-  })
-
-  it('accepts [groundflare.bun] when runtime = "bun" in the same section', () => {
+describe('validateGroundflareSection — [groundflare.bun] deferred', () => {
+  // `[groundflare.bun]` is described in design/tracks.md but not yet
+  // implemented. Until the manual-mode semantics land, the key is
+  // rejected as "unknown" alongside other typos — strictly less
+  // surprising than silently accepting then ignoring.
+  it('rejects a `bun` block at the top level as an unknown key', () => {
     expect(() =>
       validateGroundflareSection(
         { runtime: 'bun', bun: { main: 's.ts' } },
         FILE,
       ),
-    ).not.toThrow()
+    ).toThrow(/unknown key.*bun/)
   })
 
-  it('accepts [groundflare.env.X.bun] when env-level runtime = "bun"', () => {
-    expect(() =>
-      validateGroundflareSection(
-        {
-          env: {
-            production: { runtime: 'bun', bun: { main: 's.ts' } },
-          },
-        },
-        FILE,
-      ),
-    ).not.toThrow()
-  })
-
-  it('accepts [groundflare.env.X.bun] when parent runtime = "bun" (inherited)', () => {
+  it('rejects a `bun` block inside env.<name> as an unknown key', () => {
     expect(() =>
       validateGroundflareSection(
         {
@@ -216,19 +188,7 @@ describe('validateGroundflareSection — cross-field bun/runtime', () => {
         },
         FILE,
       ),
-    ).not.toThrow()
-  })
-
-  it('rejects [groundflare.env.X.bun] when parent runtime is workerd and env has no override', () => {
-    expect(() =>
-      validateGroundflareSection(
-        {
-          runtime: 'workerd',
-          env: { production: { bun: { main: 's.ts' } } },
-        },
-        FILE,
-      ),
-    ).toThrow(ConfigValidationError)
+    ).toThrow(/unknown key.*bun/)
   })
 })
 
