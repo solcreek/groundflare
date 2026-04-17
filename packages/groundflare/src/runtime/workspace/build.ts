@@ -82,6 +82,13 @@ export interface BuildOptions {
    * groundflare's cloud-init installs.
    */
   readonly defaultR2Endpoint?: string
+
+  /**
+   * Version string surfaced on the Router's `/__health` endpoint.
+   * Typically the groundflare CLI version. When unset, the router
+   * reports `"unknown"`.
+   */
+  readonly groundflareVersion?: string
 }
 
 const DEFAULT_STATE_BASE_DIR = 'do-state'
@@ -93,7 +100,7 @@ export function buildCapnpFromWorkspace(
   validateManifest(manifest)
 
   const stateBase = opts.stateBaseDir ?? DEFAULT_STATE_BASE_DIR
-  const services: CapnpService[] = [buildRouterService(manifest)]
+  const services: CapnpService[] = [buildRouterService(manifest, opts)]
 
   for (const worker of manifest.workers) {
     const { worker: tenant, disk: tenantDisk } = buildTenantService(
@@ -173,7 +180,10 @@ export function buildCapnpFromWorkspace(
 
 // ─── Router service ────────────────────────────────────────────────
 
-function buildRouterService(manifest: WorkspaceManifest): CapnpService {
+function buildRouterService(
+  manifest: WorkspaceManifest,
+  opts: BuildOptions,
+): CapnpService {
   // Every worker gets a service binding from the router so cron dispatch
   // can reach workers without a domain too.
   const bindings: CapnpBinding[] = manifest.workers.map((w) => ({
@@ -186,7 +196,12 @@ function buildRouterService(manifest: WorkspaceManifest): CapnpService {
     modules: [
       {
         name: DEFAULT_ROUTER_MODULE_NAME,
-        source: { kind: 'esModule', inline: generateRouterJs(manifest.workers) },
+        source: {
+          kind: 'esModule',
+          inline: generateRouterJs(manifest.workers, {
+            version: opts.groundflareVersion,
+          }),
+        },
       },
     ],
     compatibilityDate:

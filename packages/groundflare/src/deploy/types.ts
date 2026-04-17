@@ -48,6 +48,13 @@ export interface RunDeployOptions {
   readonly log?: LogFn
 
   /**
+   * groundflare CLI version surfaced on the Router Worker's `/__health`
+   * endpoint. The CLI passes its own package.json `version`; tests leave
+   * this unset (the router defaults to `"unknown"`).
+   */
+  readonly groundflareVersion?: string
+
+  /**
    * Skip the actual SSH steps — renders the bundle + configs but doesn't
    * push anything. Useful for `groundflare deploy --dry-run` to preview.
    */

@@ -23,6 +23,19 @@ afterEach(async () => {
   await rm(tmp, { recursive: true, force: true })
 })
 
+// What the Router Worker's `/__health` endpoint returns when everything
+// is wired up. The deploy probe runs `curl -s -w "\n%{http_code}"` so the
+// last line is the HTTP status and everything before it is the body.
+// The current parser only checks `status === "ok"` in the JSON body, so
+// this minimal payload exercises the success path.
+const HEALTH_OK_STDOUT = `{"status":"ok","uptime_seconds":0,"version":"unknown"}\n200`
+// Same shape for an HTTP-level failure (5xx): empty body, non-200 status.
+// The parser rejects non-ok JSON, which means both transport failures
+// and router-level 5xx responses surface as `health_failed`.
+function probeStdoutStatus(status: number): string {
+  return `\n${status}`
+}
+
 interface MockSshOptions {
   runs?: readonly Partial<RunResult>[]
   uploadShouldThrow?: Error
@@ -200,7 +213,7 @@ describe('runDeploy', () => {
       runs: [
         { exitCode: 0 }, // atomic install
         { exitCode: 0 }, // systemctl restart
-        { exitCode: 0, stdout: '200' }, // health probe
+        { exitCode: 0, stdout: HEALTH_OK_STDOUT }, // health probe
       ],
     })
     const result = await runDeploy({
@@ -228,8 +241,10 @@ describe('runDeploy', () => {
     expect(runCalls[0]?.opts?.stdin).toContain('/var/lib/groundflare/.deployed.json')
     expect(runCalls[1]?.command).toContain('systemctl restart groundflare-worker.service')
     expect(runCalls[1]?.command).toContain('systemctl reload caddy.service')
-    expect(runCalls[2]?.command).toContain('curl -o /dev/null')
-    expect(runCalls[2]?.command).toContain('Host: api.example.com')
+    // Health probe hits the Router's `/__health` via loopback — no Host
+    // header needed since the endpoint is public by design.
+    expect(runCalls[2]?.command).toContain('/__health')
+    expect(runCalls[2]?.command).not.toContain('Host:')
   })
 
   it('atomic install leaves destinations untouched when staging scp fails', async () => {
@@ -307,7 +322,7 @@ describe('runDeploy', () => {
       runs: [
         { exitCode: 0 }, // atomic install
         { exitCode: 0 }, // systemctl
-        { exitCode: 0, stdout: '503' }, // probe
+        { exitCode: 0, stdout: probeStdoutStatus(503) }, // probe
       ],
     })
     await expect(
@@ -358,8 +373,8 @@ describe('runDeploy', () => {
         { exitCode: 0 }, // atomic install
         { exitCode: 0 }, // systemctl restart
         { exitCode: 7, stderr: 'connection refused' }, // probe 1: ECONNREFUSED
-        { exitCode: 0, stdout: '502' }, // probe 2: bad gateway
-        { exitCode: 0, stdout: '200' }, // probe 3: ready
+        { exitCode: 0, stdout: probeStdoutStatus(502) }, // probe 2: bad gateway
+        { exitCode: 0, stdout: HEALTH_OK_STDOUT }, // probe 3: ready
       ],
     })
     const result = await runDeploy({
@@ -385,9 +400,9 @@ describe('runDeploy', () => {
       runs: [
         { exitCode: 0 }, // atomic install
         { exitCode: 0 }, // systemctl
-        { exitCode: 0, stdout: '503' },
-        { exitCode: 0, stdout: '503' },
-        { exitCode: 0, stdout: '503' },
+        { exitCode: 0, stdout: probeStdoutStatus(503) },
+        { exitCode: 0, stdout: probeStdoutStatus(503) },
+        { exitCode: 0, stdout: probeStdoutStatus(503) },
       ],
     })
     await expect(
@@ -447,7 +462,7 @@ describe('runDeploy', () => {
       runs: [
         { exitCode: 0 }, // atomic install
         { exitCode: 0 }, // systemctl restart
-        { exitCode: 0, stdout: '200' }, // health probe
+        { exitCode: 0, stdout: HEALTH_OK_STDOUT }, // health probe
       ],
     })
     const result = await runDeploy({
@@ -557,7 +572,7 @@ describe('runDeploy — Bun track', () => {
       runs: [
         { exitCode: 0 },
         { exitCode: 0 },
-        { exitCode: 0, stdout: '200' },
+        { exitCode: 0, stdout: HEALTH_OK_STDOUT },
       ],
     })
     const result = await runDeploy({
@@ -590,7 +605,7 @@ describe('runDeploy — Bun track', () => {
       runs: [
         { exitCode: 0 },
         { exitCode: 0 },
-        { exitCode: 0, stdout: '200' },
+        { exitCode: 0, stdout: HEALTH_OK_STDOUT },
       ],
     })
     await runDeploy({
@@ -642,7 +657,7 @@ describe('runDeploy — Bun track', () => {
         { exitCode: 0 }, // atomic install
         { exitCode: 0, stdout: '200' }, // R2 bucket pre-create (Bun track now uses the local SeaweedFS sidecar by default)
         { exitCode: 0 }, // systemctl restart
-        { exitCode: 0, stdout: '200' }, // health probe
+        { exitCode: 0, stdout: HEALTH_OK_STDOUT }, // health probe
       ],
     })
     await runDeploy({
@@ -741,7 +756,7 @@ describe('runDeploy — R2 bindings (workerd track)', () => {
         { exitCode: 0 }, // atomic install
         { exitCode: 0, stdout: '200' }, // bucket curl PUT
         { exitCode: 0 }, // systemctl restart
-        { exitCode: 0, stdout: '200' }, // health probe
+        { exitCode: 0, stdout: HEALTH_OK_STDOUT }, // health probe
       ],
     })
     const result = await runDeploy({
@@ -790,7 +805,7 @@ describe('runDeploy — R2 bindings (workerd track)', () => {
       runs: [
         { exitCode: 0 }, // atomic install
         { exitCode: 0 }, // systemctl restart (NOT bucket PUT)
-        { exitCode: 0, stdout: '200' }, // health probe
+        { exitCode: 0, stdout: HEALTH_OK_STDOUT }, // health probe
       ],
     })
     await runDeploy({
@@ -873,7 +888,7 @@ describe('runDeploy — R2 bindings (workerd track)', () => {
       runs: [
         { exitCode: 0 }, // atomic install
         { exitCode: 0 }, // systemctl restart (no bucket — external endpoint)
-        { exitCode: 0, stdout: '200' }, // health probe
+        { exitCode: 0, stdout: HEALTH_OK_STDOUT }, // health probe
       ],
     })
     await runDeploy({
@@ -917,7 +932,7 @@ describe('runDeploy — R2 bindings (workerd track)', () => {
         { exitCode: 0 }, // atomic install
         { exitCode: 0, stdout: '200' }, // bucket curl PUT (single, not per binding)
         { exitCode: 0 }, // systemctl restart
-        { exitCode: 0, stdout: '200' }, // health probe
+        { exitCode: 0, stdout: HEALTH_OK_STDOUT }, // health probe
       ],
     })
     await runDeploy({
@@ -973,7 +988,7 @@ describe('runDeploy — Bun track R2 external endpoint', () => {
         { exitCode: 0 }, // atomic install
         { exitCode: 0, stdout: '200' }, // R2 bucket pre-create
         { exitCode: 0 }, // systemctl restart
-        { exitCode: 0, stdout: '200' }, // health probe
+        { exitCode: 0, stdout: HEALTH_OK_STDOUT }, // health probe
       ],
     })
     await runDeploy({
@@ -1009,7 +1024,7 @@ describe('runDeploy — Bun track R2 external endpoint', () => {
         { exitCode: 0 }, // atomic install
         // No bucket pre-create here — external endpoint skips it.
         { exitCode: 0 }, // systemctl restart
-        { exitCode: 0, stdout: '200' }, // health probe
+        { exitCode: 0, stdout: HEALTH_OK_STDOUT }, // health probe
       ],
     })
     await runDeploy({
@@ -1048,7 +1063,7 @@ describe('runDeploy — Bun track R2 external endpoint', () => {
       runs: [
         { exitCode: 0 }, // atomic install
         { exitCode: 0 }, // systemctl restart
-        { exitCode: 0, stdout: '200' }, // health probe
+        { exitCode: 0, stdout: HEALTH_OK_STDOUT }, // health probe
       ],
     })
     await runDeploy({
@@ -1131,7 +1146,7 @@ describe('runDeploy — Bun track R2 external endpoint', () => {
       runs: [
         { exitCode: 0 }, // atomic install
         { exitCode: 0 }, // systemctl restart
-        { exitCode: 0, stdout: '200' }, // health probe
+        { exitCode: 0, stdout: HEALTH_OK_STDOUT }, // health probe
       ],
     })
     await runDeploy({
@@ -1167,7 +1182,7 @@ describe('runDeploy — Bun track R2 external endpoint', () => {
       runs: [
         { exitCode: 0 },
         { exitCode: 0 },
-        { exitCode: 0, stdout: '200' },
+        { exitCode: 0, stdout: HEALTH_OK_STDOUT },
       ],
     })
     await runDeploy({

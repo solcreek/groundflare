@@ -14,6 +14,7 @@ import { resolve as resolvePath } from 'node:path'
 import { BootstrapStateStore } from '../../bootstrap/index.js'
 import { DeployError, runDeploy } from '../../deploy/index.js'
 import { log } from '../log.js'
+import { resolveCliVersion } from '../version.js'
 
 export default defineCommand({
   meta: {
@@ -60,6 +61,8 @@ export default defineCommand({
       process.exit(1)
     }
 
+    const groundflareVersion = await resolveCliVersion()
+
     try {
       const result = await runDeploy({
         workspace,
@@ -67,6 +70,7 @@ export default defineCommand({
         bootstrapState: state,
         acmeEmail,
         dryRun,
+        groundflareVersion,
         log: (level, message) => {
           if (level === 'error') log.error(message)
           else if (level === 'warn') log.warn(message)

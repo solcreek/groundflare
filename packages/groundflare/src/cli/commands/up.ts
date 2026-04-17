@@ -26,6 +26,7 @@ import type { ProviderName } from '../../provider/index.js'
 import { workspaceWorkerFromConfig } from '../../runtime/workspace/index.js'
 import { log } from '../log.js'
 import { buildUpPlan, confirmPlan } from '../plan.js'
+import { resolveCliVersion } from '../version.js'
 
 const SUPPORTED_PROVIDERS: readonly ProviderName[] = [
   'hetzner',
@@ -187,12 +188,15 @@ export default defineCommand({
       return
     }
 
+    const groundflareVersion = await resolveCliVersion()
+
     try {
       const result = await runDeploy({
         workspace,
         workingDirectory: cwd,
         bootstrapState: state,
         acmeEmail,
+        groundflareVersion,
         log: logFn,
       })
       log.success(`up complete: ${result.tenants.length} tenant(s) deployed`)
