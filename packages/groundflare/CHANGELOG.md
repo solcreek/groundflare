@@ -1,5 +1,99 @@
 # Changelog
 
+## v0.5.1 — R2 follow-ups + Bun track parity
+
+Patch release that finishes the v0.5 R2 work. Non-breaking: existing
+workerd-track deploys don't need any config changes. Bun-track
+deploys pick up new default behaviour (local SeaweedFS sidecar
+instead of CF-R2-passthrough) — existing Bun users who set
+`R2_<BINDING>_ACCOUNT_ID` keep working via the backwards-compat
+branch.
+
+### New: Caddy `/media/*` reverse proxy for R2 public reads
+
+wrangler R2 bindings now accept an optional `groundflare.public_path`.
+When set, Caddy exposes the bucket at that path prefix on the
+tenant's domain, reverse-proxied to the local SeaweedFS sidecar. No
+Worker round-trip, no signed URLs — a direct byte pipe:
+
+```jsonc
+"r2_buckets": [
+  {
+    "binding": "MEDIA",
+    "bucket_name": "my-emdash-media",
+    "groundflare": { "public_path": "/media" }
+  }
+]
+```
+
+    GET https://emdash.example.com/media/photos/cat.jpg
+      ↓ Caddy handle_path strips /media, rewrites to /my-emdash-media
+      ↓ reverse_proxy 127.0.0.1:8333
+      ← weed serves the bytes
+
+Needed for CMS-style apps (emdash being the canonical case) where
+user-uploaded media in R2 has a public URL distinct from the app's
+signed-URL flow. Before this, self-hosted emdash could upload media
+but the public reader URL 404'd.
+
+### New: Bun track R2 parity
+
+The Bun R2 adapter gained the same two modes as the workerd adapter:
+
+- **Local (default)**: `http://127.0.0.1:8333` anonymous. Matches the
+  workerd track's zero-config self-host story.
+- **External**: set `groundflare.endpoint` + credential secrets on the
+  binding; deploy resolves the `*_secret` names to values and writes
+  them to `/etc/groundflare/environment` as `R2_<BINDING>_*` KEY=VALUE
+  lines (root:root 0600). systemd loads them at boot; the Bun shim's
+  `makeR2Facade` reads them from `process.env`.
+
+The old CF-R2-passthrough mode (via `R2_<BINDING>_ACCOUNT_ID`) still
+works unchanged — it's now just one of three presets. Credentials are
+optional for anonymous endpoints; paired validation
+(both-or-neither) lives inside the adapter constructor with a clear
+TypeError.
+
+Bun-track bootstraps now install SeaweedFS on cloud-init (previously
+only workerd track did). Skip cost: ~50 MB idle RAM; the service is
+opt-out via `systemctl disable groundflare-r2` if you don't use R2.
+
+### New: multipart live-validation endpoint
+
+`examples/r2-smoke/` gained a `/multipart-test` endpoint that drives
+the full R2 multipart flow server-side (create → 2 × 5 MiB parts →
+complete → GET-back → delete), returning a JSON report. Run-time on
+a 1 GB DO droplet: ~800 ms end-to-end. Designed for operators to
+drive a single curl against a fresh deploy and see the complete
+`size`/`etag` (with the `-<partCount>` suffix S3 uses for multipart)
+in one response.
+
+### New: `examples/emdash-demo/`
+
+The v0.5 live-validation target checked in as an example.
+Derivative of `emdash-cms/templates/starter-cloudflare` (MIT) with a
+single addition — a `[groundflare]` block in `wrangler.jsonc`.
+Exercises Astro SSR + D1 + R2 + KV + `worker_loaders` on a $6 DO
+droplet. Includes a README with the measured deploy timings +
+runtime RAM footprint.
+
+### Fixes
+
+- `packages/groundflare`'s pre-publish lint gate rejected the v0.5.0
+  tag on first push: two inline `import('…').Type` annotations and
+  three unused imports snuck past local `npm run build`. Patched
+  out; v0.5.0 actually shipped on the retry.
+
+### Test coverage
+
+- L1: +7 Caddy r2PublicRoutes cases + 6 run.ts env-file cases
+- L2/L3: unchanged (adapter surface identical; Bun deploy path gets
+  new unit coverage instead)
+- Bun native: +5 adapter constructor cases covering
+  endpoint/accountId/anonymous modes
+
+Totals: 1001 unit + integration, 85 bun. **1086 tests green.**
+
 ## v0.5.0 — Self-host R2 end-to-end
 
 The headline: **R2 bindings work on self-hosted boxes with zero config.**

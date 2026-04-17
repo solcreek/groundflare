@@ -651,7 +651,7 @@ function renderBunRuntimeEnvFile(manifest: WorkspaceManifest): string | null {
  * backslash escapes. Values have no shell expansion.
  */
 function quoteEnvValue(value: string): string {
-  if (/^[A-Za-z0-9._:/@+=\-]*$/.test(value)) return value
+  if (/^[A-Za-z0-9._:/@+=-]*$/.test(value)) return value
   return `"${value.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`
 }
 
