@@ -35,6 +35,7 @@ import {
 import { renderCapnpConfig } from '../runtime/workerd/capnp/index.js'
 import { OpenSshClient, type SshClient } from '../ssh/index.js'
 import type { LogFn } from '../bootstrap/index.js'
+import type { SecretStore } from '../secret/index.js'
 
 import { bundleWorker } from './bundle.js'
 import { detectBuildCommand } from './detect-pm.js'
@@ -542,7 +543,7 @@ void readFile
  */
 async function resolveR2Secrets(
   manifest: WorkspaceManifest,
-  injected: import('../secret/index.js').SecretStore | undefined,
+  injected: SecretStore | undefined,
 ): Promise<void> {
   let store = injected
   if (store === undefined) {
@@ -563,7 +564,7 @@ async function resolveR2Secrets(
 }
 
 async function fetchSecret(
-  store: import('../secret/index.js').SecretStore,
+  store: SecretStore,
   name: string,
   bindingForError: string,
 ): Promise<string> {

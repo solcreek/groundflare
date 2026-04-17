@@ -12,7 +12,7 @@
  * `git clean -fdx` clears it but normal CI / dev runs hit it.
  */
 
-import { spawn, type ChildProcess } from 'node:child_process'
+import { spawn } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { createWriteStream } from 'node:fs'
 import { access, chmod, mkdir, mkdtemp, rm } from 'node:fs/promises'
@@ -22,6 +22,7 @@ import { fileURLToPath } from 'node:url'
 import { setTimeout as sleep } from 'node:timers/promises'
 import { Readable } from 'node:stream'
 import { pipeline } from 'node:stream/promises'
+import type { ReadableStream as WebReadableStream } from 'node:stream/web'
 
 import { pickFreePort } from '../../integration/spawn-workerd.js'
 
@@ -96,7 +97,7 @@ async function downloadFile(url: string, destPath: string): Promise<void> {
     throw new Error(`Download failed (${res.status}) for ${url}`)
   }
   await pipeline(
-    Readable.fromWeb(res.body as import('node:stream/web').ReadableStream),
+    Readable.fromWeb(res.body as WebReadableStream),
     createWriteStream(destPath),
   )
 }

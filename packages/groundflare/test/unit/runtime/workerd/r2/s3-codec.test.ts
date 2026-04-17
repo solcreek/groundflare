@@ -23,7 +23,6 @@ import {
   type R2Conditional,
   type R2HttpFields,
   type R2KV,
-  type R2Range,
   type S3CodecContext,
 } from '../../../../../src/runtime/workerd/r2/s3-codec.js'
 
