@@ -73,7 +73,7 @@ Blockers the analyzer refuses to migrate (stay on Mirror): `HTMLRewriter`, `WebS
 | D1 | ✅ v0.1 | ✅ v0.2 | node:sqlite / bun:sqlite |
 | R2 | ✅ v0.5 | ✅ v0.2 | SeaweedFS sidecar (default) · BYO S3 endpoint (B2/Wasabi/real R2/…) · passthrough (Bun) |
 | Durable Objects | ✅ v0.1 | ❌ Mirror-only | workerd native `ctx.storage` |
-| Cache API | ✅ v0.1 | ⚠️ v0.3 | in-memory |
+| Cache API | ✅ v0.1 | ⚠️ v0.3 | workerd native (Mirror) · planned drop-in (Bun) |
 | Service Bindings | ✅ v0.1 | ⚠️ v0.4 | same-process dispatch |
 | Cron Triggers | ✅ v0.1 | 🚧 v0.3 | systemd `.timer` → `__scheduled` |
 | HTMLRewriter | ✅ v0.1 | ⚠️ v0.3 | workerd native · linkedom (Bun) |
