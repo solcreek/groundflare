@@ -6,12 +6,20 @@
  *   1. Load state for the workspace.
  *   2. Construct the provider from the stored provider name + secret store.
  *   3. Call provider.destroyVPS(vps.id).
- *   4. Remove the local state file so `up` starts fresh next time.
+ *   4. Delete the SSH key from the provider (only if no other workspace
+ *      references it — each workspace usually has its own per-
+ *      bootstrap key, but a defensive scan prevents breaking a shared
+ *      setup).
+ *   5. Remove the local keypair files (best-effort).
+ *   6. Purge known_hosts entries for the retired VPS IP (added 6a90b63).
+ *   7. Remove the local state file so `up` starts fresh next time.
  *
  * Notes:
- *   - We do NOT auto-delete the SSH key from the provider or the local
- *     ~/.config/groundflare/keys — those are cheap to keep and deleting
- *     them would break any other workspaces that share the same key.
+ *   - The SSH key cleanup is best-effort — a failed delete (key already
+ *     gone at the provider, 404, etc.) logs a warning but never blocks
+ *     the overall destroy.
+ *   - The secret store entry (`provider.<name>.token`) is NOT touched —
+ *     it's per-provider-account, not per-workspace.
  *   - DNS records, backups, and external resources are out of scope.
  */
 
@@ -103,6 +111,22 @@ export default defineCommand({
         throw err
       }
 
+      // Best-effort: delete the provider-side SSH key + local keypair
+      // files if no other workspace on the same provider references
+      // the same key. Per-workspace key naming is the norm (bootstrap
+      // stage 01 generates `<workspace>_ed25519`), but the share check
+      // guards the rare "I manually reused a key across workspaces"
+      // setup — losing their auth mid-deploy would be very bad.
+      if (state.sshKey !== undefined) {
+        await cleanUpSshKey({
+          provider,
+          providerName: state.provider,
+          sshKey: state.sshKey,
+          currentWorkspace: workspace,
+          stateStore,
+        })
+      }
+
       // Best-effort purge of stale known_hosts entries so the operator
       // doesn't hit "host key has changed" errors on the next `up` if
       // the provider recycles this public IP (common on Hetzner hel1).
@@ -118,6 +142,86 @@ export default defineCommand({
     }
   },
 })
+
+/**
+ * Delete the provider-side SSH key and local keypair files, but only
+ * when no other workspace state references the same `providerId` on
+ * the same provider. A shared-key setup is unusual (bootstrap
+ * generates per-workspace keys) but legitimate — e.g. the operator
+ * manually seeded a shared ed25519 key for a team-access setup —
+ * and we don't want destroy on workspace A to lock them out of B.
+ *
+ * Best-effort throughout: any error logs a warning and continues.
+ * The overall destroy never fails because of a leftover SSH key.
+ *
+ * Exported so the share-check + skip path can be exercised in unit
+ * tests without spinning up the full destroy command.
+ */
+export async function cleanUpSshKey(opts: {
+  provider: Provider
+  providerName: string
+  sshKey: NonNullable<BootstrapState['sshKey']>
+  currentWorkspace: string
+  stateStore: BootstrapStateStore
+}): Promise<void> {
+  // Scan sibling state files for the same key.
+  const sharers: string[] = []
+  try {
+    const others = await opts.stateStore.list()
+    for (const name of others) {
+      if (name === opts.currentWorkspace) continue
+      const sibling = await opts.stateStore.load(name).catch(() => null)
+      if (sibling === null) continue
+      if (
+        sibling.provider === opts.providerName &&
+        sibling.sshKey?.providerId === opts.sshKey.providerId
+      ) {
+        sharers.push(name)
+      }
+    }
+  } catch (err) {
+    log.warn(
+      `could not scan other workspaces for SSH-key share check: ` +
+        `${err instanceof Error ? err.message : String(err)}; ` +
+        `leaving SSH key in place to be safe`,
+    )
+    return
+  }
+
+  if (sharers.length > 0) {
+    log.info(
+      `SSH key ${opts.sshKey.providerId} is also referenced by workspace(s): ` +
+        `${sharers.join(', ')} — leaving it at the provider`,
+    )
+    return
+  }
+
+  // Provider-side delete.
+  try {
+    await opts.provider.deleteSSHKey(opts.sshKey.providerId)
+    log.success(`removed SSH key ${opts.sshKey.providerId} from provider`)
+  } catch (err) {
+    const msg = err instanceof ProviderError
+      ? `${err.message} (${err.code})`
+      : err instanceof Error
+        ? err.message
+        : String(err)
+    log.warn(`could not delete SSH key ${opts.sshKey.providerId}: ${msg}`)
+  }
+
+  // Local keypair cleanup. ENOENT is fine — means we're doing
+  // re-destroy or the key was already moved by the operator.
+  for (const path of [opts.sshKey.localPath, opts.sshKey.localPublicPath]) {
+    try {
+      await unlink(path)
+    } catch (err) {
+      const code = (err as NodeJS.ErrnoException).code
+      if (code !== 'ENOENT') {
+        log.warn(`could not remove local key ${path}: ${(err as Error).message}`)
+      }
+    }
+  }
+}
 
 async function cleanUpKnownHosts(
   vps: NonNullable<BootstrapState['vps']>,
