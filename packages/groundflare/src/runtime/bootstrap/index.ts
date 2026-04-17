@@ -7,11 +7,13 @@ export type { CloudInitOptions } from './cloud-init.js'
 export {
   cronUnitName,
   generateCronUnitPair,
+  generateSeaweedfsSystemdUnit,
   generateWorkerSystemdUnit,
 } from './systemd.js'
 export type {
   CronUnitOptions,
   CronUnitPair,
+  SeaweedfsUnitOptions,
   WorkerUnitOptions,
 } from './systemd.js'
 

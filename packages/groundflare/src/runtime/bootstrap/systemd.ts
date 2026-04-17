@@ -165,6 +165,114 @@ function validatePercent(value: number, name: string): number {
   return Math.floor(value)
 }
 
+// ─── SeaweedFS sidecar unit ────────────────────────────────────────
+
+export interface SeaweedfsUnitOptions {
+  /** Override the weed binary path. Default `/usr/local/bin/weed`. */
+  readonly weedBinary?: string
+  /** Data dir owned by the running user. Default `/var/lib/groundflare/r2-state`. */
+  readonly dataDir?: string
+  /** S3 API port. Default 8333 — matches the in-process default the adapter uses. */
+  readonly s3Port?: number
+  /**
+   * Internal port for weed's master server. Default 9333 (weed's own
+   * default). Override only when 9333 is already in use locally.
+   */
+  readonly masterPort?: number
+  /**
+   * Internal port for weed's volume server. Default 8088 (NOT weed's
+   * default of 8080 — that conflicts with workerd's listen port).
+   */
+  readonly volumePort?: number
+  /** Internal port for weed's filer server. Default 8888 (weed's default). */
+  readonly filerPort?: number
+  /** Bind address. Default `127.0.0.1` so weed is never publicly exposed. */
+  readonly ip?: string
+  /** Unix user. Default `groundflare`. */
+  readonly user?: string
+  readonly group?: string
+  /** Memory limit percent. Default 50 (leave plenty for workerd + Caddy on 1 GB). */
+  readonly memoryMaxPercent?: number
+  /** Restart policy. Default `always` — weed crashes shouldn't disable R2 globally. */
+  readonly restart?: 'on-failure' | 'always' | 'no'
+}
+
+const SEAWEEDFS_DEFAULTS = {
+  weedBinary: '/usr/local/bin/weed',
+  dataDir: '/var/lib/groundflare/r2-state',
+  s3Port: 8333,
+  // weed `server` starts master/volume/filer too. Defaults are
+  // 9333 / 8080 / 8888 — but 8080 collides with workerd's listen port.
+  // Pin volume to 8088 to free 8080 for the actual app.
+  masterPort: 9333,
+  volumePort: 8088,
+  filerPort: 8888,
+  ip: '127.0.0.1',
+  user: 'groundflare',
+  group: 'groundflare',
+  memoryMaxPercent: 50,
+  restart: 'always' as const,
+}
+
+/**
+ * Generate the systemd unit file for the SeaweedFS sidecar that backs
+ * R2 bindings. The R2 adapter Worker connects via the loopback HTTP
+ * endpoint set up by `weed server -s3`.
+ *
+ * Resource ceiling defaults to 50% memory (vs workerd's 80%) so a
+ * runaway weed cannot starve the workerd that depends on it. Weed in
+ * its single-server mode happily lives in 100–200 MB on a 1 GB VPS.
+ */
+export function generateSeaweedfsSystemdUnit(
+  opts: SeaweedfsUnitOptions = {},
+): string {
+  const weedBinary = opts.weedBinary ?? SEAWEEDFS_DEFAULTS.weedBinary
+  const dataDir = opts.dataDir ?? SEAWEEDFS_DEFAULTS.dataDir
+  const s3Port = opts.s3Port ?? SEAWEEDFS_DEFAULTS.s3Port
+  const masterPort = opts.masterPort ?? SEAWEEDFS_DEFAULTS.masterPort
+  const volumePort = opts.volumePort ?? SEAWEEDFS_DEFAULTS.volumePort
+  const filerPort = opts.filerPort ?? SEAWEEDFS_DEFAULTS.filerPort
+  const ip = opts.ip ?? SEAWEEDFS_DEFAULTS.ip
+  const user = opts.user ?? SEAWEEDFS_DEFAULTS.user
+  const group = opts.group ?? SEAWEEDFS_DEFAULTS.group
+  const memoryMax = validatePercent(
+    opts.memoryMaxPercent ?? SEAWEEDFS_DEFAULTS.memoryMaxPercent,
+    'memoryMaxPercent',
+  )
+  const restart = opts.restart ?? SEAWEEDFS_DEFAULTS.restart
+
+  // Pin every weed sub-server's port so the defaults can't slowly drift
+  // into a workerd/caddy/etc. collision later. -volume.port=8080 is the
+  // specific landmine this guards against.
+  const exec =
+    `${weedBinary} server -dir=${dataDir} -ip=${ip} -s3 ` +
+    `-s3.port=${s3Port} -master.port=${masterPort} ` +
+    `-volume.port=${volumePort} -filer.port=${filerPort}`
+
+  return (
+    SYSTEMD_HEADER +
+    '\n[Unit]\n' +
+    'Description=groundflare R2 backend (SeaweedFS S3-compatible sidecar)\n' +
+    'After=network.target\n' +
+    'Before=groundflare-worker.service\n' +
+    '\n[Service]\n' +
+    'Type=simple\n' +
+    `User=${user}\n` +
+    `Group=${group}\n` +
+    `WorkingDirectory=${dataDir}\n` +
+    `ExecStart=${exec}\n` +
+    `Restart=${restart}\n` +
+    'RestartSec=5\n' +
+    'StandardOutput=journal\n' +
+    'StandardError=journal\n' +
+    'SyslogIdentifier=groundflare-r2\n' +
+    'LimitNOFILE=65536\n' +
+    `MemoryMax=${memoryMax}%\n` +
+    '\n[Install]\n' +
+    'WantedBy=multi-user.target\n'
+  )
+}
+
 // ─── Cron timer / service units ────────────────────────────────────
 
 export interface CronUnitOptions {

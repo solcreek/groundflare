@@ -15,6 +15,13 @@ import { BootstrapError, type Stage } from '../types.js'
 
 const STAGE_ID = 'provider.provision'
 
+/**
+ * Pinned SeaweedFS release. Bumping is a deliberate decision (the L3
+ * conformance suite is what catches version-related S3 wire regressions);
+ * keep this in lock-step with test/e2e/r2/weed-fixture.ts WEED_VERSION.
+ */
+const SEAWEEDFS_VERSION = '4.20'
+
 export interface ProvisionStageOptions {
   /** VPS size to request, e.g. `cx22`. Required at run time. */
   readonly size: string
@@ -82,6 +89,12 @@ export function provisionStage(opts: ProvisionStageOptions): Stage {
         ...(isBun ? { installBun: true, installWorkerd: false } : {}),
         ...(!isBun && opts.workerdVersion !== undefined
           ? { workerdVersion: opts.workerdVersion }
+          : {}),
+        // Workerd track ships with the SeaweedFS sidecar pre-installed so
+        // any subsequent deploy that uses an R2 binding works zero-config.
+        // Bun track has its own R2 adapter path and skips weed.
+        ...(!isBun
+          ? { installSeaweedfs: true, seaweedfsVersion: SEAWEEDFS_VERSION }
           : {}),
       })
 

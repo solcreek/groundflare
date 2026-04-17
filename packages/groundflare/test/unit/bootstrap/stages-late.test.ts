@@ -200,10 +200,11 @@ describe('Stage: system.install-runtime', () => {
 // ─── Stage 6: install services ─────────────────────────────────────
 
 describe('Stage: system.install-services', () => {
-  it('uploads systemd unit + Caddyfile and reloads', async () => {
+  it('uploads systemd unit + Caddyfile and reloads (no SeaweedFS)', async () => {
     const { client, runCalls, uploadCalls } = mockSshClient({
       runs: [
-        { result: { exitCode: 0 } }, // install systemd unit
+        { result: { exitCode: 0 } }, // install workerd systemd unit
+        { result: { exitCode: 1 } }, // weed binary probe — absent (Bun-track VPS)
         { result: { exitCode: 0 } }, // install Caddyfile
         { result: { exitCode: 0 } }, // daemon-reload + enable + restart caddy
       ],
@@ -221,19 +222,50 @@ describe('Stage: system.install-services', () => {
     expect(runCalls[0]?.command).toContain(
       'sudo install -m 0644 -o root -g root /tmp/groundflare-worker.service.upload /etc/systemd/system/groundflare-worker.service',
     )
-    expect(runCalls[1]?.command).toContain(
+    expect(runCalls[1]?.command).toContain('test -x /usr/local/bin/weed')
+    expect(runCalls[2]?.command).toContain(
       'sudo install -m 0644 -o root -g root /tmp/Caddyfile.upload /etc/caddy/Caddyfile',
     )
-    expect(runCalls[2]?.command).toContain('sudo systemctl daemon-reload')
-    expect(runCalls[2]?.command).toContain('sudo systemctl enable groundflare-worker.service')
-    expect(runCalls[2]?.command).toContain('sudo systemctl enable caddy.service')
-    expect(runCalls[2]?.command).toContain('sudo systemctl restart caddy.service')
+    expect(runCalls[3]?.command).toContain('sudo systemctl daemon-reload')
+    expect(runCalls[3]?.command).toContain('sudo systemctl enable groundflare-worker.service')
+    expect(runCalls[3]?.command).toContain('sudo systemctl enable caddy.service')
+    expect(runCalls[3]?.command).toContain('sudo systemctl restart caddy.service')
+    // weed absent → no R2 unit install/enable
+    expect(runCalls[3]?.command).not.toContain('groundflare-r2.service')
+  })
+
+  it('also installs SeaweedFS sidecar unit when weed is present', async () => {
+    const { client, runCalls, uploadCalls } = mockSshClient({
+      runs: [
+        { result: { exitCode: 0 } }, // install workerd systemd unit
+        { result: { exitCode: 0 } }, // weed probe — present
+        { result: { exitCode: 0 } }, // install R2 systemd unit
+        { result: { exitCode: 0 } }, // install Caddyfile
+        { result: { exitCode: 0 } }, // daemon-reload + enable + restart caddy
+      ],
+    })
+    const ctx = makeContext({ ssh: client })
+    await installServicesStage({
+      acmeEmail: 'ops@example.com',
+      placeholderDomain: 'demo.groundflare.app',
+    }).run(ctx)
+
+    expect(uploadCalls).toHaveLength(3)
+    expect(uploadCalls[1]?.remote).toBe('/tmp/groundflare-r2.service.upload')
+    expect(runCalls[2]?.command).toContain(
+      'sudo install -m 0644 -o root -g root /tmp/groundflare-r2.service.upload /etc/systemd/system/groundflare-r2.service',
+    )
+    // R2 unit gets enable --now so it's running before workerd needs it.
+    expect(runCalls[4]?.command).toContain(
+      'sudo systemctl enable --now groundflare-r2.service',
+    )
   })
 
   it('throws when the systemctl reload fails', async () => {
     const { client } = mockSshClient({
       runs: [
         { result: { exitCode: 0 } },
+        { result: { exitCode: 1 } }, // weed absent
         { result: { exitCode: 0 } },
         { result: { exitCode: 1, stderr: 'unit dependency cycle' } },
       ],

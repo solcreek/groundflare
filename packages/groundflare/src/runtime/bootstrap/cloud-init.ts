@@ -79,6 +79,25 @@ export interface CloudInitOptions {
    * See design/tracks.md for track selection semantics.
    */
   readonly installBun?: boolean
+
+  /**
+   * Install SeaweedFS on first boot to back R2 bindings (workspaces with
+   * any `r2_buckets` declared). Default false — VPSes that don't ship R2
+   * skip the ~30 MB binary download. Set to true to:
+   *   - download the weed binary for the VPS architecture from GitHub
+   *   - install /etc/systemd/system/groundflare-r2.service
+   *   - enable + start the service so workerd can hit http://127.0.0.1:8333
+   *     for the local SeaweedFS sidecar by default
+   */
+  readonly installSeaweedfs?: boolean
+
+  /**
+   * SeaweedFS version to install (e.g. "4.20"). Required when
+   * installSeaweedfs is true. Caller (bootstrap stage) reads from a
+   * pinned constant so all bootstraps in a CLI release use the same
+   * version.
+   */
+  readonly seaweedfsVersion?: string
 }
 
 const DEFAULT_SYSTEM_USER = 'groundflare'
@@ -188,6 +207,38 @@ export function generateCloudInit(opts: CloudInitOptions): string {
       '  - HOME=/root bash -c "curl -fsSL https://bun.sh/install | bash"',
     )
     lines.push('  - ln -sf /root/.bun/bin/bun /usr/local/bin/bun')
+  }
+
+  if (opts.installSeaweedfs === true) {
+    if (opts.seaweedfsVersion === undefined || opts.seaweedfsVersion === '') {
+      throw new TypeError(
+        'cloud-init: seaweedfsVersion is required when installSeaweedfs is true',
+      )
+    }
+    const seaweedVersion = opts.seaweedfsVersion
+    // SeaweedFS publishes prebuilt linux_amd64.tar.gz / linux_arm64.tar.gz
+    // single-binary releases on GitHub. Download, extract, install the
+    // single 'weed' binary to /usr/local/bin. Then create the data dir
+    // owned by the groundflare user so the systemd unit (running as
+    // groundflare) can write to it.
+    lines.push('  - |')
+    lines.push('    ARCH=$(dpkg --print-architecture)')
+    lines.push('    case "$ARCH" in')
+    lines.push('      amd64) WTGZ=linux_amd64.tar.gz ;;')
+    lines.push('      arm64) WTGZ=linux_arm64.tar.gz ;;')
+    lines.push('      *)     echo "unsupported arch $ARCH for SeaweedFS"; exit 1 ;;')
+    lines.push('    esac')
+    lines.push(
+      `    curl -fsSL "https://github.com/seaweedfs/seaweedfs/releases/download/${seaweedVersion}/$WTGZ" \\`,
+    )
+    lines.push('      -o /tmp/weed.tgz')
+    lines.push('    tar -xzf /tmp/weed.tgz -C /tmp')
+    lines.push('    install -m 0755 /tmp/weed /usr/local/bin/weed')
+    lines.push('    rm -f /tmp/weed.tgz /tmp/weed')
+    lines.push('    /usr/local/bin/weed version')
+    lines.push(
+      `  - install -d -m 0755 -o ${systemUser} -g ${systemUser} /var/lib/groundflare/r2-state`,
+    )
   }
 
   lines.push('write_files:')

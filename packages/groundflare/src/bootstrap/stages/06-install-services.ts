@@ -13,12 +13,14 @@
 
 import {
   generateCaddyfile,
+  generateSeaweedfsSystemdUnit,
   generateWorkerSystemdUnit,
 } from '../../runtime/bootstrap/index.js'
 import { BootstrapError, type Stage } from '../types.js'
 
 const STAGE_ID = 'system.install-services'
 const UNIT_REMOTE_PATH = '/etc/systemd/system/groundflare-worker.service'
+const SEAWEEDFS_UNIT_REMOTE_PATH = '/etc/systemd/system/groundflare-r2.service'
 // NOTE: the capnp file lives directly under /var/lib/groundflare/ (NOT
 // under /system/) so the `embed` paths it contains — e.g.
 // `workers/<name>/code/current/index.js` — resolve against
@@ -81,6 +83,26 @@ export function installServicesStage(opts: InstallServicesStageOptions): Stage {
       await uploadAsRoot(ctx, unit, '/tmp/groundflare-worker.service.upload', unitTarget)
       ctx.log('info', `installed ${unitTarget}`)
 
+      // ─── SeaweedFS sidecar unit (skipped on Bun track) ────────────
+      // cloud-init dropped the weed binary at /usr/local/bin/weed when
+      // installSeaweedfs=true (see stages/02-provision.ts). Probe for it;
+      // if absent, skip the unit install (Bun-track VPSes won't have it).
+      const weedProbe = await ctx.ssh.run('test -x /usr/local/bin/weed', {
+        timeoutMs: 5_000,
+      })
+      if (weedProbe.exitCode === 0) {
+        const r2Unit = generateSeaweedfsSystemdUnit()
+        await uploadAsRoot(
+          ctx,
+          r2Unit,
+          '/tmp/groundflare-r2.service.upload',
+          SEAWEEDFS_UNIT_REMOTE_PATH,
+        )
+        ctx.log('info', `installed ${SEAWEEDFS_UNIT_REMOTE_PATH}`)
+      } else {
+        ctx.log('info', 'weed binary not present, skipping R2 sidecar unit')
+      }
+
       // ─── Caddyfile placeholder ────────────────────────────────────
       // Generate with the placeholder site so Caddy's config validates;
       // deploy will overwrite this file with the real domain set.
@@ -102,9 +124,18 @@ export function installServicesStage(opts: InstallServicesStageOptions): Stage {
       ctx.log('info', `installed ${caddyfileTarget}`)
 
       // ─── systemd: reload + enable (don't start workerd yet) ──────
+      // R2 sidecar (when installed) starts now — workerd will need it
+      // running before deploy lands the first capnp config that uses
+      // an R2 binding. weed without traffic uses ~50 MB so the cost is
+      // bounded.
+      const enableR2 =
+        weedProbe.exitCode === 0
+          ? 'sudo systemctl enable --now groundflare-r2.service && '
+          : ''
       const reload = await ctx.ssh.run(
         'sudo systemctl daemon-reload && ' +
           'sudo systemctl enable groundflare-worker.service && ' +
+          enableR2 +
           'sudo systemctl enable caddy.service && ' +
           'sudo systemctl restart caddy.service',
         { timeoutMs: 30_000 },
