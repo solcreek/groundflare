@@ -32,9 +32,17 @@ export default defineConfig({
     testTimeout: 10_000,
     // Run integration tests sequentially — spawning multiple workerd
     // processes in parallel is fine but log output interleaves badly.
+    //
+    // execArgv carries `--experimental-sqlite` into each worker so the
+    // Node 22 D1 conformance tests don't blow up on `require('node:sqlite')`.
+    // Node 24 will mark node:sqlite stable and this line becomes a no-op;
+    // drop it once engines is bumped to >=24.
     pool: 'forks',
     poolOptions: {
-      forks: { singleFork: false },
+      forks: {
+        singleFork: false,
+        execArgv: ['--experimental-sqlite'],
+      },
     },
     coverage: {
       provider: 'v8',

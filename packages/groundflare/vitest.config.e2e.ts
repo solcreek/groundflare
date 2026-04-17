@@ -19,7 +19,12 @@ export default defineConfig({
     // parallelism would tangle ports and amplify flakiness.
     pool: 'forks',
     poolOptions: {
-      forks: { singleFork: true },
+      forks: {
+        singleFork: true,
+        // Carry --experimental-sqlite into each worker (see main config
+        // for why). Drop when engines bumps to Node 24.
+        execArgv: ['--experimental-sqlite'],
+      },
     },
     sequence: { concurrent: false },
   },
