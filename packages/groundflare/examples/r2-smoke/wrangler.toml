@@ -1,0 +1,15 @@
+name = "r2-smoke"
+main = "src/index.ts"
+compatibility_date = "2026-04-01"
+compatibility_flags = ["nodejs_compat"]
+
+[[r2_buckets]]
+binding = "MEDIA"
+bucket_name = "media"
+
+[groundflare]
+provider = "digitalocean"
+region = "sgp1"
+size = "s-1vcpu-1gb"
+email = "deduce@gmail.com"
+domain = "r2-smoke.test.invalid"
