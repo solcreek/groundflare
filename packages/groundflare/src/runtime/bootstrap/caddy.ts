@@ -10,6 +10,25 @@
  * → Router Worker → tenant service bindings).
  */
 
+export interface CaddyR2PublicRoute {
+  /**
+   * Path prefix Caddy matches on inbound requests. Leading slash
+   * required; no trailing slash. Example: "/media".
+   */
+  readonly path: string
+  /**
+   * R2 bucket name the path forwards to on the local SeaweedFS
+   * sidecar. Caddy rewrites the request to `/<bucketName>/<rest>`
+   * and reverse-proxies to 127.0.0.1:8333.
+   */
+  readonly bucketName: string
+  /**
+   * Override the sidecar address. Default `127.0.0.1:8333` — the
+   * S3 endpoint groundflare-r2.service listens on.
+   */
+  readonly upstream?: string
+}
+
 export interface CaddySite {
   /** Hostname that terminates here. e.g. "api.example.com". Required. */
   readonly hostname: string
@@ -24,6 +43,16 @@ export interface CaddySite {
    * Matches wrangler's `[assets].directory` semantics.
    */
   readonly assetsPath?: string
+
+  /**
+   * Public path routes to the local SeaweedFS sidecar. When an R2
+   * binding declares `groundflare.public_path = "/media"` in its
+   * wrangler config, requests under that path get forwarded to the
+   * sidecar instead of the Worker — this is how emdash and similar
+   * CMSes serve user-uploaded media from a self-host box without
+   * signed-URL detours through the Worker.
+   */
+  readonly r2PublicRoutes?: readonly CaddyR2PublicRoute[]
 
   /**
    * Enable gzip/zstd response compression. Default true — the workerd
@@ -101,6 +130,26 @@ export function generateCaddyfile(opts: CaddyfileOptions): string {
 
 function renderSite(site: CaddySite): string {
   const lines: string[] = []
+  const publicRoutes = site.r2PublicRoutes ?? []
+  for (const r of publicRoutes) validatePublicRoute(r)
+
+  // R2 public routes come BEFORE the static/worker routing so their
+  // prefix matches terminate early (Caddy evaluates handle blocks in
+  // declaration order for the same request).
+  //
+  // Pattern:
+  //   GET /media/photos/cat.jpg
+  //   ↓ handle_path strips /media → inner {uri} == /photos/cat.jpg
+  //   ↓ rewrite prepends /<bucket> → /<bucket>/photos/cat.jpg
+  //   ↓ reverse_proxy → weed serves /{bucket}/photos/cat.jpg
+  for (const route of publicRoutes) {
+    const upstream = route.upstream ?? '127.0.0.1:8333'
+    lines.push(`handle_path ${route.path}/* {`)
+    lines.push(`  rewrite * /${route.bucketName}{uri}`)
+    lines.push(`  reverse_proxy ${upstream}`)
+    lines.push('}')
+    lines.push('')
+  }
 
   if (site.assetsPath !== undefined) {
     // Static assets: Caddy serves files from disk first; requests that
@@ -131,6 +180,29 @@ function renderSite(site: CaddySite): string {
     lines.map((l) => `  ${l}`).join('\n') +
     '\n}'
   )
+}
+
+function validatePublicRoute(route: CaddyR2PublicRoute): void {
+  if (!route.path.startsWith('/') || route.path === '/') {
+    throw new TypeError(
+      `Caddyfile: r2PublicRoute.path must start with a single slash and be non-empty; got ${JSON.stringify(route.path)}`,
+    )
+  }
+  if (route.path.endsWith('/')) {
+    throw new TypeError(
+      `Caddyfile: r2PublicRoute.path must not end with a trailing slash; got ${JSON.stringify(route.path)}`,
+    )
+  }
+  if (!/^[A-Za-z0-9._-]+$/.test(route.bucketName)) {
+    throw new TypeError(
+      `Caddyfile: r2PublicRoute.bucketName contains invalid characters; got ${JSON.stringify(route.bucketName)}`,
+    )
+  }
+  if (route.upstream !== undefined && !isValidUpstream(route.upstream)) {
+    throw new TypeError(
+      `Caddyfile: r2PublicRoute.upstream invalid; got ${JSON.stringify(route.upstream)}`,
+    )
+  }
 }
 
 // ─── Validation ────────────────────────────────────────────────────

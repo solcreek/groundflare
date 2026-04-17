@@ -92,6 +92,15 @@ export function workspaceWorkerFromConfig(
             `access_key_id_secret is missing — credentials are paired.`,
         )
       }
+      if (gf?.public_path !== undefined) {
+        const p = gf.public_path
+        if (!p.startsWith('/') || p === '/' || p.endsWith('/')) {
+          throw new Error(
+            `r2_buckets[${r2.binding}].groundflare.public_path must start ` +
+              `with a single slash, be non-empty, and have no trailing slash; got ${JSON.stringify(p)}`,
+          )
+        }
+      }
       const spec: {
         binding: string
         bucketName?: string
@@ -99,6 +108,7 @@ export function workspaceWorkerFromConfig(
         region?: string
         accessKeyId?: string
         secretAccessKey?: string
+        publicPath?: string
       } = {
         binding: r2.binding,
         bucketName: r2.bucket_name || r2.binding.toLowerCase(),
@@ -110,6 +120,7 @@ export function workspaceWorkerFromConfig(
       // were the values; the deploy step swaps them out.
       if (gf?.access_key_id_secret !== undefined) spec.accessKeyId = gf.access_key_id_secret
       if (gf?.secret_access_key_secret !== undefined) spec.secretAccessKey = gf.secret_access_key_secret
+      if (gf?.public_path !== undefined) spec.publicPath = gf.public_path
       return spec
     })
   }

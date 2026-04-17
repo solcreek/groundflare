@@ -199,3 +199,120 @@ describe('generateCaddyfile — validation', () => {
     ).toThrow(/upstream/)
   })
 })
+
+describe('generateCaddyfile — R2 public routes', () => {
+  it('emits a handle_path block per R2 public route', () => {
+    const out = generateCaddyfile({
+      email: 'ops@example.com',
+      sites: [
+        {
+          hostname: 'api.example.com',
+          upstream: '127.0.0.1:8080',
+          r2PublicRoutes: [{ path: '/media', bucketName: 'my-emdash-media' }],
+        },
+      ],
+    })
+    expect(out).toContain('handle_path /media/*')
+    expect(out).toContain('rewrite * /my-emdash-media{uri}')
+    expect(out).toContain('reverse_proxy 127.0.0.1:8333')
+  })
+
+  it('supports multiple public routes on the same site', () => {
+    const out = generateCaddyfile({
+      email: 'ops@example.com',
+      sites: [
+        {
+          hostname: 'api.example.com',
+          upstream: '127.0.0.1:8080',
+          r2PublicRoutes: [
+            { path: '/media', bucketName: 'media' },
+            { path: '/uploads', bucketName: 'uploads' },
+          ],
+        },
+      ],
+    })
+    expect(out).toContain('handle_path /media/*')
+    expect(out).toContain('handle_path /uploads/*')
+  })
+
+  it('honours an upstream override on a public route', () => {
+    const out = generateCaddyfile({
+      email: 'ops@example.com',
+      sites: [
+        {
+          hostname: 'api.example.com',
+          upstream: '127.0.0.1:8080',
+          r2PublicRoutes: [
+            { path: '/media', bucketName: 'b', upstream: '127.0.0.1:9999' },
+          ],
+        },
+      ],
+    })
+    expect(out).toContain('reverse_proxy 127.0.0.1:9999')
+    // The worker upstream is still emitted for the catch-all.
+    expect(out).toContain('reverse_proxy 127.0.0.1:8080')
+  })
+
+  it('combines public routes with an [assets] directory (public routes first)', () => {
+    const out = generateCaddyfile({
+      email: 'ops@example.com',
+      sites: [
+        {
+          hostname: 'api.example.com',
+          upstream: '127.0.0.1:8080',
+          assetsPath: '/var/lib/groundflare/workers/api/assets',
+          r2PublicRoutes: [{ path: '/media', bucketName: 'media' }],
+        },
+      ],
+    })
+    const mediaIdx = out.indexOf('handle_path /media/*')
+    const staticIdx = out.indexOf('@static file')
+    expect(mediaIdx).toBeGreaterThan(-1)
+    expect(staticIdx).toBeGreaterThan(mediaIdx)
+  })
+
+  it('rejects public route path without a leading slash', () => {
+    expect(() =>
+      generateCaddyfile({
+        email: 'ops@example.com',
+        sites: [
+          {
+            hostname: 'api.example.com',
+            upstream: '127.0.0.1:8080',
+            r2PublicRoutes: [{ path: 'media', bucketName: 'b' }],
+          },
+        ],
+      }),
+    ).toThrow(/single slash/)
+  })
+
+  it('rejects public route path with a trailing slash', () => {
+    expect(() =>
+      generateCaddyfile({
+        email: 'ops@example.com',
+        sites: [
+          {
+            hostname: 'api.example.com',
+            upstream: '127.0.0.1:8080',
+            r2PublicRoutes: [{ path: '/media/', bucketName: 'b' }],
+          },
+        ],
+      }),
+    ).toThrow(/trailing slash/)
+  })
+
+  it('rejects public route bucketName containing special characters', () => {
+    expect(() =>
+      generateCaddyfile({
+        email: 'ops@example.com',
+        sites: [
+          {
+            hostname: 'api.example.com',
+            upstream: '127.0.0.1:8080',
+            r2PublicRoutes: [{ path: '/media', bucketName: 'bad bucket' }],
+          },
+        ],
+      }),
+    ).toThrow(/bucketName/)
+  })
+})

@@ -200,13 +200,26 @@ export async function runDeploy(opts: RunDeployOptions): Promise<DeployResult> {
 
   const caddySites: CaddySite[] = manifest.workers
     .filter((w) => w.domain !== undefined)
-    .map((w) => ({
-      hostname: w.domain!,
-      upstream: LISTEN_ADDRESS,
-      ...(hasAssets
-        ? { assetsPath: `/var/lib/groundflare/workers/${w.name}/assets` }
-        : {}),
-    }))
+    .map((w) => {
+      // R2 buckets with a public_path + no external endpoint get a
+      // Caddy handle_path block forwarding to the local SeaweedFS
+      // sidecar. External endpoints skip Caddy — the app's own code is
+      // responsible for serving / signing public URLs against them.
+      const r2PublicRoutes = (w.r2Buckets ?? [])
+        .filter((r2) => r2.publicPath !== undefined && r2.endpoint === undefined)
+        .map((r2) => ({
+          path: r2.publicPath!,
+          bucketName: r2.bucketName ?? r2.binding.toLowerCase(),
+        }))
+      return {
+        hostname: w.domain!,
+        upstream: LISTEN_ADDRESS,
+        ...(hasAssets
+          ? { assetsPath: `/var/lib/groundflare/workers/${w.name}/assets` }
+          : {}),
+        ...(r2PublicRoutes.length > 0 ? { r2PublicRoutes } : {}),
+      }
+    })
   const caddyfile = generateCaddyfile({
     email: opts.acmeEmail,
     sites: caddySites,

@@ -127,6 +127,13 @@ export interface R2BindingSpec {
   readonly accessKeyId?: string
   /** Paired secret access key. Required when accessKeyId is set. */
   readonly secretAccessKey?: string
+  /**
+   * Public path prefix (leading slash, no trailing slash). When set,
+   * the deploy wires Caddy to serve the bucket's contents at this
+   * path on the tenant's domain via a reverse_proxy to the local
+   * SeaweedFS sidecar. Undefined → bucket stays private.
+   */
+  readonly publicPath?: string
 }
 
 export interface DOBindingSpec {

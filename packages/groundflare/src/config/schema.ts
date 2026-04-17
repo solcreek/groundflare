@@ -50,6 +50,20 @@ export interface WranglerR2Bucket {
     access_key_id_secret?: string
     /** Name of the secret holding the secret access key. */
     secret_access_key_secret?: string
+    /**
+     * Public path prefix under which Caddy exposes this bucket's
+     * contents. Example: `"/media"` → a GET for
+     * https://yourdomain/media/photo.jpg fetches the object with key
+     * `photo.jpg` from the bucket and returns it directly (no Worker
+     * round-trip). Useful for CMSes like emdash that store
+     * user-uploaded assets in R2 and display them via public URLs.
+     *
+     * Leading slash required; no trailing slash. Omit to keep the
+     * bucket private (access only via the R2 binding in Worker code).
+     * Only effective when the bucket uses the local SeaweedFS sidecar
+     * (default); external S3 endpoints are outside Caddy's scope.
+     */
+    public_path?: string
   }
 }
 
