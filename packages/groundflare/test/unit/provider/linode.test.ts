@@ -356,6 +356,10 @@ describe('LinodeProvider.createVPS', () => {
     // Tags include groundflare + label values
     expect(body.tags).toContain('groundflare')
     expect(body.tags).toContain('production')
+    // Linode requires root_pass even with SSH keys present. We ship a
+    // strong throwaway — cloud-init disables password auth server-side.
+    expect(typeof body.root_pass).toBe('string')
+    expect(body.root_pass.length).toBeGreaterThanOrEqual(20)
 
     // Result maps correctly
     expect(vps.id).toBe('123')
@@ -417,6 +421,42 @@ describe('LinodeProvider.createVPS', () => {
     expect(calls[0]?.url).toBe('https://api.test/v4/linode/instances')
     const body = JSON.parse(calls[0]!.body!)
     expect(body.authorized_keys).toEqual([])
+  })
+
+  it('deduplicates tags when a label value collides with the "groundflare" marker', async () => {
+    // Regression: Linode strictly rejects duplicate tags with
+    //   400 — Tag N (groundflare) is a duplicate tag (tag first occurs at index 0)
+    // Bootstrap passes labels = { 'managed-by': 'groundflare', workspace: <name> }
+    // so `Object.values` yields ['groundflare', <name>] and the naive
+    // `tags: ['groundflare', ...values]` ships a duplicate.
+    const { fetchImpl, calls } = mockFetch([
+      {
+        body: {
+          id: 1,
+          label: 'smoke',
+          region: 'us-central',
+          type: 'g6-nanode-1',
+          status: 'provisioning',
+          created: '2026-04-17T00:00:00Z',
+        },
+      },
+    ])
+    const provider = makeProvider(fetchImpl)
+    await provider.createVPS({
+      name: 'smoke',
+      size: 'g6-nanode-1',
+      region: 'us-central',
+      sshKeyIds: [],
+      labels: { 'managed-by': 'groundflare', workspace: 'smoke' },
+    })
+    const body = JSON.parse(calls[0]!.body!)
+    // Must contain both distinct values, exactly once each.
+    expect(body.tags).toContain('groundflare')
+    expect(body.tags).toContain('smoke')
+    expect(new Set(body.tags).size).toBe(body.tags.length)
+    expect(body.tags.filter((t: string) => t === 'groundflare')).toHaveLength(
+      1,
+    )
   })
 })
 

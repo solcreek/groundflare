@@ -26,7 +26,7 @@
  * tag-based filtering on listVPS, Volumes, NodeBalancers, VLANs.
  */
 
-import { createHash } from 'node:crypto'
+import { createHash, randomBytes } from 'node:crypto'
 
 import {
   ProviderError,
@@ -151,7 +151,26 @@ export class LinodeProvider extends HttpProvider implements Provider {
       label: opts.name,
       image: opts.image ?? DEFAULT_IMAGE,
       authorized_keys: authorizedKeys,
-      tags: ['groundflare', ...Object.values(opts.labels ?? {})],
+      // Linode's POST /linode/instances requires `root_pass` even when
+      // SSH keys are provided via `authorized_keys` — the docs mark it
+      // optional, the API rejects with `400 root_pass is required` if
+      // absent. We generate a strong throwaway (32 base64url chars)
+      // and never surface it: cloud-init disables password auth as
+      // part of the standard groundflare user-data, and no caller has
+      // a path to recover this value. If you need VPS console access
+      // after the fact, reset the root password from the Linode
+      // dashboard.
+      root_pass: `gf-${randomBytes(24).toString('base64url')}`,
+      // Dedupe: Linode strictly rejects `tags` arrays that contain the
+      // same value twice ("Tag N is a duplicate tag"). The caller's
+      // `labels` can legitimately include a value that collides with
+      // the mandatory 'groundflare' marker — e.g. bootstrap passes
+      // `{ 'managed-by': 'groundflare', workspace: <name> }` and
+      // `Object.values` yields `['groundflare', <name>]`. Pass through
+      // a Set so order is preserved but duplicates are dropped.
+      tags: [
+        ...new Set(['groundflare', ...Object.values(opts.labels ?? {})]),
+      ],
     }
     if (opts.userData !== undefined) {
       body.metadata = {

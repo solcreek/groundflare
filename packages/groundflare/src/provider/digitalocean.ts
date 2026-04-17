@@ -109,7 +109,13 @@ export class DigitalOceanProvider extends HttpProvider implements Provider {
     }
     if (opts.userData !== undefined) body.user_data = opts.userData
     if (opts.labels !== undefined) {
-      body.tags = ['groundflare', ...Object.values(opts.labels)]
+      // Dedupe — bootstrap's labels include `managed-by: groundflare`
+      // which would collide with the mandatory marker tag. DO accepts
+      // duplicates today but may not in future; the Set keeps the
+      // payload honest either way.
+      body.tags = [
+        ...new Set(['groundflare', ...Object.values(opts.labels)]),
+      ]
     }
 
     const data = await this.request<{ droplet: DODroplet }>(
