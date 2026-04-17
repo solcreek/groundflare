@@ -1,5 +1,103 @@
 # Changelog
 
+## v0.5.2 — Plan / apply, sslip.io previews, drift detection
+
+Minor UX release. Non-breaking for existing workflows — every new
+surface is opt-in via flags or config sections. Focus was closing
+the gap between "bootstrapped a VPS" and "confident the deploy is
+still what I asked for".
+
+### New: `groundflare plan` + selective confirm on up/destroy
+
+Terraform-style plan/apply, scaled down to groundflare's resource
+set. `groundflare plan --workspace <w>` renders the diff without
+touching the provider:
+
+```
+Plan: groundflare up — demo
+
+  = VPS: 565517819 in sgp1 (already exists; no change)
+  ~ deploy: 1 tenant (1 D1, 1 R2, 1 KV)
+
+  (no warnings)
+```
+
+Action glyphs: `+` create, `~` update, `=` skip (already in target
+state), `-` destroy, `!` data-loss warning. `up` and `destroy` now
+surface the same plan before acting — fresh provisions get a
+friendly auto-approve-on-existing-state default; destroy requires
+typing the workspace name to proceed. Skip with `--yes` for CI.
+
+### New: sslip.io preview hostname when `domain` is unset
+
+First-time `up` runs without `[groundflare].domain` now get a usable
+HTTPS preview URL automatically:
+
+```
+[groundflare] ℹ preview: https://203-0-113-10.sslip.io
+```
+
+The VPS IP dash-separates into an sslip.io hostname that Let's
+Encrypt validates via HTTP-01 out of the box — no DNS setup, no
+manual cert wrangling. Opt out with `[groundflare].preview = false`
+(Caddy stays HTTP-only until you set a real domain) or pick nip.io
+with `preview = "nip.io"`.
+
+Meant for preview / demo flows; production should point a real
+domain at the VPS (see warning in plan output). sslip.io has
+>10-year uptime but is maintained solo — migrate before you
+depend on it.
+
+### New: `groundflare status --check-drift`
+
+Detect workspace state drift in four categories, cheapest first:
+
+```
+$ groundflare status --workspace demo --check-drift
+drift:
+  [provider] ✓ VPS 565517819 present, IP + size match state
+  [dns]      ✓ demo.example.com → 203.0.113.10 (matches VPS)
+  [systemd]  ✓ groundflare-worker.service active
+  [systemd]  ✓ caddy.service active
+  [systemd]  ✓ groundflare-r2.service active
+  [files]    ✓ /var/lib/groundflare/worker.capnp (owner: groundflare, 3.2 KB)
+  [files]    ✓ /etc/caddy/Caddyfile (owner: root, 276 B)
+  No drift detected.
+```
+
+- **provider** — `getVPS` round-trip. Catches destroyed / resized
+  droplets and rotated IPs from web-console fiddling.
+- **dns** — resolves the configured domain, compares against the
+  stored VPS IP. Catches "DNS moved, VPS didn't".
+- **systemd** — `is-active` for worker / caddy / r2. The R2 sidecar
+  is treated as optional so Bun-only VPSes don't false-positive.
+- **files** — `stat` on `worker.capnp` + `Caddyfile`. Catches
+  wholesale deletion / permission damage. Hash-diff is deferred to
+  a future release pending a `.deployed.json` marker.
+
+Exits 1 when any check is severity=drift, so the flag drops into CI
+pipelines that want to alert on self-hosted Worker fleets. Provider
+token load is best-effort — missing token skips the provider
+category rather than aborting.
+
+### Fixed: Hetzner price table refresh
+
+Validated against `api.hetzner.cloud/v1/server_types` with a live
+token. The baked `HETZNER_PRICE_TABLE` was significantly out of
+date: `cx22/cx32/cx42/cx52` were deprecated 2026Q1 (API rejects
+provisioning with "server type N is deprecated"), `cax` ARM prices
+were raised across the board (+€1.35 to +€10/mo per tier), and the
+whole `cpx11–cpx51` shared-x86 middle tier was missing from the
+snapshot.
+
+The table now covers the current Hetzner catalogue (as of
+2026-04-17). Live numbers are still available via
+`provider.listSizes()` for tooling that wants them — the baked
+table is a fallback for `groundflare estimate` when an API token
+isn't at hand.
+
+---
+
 ## v0.5.1 — R2 follow-ups + Bun track parity
 
 Patch release that finishes the v0.5 R2 work. Non-breaking: existing
