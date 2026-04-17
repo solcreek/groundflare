@@ -41,7 +41,11 @@ export interface ProvisionStageOptions {
   /** workerd version for cloud-init to download (e.g. "1.20260415.1"). */
   readonly workerdVersion?: string
   /** Max time to wait for a public IPv4 to appear (some providers assign
-   *  it asynchronously). Default 120s. */
+   *  it asynchronously). Default 300s — DO / Linode assign in under 30s
+   *  typically, but Vultr can take 2–4 minutes to populate `main_ip`
+   *  (the instance exists, `power_status: running`, but the API still
+   *  reports `0.0.0.0` until networking finishes wiring up). The old
+   *  120s default was sized for DO and bailed too early on Vultr. */
   readonly ipv4PollTimeoutMs?: number
 }
 
@@ -112,11 +116,13 @@ export function provisionStage(opts: ProvisionStageOptions): Stage {
         ...(opts.image !== undefined ? { image: opts.image } : {}),
       })
 
-      // Some providers (DigitalOcean) assign the public IPv4 asynchronously
-      // after the create call returns. Poll until it appears.
+      // Some providers (DigitalOcean, Vultr) assign the public IPv4
+      // asynchronously after the create call returns. Poll until it
+      // appears. Vultr is the slowest — 2-4 min typical — so we size
+      // the default to cover it; DO + Linode usually finish in <30s.
       if (vps.publicIPv4 === undefined || vps.publicIPv4.length === 0) {
         ctx.log('info', `waiting for public IPv4 on ${vps.id}…`)
-        const deadline = Date.now() + (opts.ipv4PollTimeoutMs ?? 120_000)
+        const deadline = Date.now() + (opts.ipv4PollTimeoutMs ?? 300_000)
         while (Date.now() < deadline) {
           await sleep(3_000)
           const refreshed = await ctx.provider.getVPS(vps.id)
@@ -127,7 +133,7 @@ export function provisionStage(opts: ProvisionStageOptions): Stage {
         }
         if (vps.publicIPv4 === undefined || vps.publicIPv4.length === 0) {
           throw new BootstrapError(
-            `VPS ${vps.id} never received a public IPv4 within ${(opts.ipv4PollTimeoutMs ?? 120_000) / 1000}s`,
+            `VPS ${vps.id} never received a public IPv4 within ${(opts.ipv4PollTimeoutMs ?? 300_000) / 1000}s`,
             'stage_failed',
             STAGE_ID,
           )
