@@ -135,6 +135,10 @@ function nodeForBinding(b: CapnpBinding): CapnpNode {
     case 'r2Bucket':
       return struct([...head, ['r2Bucket', str(b.service)]])
     case 'fromEnvironment':
+      // Emits `fromEnvironment = "ENV_VAR"`. The secret value lands in
+      // workerd's process env via systemd's EnvironmentFile at deploy
+      // time; see the CapnpFromEnvironmentBinding docstring for the
+      // full pipeline.
       return struct([...head, ['fromEnvironment', str(b.envVar)]])
     case 'durableObjectNamespace': {
       const fields: Array<[string, CapnpNode]> = [['className', str(b.className)]]

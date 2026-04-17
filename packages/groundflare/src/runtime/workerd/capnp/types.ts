@@ -81,9 +81,36 @@ export interface CapnpDurableObjectNamespaceBinding {
   readonly serviceName?: string
 }
 
+/**
+ * `fromEnvironment` reads a secret from a process environment variable
+ * at workerd startup. Used for R2 SigV4 credentials so the plaintext
+ * never lives in the capnp file on disk — if the VPS image is ever
+ * leaked, the config is inert.
+ *
+ * The full pipeline:
+ *
+ *   1. wrangler.toml declares the binding with a secret-name pointer,
+ *      e.g. `[r2_buckets.groundflare] access_key_id_secret =
+ *      "R2_ACCESS_KEY_ID"`.
+ *   2. `from-config.ts` lifts those names into the workspace manifest.
+ *   3. At deploy time, `run.ts` resolves the actual secret values from
+ *      the operator's secret store (FileSecretStore by default) and
+ *      writes `KEY=value` lines to `/etc/groundflare/environment`.
+ *   4. The workerd systemd unit pulls that file in via
+ *      `EnvironmentFile=/etc/groundflare/environment`, so the variable
+ *      lands in workerd's process environment.
+ *   5. workerd sees `fromEnvironment = "R2_ACCESS_KEY_ID"` in the capnp
+ *      and looks up the value in its own env at bind time.
+ *   6. The Worker sees `env.R2_ACCESS_KEY_ID` with the value.
+ *
+ * Rotation: update the secret store, redeploy. `run.ts` rewrites the
+ * EnvironmentFile and `systemctl restart groundflare-worker` picks up
+ * the new values.
+ */
 export interface CapnpFromEnvironmentBinding {
   readonly name: string
   readonly kind: 'fromEnvironment'
+  /** Process env var name (NOT the secret value) to read at workerd start. */
   readonly envVar: string
 }
 
