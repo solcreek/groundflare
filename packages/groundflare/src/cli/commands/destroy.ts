@@ -18,7 +18,10 @@
 import { defineCommand } from 'citty'
 import { unlink } from 'node:fs/promises'
 
-import { BootstrapStateStore } from '../../bootstrap/index.js'
+import {
+  BootstrapStateStore,
+  type BootstrapState,
+} from '../../bootstrap/index.js'
 import { resolveConfig } from '../../config/index.js'
 import {
   ProviderError,
@@ -32,6 +35,7 @@ import {
   type WorkspaceWorker,
 } from '../../runtime/workspace/index.js'
 import { FileSecretStore } from '../../secret/index.js'
+import { removeKnownHostsEntries } from '../../ssh/index.js'
 import { log } from '../log.js'
 import { buildDestroyPlan, confirmPlan } from '../plan.js'
 
@@ -98,6 +102,11 @@ export default defineCommand({
         }
         throw err
       }
+
+      // Best-effort purge of stale known_hosts entries so the operator
+      // doesn't hit "host key has changed" errors on the next `up` if
+      // the provider recycles this public IP (common on Hetzner hel1).
+      await cleanUpKnownHosts(state.vps)
     }
 
     try {
@@ -109,6 +118,27 @@ export default defineCommand({
     }
   },
 })
+
+async function cleanUpKnownHosts(
+  vps: NonNullable<BootstrapState['vps']>,
+): Promise<void> {
+  const hosts: string[] = []
+  if (vps.ipv4 !== '') hosts.push(vps.ipv4)
+  if (vps.ipv6 !== undefined && vps.ipv6 !== '') hosts.push(vps.ipv6)
+  if (vps.port !== undefined && vps.port !== 22 && vps.ipv4 !== '') {
+    hosts.push(`[${vps.ipv4}]:${vps.port}`)
+  }
+  if (hosts.length === 0) return
+  const result = await removeKnownHostsEntries(hosts)
+  if (result.removed.length > 0) {
+    log.info(
+      `cleaned known_hosts for ${result.removed.join(', ')} (avoids "host key changed" on IP reuse)`,
+    )
+  }
+  for (const e of result.errors) {
+    log.warn(`known_hosts cleanup for ${e.host} failed: ${e.message}`)
+  }
+}
 
 async function constructProvider(name: string): Promise<Provider> {
   const secrets = new FileSecretStore()

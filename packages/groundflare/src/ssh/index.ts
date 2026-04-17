@@ -4,6 +4,12 @@ export type { OpenSshClientOptions, SpawnFn } from './openssh.js'
 export { waitForSshTcpReady } from './wait.js'
 export type { ConnectFn, ProbeOptions, SleepFn } from './wait.js'
 
+export { removeKnownHostsEntries } from './known-hosts.js'
+export type {
+  KnownHostsCleanupResult,
+  RemoveKnownHostsOptions,
+} from './known-hosts.js'
+
 export {
   SshError,
   type RunOptions,
