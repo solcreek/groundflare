@@ -109,6 +109,16 @@ export async function collectDrift(
     checks.push(...fileChecks)
   }
 
+  // ─── hash ──────────────────────────────────────────────────────
+  // Compare sha256sum(worker.capnp) against the capnpSha256 recorded
+  // in /var/lib/groundflare/.deployed.json. Catches out-of-band edits
+  // that stat-based checks above can't see. Silently absent marker is
+  // a `warn` (pre-v0.5.4 deploys didn't write one) rather than drift.
+  if (opts.ssh !== null) {
+    const hashCheck = await checkDeployedMarker(opts.ssh)
+    if (hashCheck !== null) checks.push(hashCheck)
+  }
+
   return checks
 }
 
@@ -313,6 +323,103 @@ async function checkKeyArtefacts(ssh: SshClient): Promise<DriftCheck[]> {
     }
   }
   return out
+}
+
+const DEPLOYED_MARKER_PATH = '/var/lib/groundflare/.deployed.json'
+const CAPNP_REMOTE_PATH = '/var/lib/groundflare/worker.capnp'
+
+interface DeployedMarker {
+  readonly marker: number
+  readonly workspace: string
+  readonly capnpSha256: string
+  readonly deployedAt: string
+}
+
+/**
+ * Hash the remote worker.capnp via `sha256sum` and compare against
+ * the `capnpSha256` baked into `.deployed.json` at deploy time.
+ * Returns null when the ssh probe couldn't even issue the commands
+ * (caller already gets a `warn` from checkKeyArtefacts in that
+ * scenario; we don't want to double-report).
+ */
+async function checkDeployedMarker(ssh: SshClient): Promise<DriftCheck | null> {
+  const id = 'hash.worker-capnp'
+  let probe
+  try {
+    // One SSH round trip: cat the marker + sha256 the capnp, joined
+    // by a sentinel so we can split the stdout without heredoc
+    // quoting gymnastics. `|| echo ""` for the cat so the remote
+    // script exits 0 even when the marker is absent.
+    probe = await ssh.run(
+      `( cat ${DEPLOYED_MARKER_PATH} 2>/dev/null || echo "" ) && ` +
+        `echo "__SHA_SEP__" && ` +
+        `sha256sum ${CAPNP_REMOTE_PATH} 2>/dev/null | awk '{print $1}' || echo ""`,
+      { timeoutMs: 15_000 },
+    )
+  } catch (err) {
+    return {
+      id,
+      category: 'hash',
+      severity: 'warn',
+      detail: `probe failed: ${asMessage(err)}`,
+    }
+  }
+
+  const [markerRaw = '', shaRaw = ''] = probe.stdout.split('__SHA_SEP__')
+  const markerText = markerRaw.trim()
+  const remoteSha = shaRaw.trim()
+
+  if (markerText === '') {
+    return {
+      id,
+      category: 'hash',
+      severity: 'warn',
+      detail:
+        `${DEPLOYED_MARKER_PATH} missing — pre-v0.5.4 deploy, or marker was deleted. Re-run \`up\` to populate.`,
+    }
+  }
+
+  let marker: DeployedMarker
+  try {
+    marker = JSON.parse(markerText) as DeployedMarker
+  } catch {
+    return {
+      id,
+      category: 'hash',
+      severity: 'warn',
+      detail: `${DEPLOYED_MARKER_PATH} is not valid JSON`,
+    }
+  }
+  if (typeof marker.capnpSha256 !== 'string' || marker.capnpSha256.length === 0) {
+    return {
+      id,
+      category: 'hash',
+      severity: 'warn',
+      detail: `${DEPLOYED_MARKER_PATH} missing capnpSha256 field`,
+    }
+  }
+
+  if (remoteSha === '') {
+    // worker.capnp is missing / unreadable — checkKeyArtefacts
+    // already flagged that; skip here to avoid redundant noise.
+    return null
+  }
+  if (remoteSha === marker.capnpSha256) {
+    return {
+      id,
+      category: 'hash',
+      severity: 'ok',
+      detail: `worker.capnp sha256 matches marker (deployed ${marker.deployedAt})`,
+    }
+  }
+  return {
+    id,
+    category: 'hash',
+    severity: 'drift',
+    detail:
+      `worker.capnp sha256 mismatch: live=${remoteSha.slice(0, 12)}… ` +
+      `marker=${marker.capnpSha256.slice(0, 12)}… (edited out-of-band?)`,
+  }
 }
 
 // ─── Rendering ─────────────────────────────────────────────────────

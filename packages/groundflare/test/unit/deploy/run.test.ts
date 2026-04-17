@@ -213,8 +213,9 @@ describe('runDeploy', () => {
     })
     expect(result.dryRun).toBe(false)
     expect(result.healthCheck?.status).toBe(200)
-    // Three scp uploads: bundle, capnp, Caddyfile — all staged under /tmp.
-    expect(uploads).toHaveLength(3)
+    // Four scp uploads: bundle, capnp, Caddyfile, .deployed.json —
+    // all staged under /tmp before the atomic install script moves them.
+    expect(uploads).toHaveLength(4)
     for (const u of uploads) expect(u.remote).toMatch(/^\/tmp\/gf-stage-/)
     // atomic install + systemctl + health = 3 run calls
     expect(runCalls).toHaveLength(3)
@@ -224,6 +225,7 @@ describe('runDeploy', () => {
     expect(runCalls[0]?.opts?.stdin).toContain('install -m 0644 -o root -g root')
     expect(runCalls[0]?.opts?.stdin).toContain('/var/lib/groundflare/worker.capnp')
     expect(runCalls[0]?.opts?.stdin).toContain('/etc/caddy/Caddyfile')
+    expect(runCalls[0]?.opts?.stdin).toContain('/var/lib/groundflare/.deployed.json')
     expect(runCalls[1]?.command).toContain('systemctl restart groundflare-worker.service')
     expect(runCalls[1]?.command).toContain('systemctl reload caddy.service')
     expect(runCalls[2]?.command).toContain('curl -o /dev/null')

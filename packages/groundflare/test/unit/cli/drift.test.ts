@@ -380,6 +380,115 @@ describe('collectDrift — files category', () => {
   })
 })
 
+// ─── hash category (deployed marker + capnp sha) ──────────────────
+
+describe('collectDrift — hash category', () => {
+  const knownHash = 'a1b2c3d4e5f60718293a4b5c6d7e8f90112233445566778899aabbccddeeff00'
+  const marker = JSON.stringify({
+    marker: 1,
+    workspace: 'demo',
+    capnpSha256: knownHash,
+    deployedAt: '2026-04-17T00:00:00.000Z',
+  })
+
+  it('ok when sha256sum output matches the marker', async () => {
+    const ssh = fakeSsh([
+      { match: /stat -c/, result: { exitCode: 0, stdout: 'root 2048\n' } },
+      {
+        match: /__SHA_SEP__/,
+        result: {
+          exitCode: 0,
+          stdout: `${marker}\n__SHA_SEP__\n${knownHash}\n`,
+        },
+      },
+    ])
+    const checks = await collectDrift({
+      state: baseState(),
+      provider: null,
+      ssh,
+    })
+    const hash = checks.find((c) => c.category === 'hash')
+    expect(hash?.severity).toBe('ok')
+    expect(hash?.detail).toMatch(/matches marker/)
+  })
+
+  it('drift when the live sha differs from the marker', async () => {
+    const wrongHash = 'ff'.repeat(32)
+    const ssh = fakeSsh([
+      { match: /stat -c/, result: { exitCode: 0, stdout: 'root 2048\n' } },
+      {
+        match: /__SHA_SEP__/,
+        result: {
+          exitCode: 0,
+          stdout: `${marker}\n__SHA_SEP__\n${wrongHash}\n`,
+        },
+      },
+    ])
+    const checks = await collectDrift({
+      state: baseState(),
+      provider: null,
+      ssh,
+    })
+    const hash = checks.find((c) => c.category === 'hash')
+    expect(hash?.severity).toBe('drift')
+    expect(hash?.detail).toMatch(/mismatch/)
+    expect(hash?.detail).toMatch(/edited out-of-band/)
+  })
+
+  it('warn when the marker is absent (pre-v0.5.4 deploy)', async () => {
+    const ssh = fakeSsh([
+      { match: /stat -c/, result: { exitCode: 0, stdout: 'root 2048\n' } },
+      {
+        match: /__SHA_SEP__/,
+        result: { exitCode: 0, stdout: `\n__SHA_SEP__\n${knownHash}\n` },
+      },
+    ])
+    const checks = await collectDrift({
+      state: baseState(),
+      provider: null,
+      ssh,
+    })
+    const hash = checks.find((c) => c.category === 'hash')
+    expect(hash?.severity).toBe('warn')
+    expect(hash?.detail).toMatch(/pre-v0\.5\.4/)
+  })
+
+  it('warn when the marker is unparseable JSON', async () => {
+    const ssh = fakeSsh([
+      { match: /stat -c/, result: { exitCode: 0, stdout: 'root 2048\n' } },
+      {
+        match: /__SHA_SEP__/,
+        result: { exitCode: 0, stdout: `not-json\n__SHA_SEP__\n${knownHash}\n` },
+      },
+    ])
+    const checks = await collectDrift({
+      state: baseState(),
+      provider: null,
+      ssh,
+    })
+    const hash = checks.find((c) => c.category === 'hash')
+    expect(hash?.severity).toBe('warn')
+    expect(hash?.detail).toMatch(/not valid JSON/)
+  })
+
+  it('suppresses hash check when worker.capnp itself is missing', async () => {
+    // `files` already flagged the absent capnp; no need to double-report.
+    const ssh = fakeSsh([
+      { match: /stat -c/, result: { exitCode: 0, stdout: 'root 2048\n' } },
+      {
+        match: /__SHA_SEP__/,
+        result: { exitCode: 0, stdout: `${marker}\n__SHA_SEP__\n\n` },
+      },
+    ])
+    const checks = await collectDrift({
+      state: baseState(),
+      provider: null,
+      ssh,
+    })
+    expect(checks.filter((c) => c.category === 'hash')).toEqual([])
+  })
+})
+
 // ─── rendering / summary helpers ───────────────────────────────────
 
 describe('renderDriftChecks', () => {

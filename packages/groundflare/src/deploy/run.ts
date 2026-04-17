@@ -15,7 +15,7 @@
  */
 
 import { execSync } from 'node:child_process'
-import { randomBytes } from 'node:crypto'
+import { createHash, randomBytes } from 'node:crypto'
 import { mkdtemp, readFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve as resolvePath } from 'node:path'
@@ -59,6 +59,7 @@ import {
 
 const CAPNP_REMOTE_PATH = '/var/lib/groundflare/worker.capnp'
 const CADDYFILE_REMOTE_PATH = '/etc/caddy/Caddyfile'
+const DEPLOYED_MARKER_PATH = '/var/lib/groundflare/.deployed.json'
 const LISTEN_ADDRESS = '127.0.0.1:8080'
 const HEALTH_TIMEOUT_MS = 30_000
 const HEALTH_DEFAULT_MAX_ATTEMPTS = 6
@@ -370,6 +371,21 @@ export async function runDeploy(opts: RunDeployOptions): Promise<DeployResult> {
     })
   } else if (capnpText !== null) {
     log('info', `installing bundle + capnp + Caddyfile atomically on ${opts.bootstrapState.vps.ipv4}`)
+    // SHA-256 over the exact bytes we upload, so drift detection can
+    // spot out-of-band edits to worker.capnp later (e.g. someone
+    // vim'd the file on the VPS). Written alongside the capnp in the
+    // same atomic batch → either both land or neither does.
+    const capnpSha256 = createHash('sha256').update(capnpText, 'utf-8').digest('hex')
+    const deployedMarker = JSON.stringify(
+      {
+        marker: 1,
+        workspace: opts.workspace,
+        capnpSha256,
+        deployedAt: new Date().toISOString(),
+      },
+      null,
+      2,
+    ) + '\n'
     const filesToInstall: AtomicInstallFile[] = [
       ...manifest.workers.map((w) => ({
         content: bundle.code,
@@ -387,6 +403,12 @@ export async function runDeploy(opts: RunDeployOptions): Promise<DeployResult> {
         content: caddyfile,
         remotePath: CADDYFILE_REMOTE_PATH,
         owner: 'root' as const,
+        mode: '0644',
+      },
+      {
+        content: deployedMarker,
+        remotePath: DEPLOYED_MARKER_PATH,
+        owner: 'groundflare' as const,
         mode: '0644',
       },
     ]
