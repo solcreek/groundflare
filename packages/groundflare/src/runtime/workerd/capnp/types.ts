@@ -166,7 +166,18 @@ export type CapnpService =
       readonly path: string
       readonly writable?: boolean
     }
-  | { readonly name: string; readonly kind: 'network' }
+  | {
+      readonly name: string
+      readonly kind: 'network'
+      /**
+       * Hostname allowlist categories for outbound fetches. Defaults to
+       * empty (`network = ()`) which matches workerd's permissive default.
+       * R2 adapter uses `["public", "private"]` so it can reach both
+       * the local SeaweedFS sidecar (private 127.0.0.1) and remote
+       * S3-compatible endpoints (public).
+       */
+      readonly allow?: readonly string[]
+    }
 
 // ─── Sockets ───────────────────────────────────────────────────────
 

@@ -149,7 +149,7 @@ describe('workspaceWorkerFromConfig', () => {
       }),
       {},
     )
-    expect(w.r2Buckets).toEqual([{ binding: 'ASSETS' }])
+    expect(w.r2Buckets).toEqual([{ binding: 'ASSETS', bucketName: 'my-assets' }])
   })
 
   it('maps Durable Objects with and without scriptName', () => {

@@ -242,6 +242,7 @@ describe('buildCapnpFromWorkspace — binding mappings', () => {
   it('maps R2 bindings to canonical r2AdapterServiceName', () => {
     const config = buildCapnpFromWorkspace(
       manifest([worker('api', { r2Buckets: [{ binding: 'ASSETS' }] })]),
+      { r2AdapterSource: '/* stub R2 adapter */' },
     )
     const tenant = workerOf(findService(config, tenantServiceName('api')))
     expect(tenant.bindings).toContainEqual({
@@ -249,6 +250,26 @@ describe('buildCapnpFromWorkspace — binding mappings', () => {
       kind: 'r2Bucket',
       service: r2AdapterServiceName('api', 'ASSETS'),
     })
+    // Adapter service is emitted with the bundled source + default endpoint.
+    const adapter = workerOf(findService(config, r2AdapterServiceName('api', 'ASSETS')))
+    expect(adapter.bindings).toContainEqual({
+      name: 'BUCKET_NAME',
+      kind: 'text',
+      value: 'assets',
+    })
+    expect(adapter.bindings).toContainEqual({
+      name: 'S3_ENDPOINT',
+      kind: 'text',
+      value: 'http://127.0.0.1:8333',
+    })
+  })
+
+  it('throws when r2 bindings exist but r2AdapterSource is omitted', () => {
+    expect(() =>
+      buildCapnpFromWorkspace(
+        manifest([worker('api', { r2Buckets: [{ binding: 'ASSETS' }] })]),
+      ),
+    ).toThrowError(/r2AdapterSource is missing/)
   })
 
   it('maps service bindings to the target tenant service name', () => {

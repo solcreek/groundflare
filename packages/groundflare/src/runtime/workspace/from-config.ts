@@ -77,7 +77,41 @@ export function workspaceWorkerFromConfig(
   }
 
   if (wrangler.r2_buckets && wrangler.r2_buckets.length > 0) {
-    worker.r2Buckets = wrangler.r2_buckets.map((r2) => ({ binding: r2.binding }))
+    worker.r2Buckets = wrangler.r2_buckets.map((r2) => {
+      const gf = r2.groundflare
+      // Validate paired credentials early — half-set is always a typo.
+      if (gf?.access_key_id_secret !== undefined && gf?.secret_access_key_secret === undefined) {
+        throw new Error(
+          `r2_buckets[${r2.binding}].groundflare.access_key_id_secret is set but ` +
+            `secret_access_key_secret is missing — credentials are paired.`,
+        )
+      }
+      if (gf?.secret_access_key_secret !== undefined && gf?.access_key_id_secret === undefined) {
+        throw new Error(
+          `r2_buckets[${r2.binding}].groundflare.secret_access_key_secret is set but ` +
+            `access_key_id_secret is missing — credentials are paired.`,
+        )
+      }
+      const spec: {
+        binding: string
+        bucketName?: string
+        endpoint?: string
+        region?: string
+        accessKeyId?: string
+        secretAccessKey?: string
+      } = {
+        binding: r2.binding,
+        bucketName: r2.bucket_name || r2.binding.toLowerCase(),
+      }
+      if (gf?.endpoint !== undefined) spec.endpoint = gf.endpoint
+      if (gf?.region !== undefined) spec.region = gf.region
+      // Secret resolution happens later (deploy/run.ts) — these are
+      // secret *names*, not values. We pass them through as if they
+      // were the values; the deploy step swaps them out.
+      if (gf?.access_key_id_secret !== undefined) spec.accessKeyId = gf.access_key_id_secret
+      if (gf?.secret_access_key_secret !== undefined) spec.secretAccessKey = gf.secret_access_key_secret
+      return spec
+    })
   }
 
   if (

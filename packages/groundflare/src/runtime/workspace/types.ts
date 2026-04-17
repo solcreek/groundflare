@@ -109,6 +109,24 @@ export interface D1BindingSpec {
 
 export interface R2BindingSpec {
   readonly binding: string
+  /** S3 bucket name. Defaults to `binding.toLowerCase()` when omitted. */
+  readonly bucketName?: string
+  /**
+   * Endpoint URL the adapter routes S3 traffic to. Default
+   * 'http://127.0.0.1:8333' (the local SeaweedFS sidecar). Override
+   * for hybrid deployments (B2, Wasabi, real R2, MinIO, etc.).
+   */
+  readonly endpoint?: string
+  /** AWS region. Default 'us-east-1'. */
+  readonly region?: string
+  /**
+   * SigV4 access key id. When undefined, the adapter sends unsigned
+   * requests — only sane for the local anonymous SeaweedFS default.
+   * Resolved from a secret store at deploy time.
+   */
+  readonly accessKeyId?: string
+  /** Paired secret access key. Required when accessKeyId is set. */
+  readonly secretAccessKey?: string
 }
 
 export interface DOBindingSpec {

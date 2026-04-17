@@ -32,7 +32,12 @@ import {
   generateTenantD1Shim,
 } from '../d1/adapter-module.js'
 import { generateRouterJs, routerBindingName } from './router.js'
-import type { VarValue, WorkspaceManifest, WorkspaceWorker } from './types.js'
+import type {
+  R2BindingSpec,
+  VarValue,
+  WorkspaceManifest,
+  WorkspaceWorker,
+} from './types.js'
 
 export const ROUTER_SERVICE_NAME = 'router'
 
@@ -62,6 +67,21 @@ export interface BuildOptions {
    *     for tests or for workspaces that intentionally don't persist.
    */
   readonly stateBaseDir?: string | 'in-memory'
+
+  /**
+   * Pre-bundled R2 adapter Worker source (output of bundleR2Adapter()).
+   * Required when any worker has r2Buckets — buildCapnpFromWorkspace
+   * stays sync, so the caller bundles once and passes it in. Throws
+   * a clear error if R2 bindings exist and this is undefined.
+   */
+  readonly r2AdapterSource?: string
+
+  /**
+   * Default S3 endpoint when an R2 binding has no per-bucket override.
+   * Defaults to 'http://127.0.0.1:8333' — the SeaweedFS sidecar
+   * groundflare's cloud-init installs.
+   */
+  readonly defaultR2Endpoint?: string
 }
 
 const DEFAULT_STATE_BASE_DIR = 'do-state'
@@ -106,6 +126,31 @@ export function buildCapnpFromWorkspace(
         services.push(adapter)
       }
     }
+    if (worker.r2Buckets && worker.r2Buckets.length > 0) {
+      if (opts.r2AdapterSource === undefined) {
+        throw new Error(
+          `Worker "${worker.name}" has r2Buckets but BuildOptions.r2AdapterSource is missing. ` +
+            `Call \`await bundleR2Adapter()\` and pass the result.`,
+        )
+      }
+      for (const r2 of worker.r2Buckets) {
+        services.push(
+          buildR2AdapterService(
+            worker,
+            r2,
+            opts.r2AdapterSource,
+            opts.defaultR2Endpoint,
+            manifest,
+          ),
+        )
+      }
+    }
+  }
+  // Workspaces with at least one R2 binding need a single shared
+  // outbound network service so the adapter Workers can fetch
+  // localhost (SeaweedFS sidecar) or remote S3-compatible endpoints.
+  if (manifest.workers.some((w) => (w.r2Buckets?.length ?? 0) > 0)) {
+    services.push(buildR2OutboundNetworkService())
   }
 
   return {
@@ -634,4 +679,66 @@ export function d1AdapterServiceName(worker: string, databaseName: string): stri
 
 export function r2AdapterServiceName(worker: string, binding: string): string {
   return `adapter-r2-${worker}-${binding}`
+}
+
+const R2_OUTBOUND_NETWORK_NAME = 'r2-internet'
+const DEFAULT_R2_ENDPOINT = 'http://127.0.0.1:8333'
+
+/**
+ * Per-(worker, binding) R2 adapter Worker service. Each emits its own
+ * service so that the adapter's environment bindings (BUCKET_NAME,
+ * S3_ENDPOINT, credentials) can differ per-bucket without polluting
+ * a shared service.
+ */
+function buildR2AdapterService(
+  worker: WorkspaceWorker,
+  r2: R2BindingSpec,
+  adapterSource: string,
+  defaultEndpoint: string | undefined,
+  manifest: WorkspaceManifest,
+): CapnpService {
+  const serviceName = r2AdapterServiceName(worker.name, r2.binding)
+  const bucketName = r2.bucketName ?? r2.binding.toLowerCase()
+  const endpoint = (r2.endpoint ?? defaultEndpoint ?? DEFAULT_R2_ENDPOINT).replace(/\/$/, '')
+
+  const bindings: CapnpBinding[] = [
+    { name: 'BUCKET_NAME', kind: 'text', value: bucketName },
+    { name: 'S3_ENDPOINT', kind: 'text', value: endpoint },
+  ]
+  if (r2.region !== undefined) {
+    bindings.push({ name: 'S3_REGION', kind: 'text', value: r2.region })
+  }
+  if (r2.accessKeyId !== undefined && r2.secretAccessKey !== undefined) {
+    bindings.push({ name: 'S3_ACCESS_KEY', kind: 'text', value: r2.accessKeyId })
+    bindings.push({ name: 'S3_SECRET_KEY', kind: 'text', value: r2.secretAccessKey })
+  }
+
+  const capnpWorker: CapnpWorker = {
+    modules: [
+      {
+        name: DEFAULT_TENANT_MODULE_NAME,
+        source: { kind: 'esModule', inline: adapterSource },
+      },
+    ],
+    compatibilityDate:
+      manifest.defaults?.compatibilityDate ?? DEFAULT_COMPATIBILITY_DATE,
+    compatibilityFlags: ['nodejs_compat'],
+    bindings,
+    globalOutbound: R2_OUTBOUND_NETWORK_NAME,
+  }
+  return { name: serviceName, kind: 'worker', worker: capnpWorker }
+}
+
+/**
+ * Single shared outbound network service used by every R2 adapter
+ * Worker. Allows fetches to local + private + public addresses so the
+ * default SeaweedFS sidecar (127.0.0.1) AND remote S3 endpoints both
+ * work out-of-the-box.
+ */
+function buildR2OutboundNetworkService(): CapnpService {
+  return {
+    name: R2_OUTBOUND_NETWORK_NAME,
+    kind: 'network',
+    allow: ['public', 'private'],
+  }
 }

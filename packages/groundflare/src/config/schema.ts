@@ -23,6 +23,34 @@ export interface WranglerKVNamespace {
 export interface WranglerR2Bucket {
   binding: string
   bucket_name: string
+  /**
+   * groundflare-specific R2 backend override. Native CF deploys ignore
+   * this block; on a self-hosted VPS it picks the S3-compatible backend
+   * the adapter routes to.
+   *
+   * Default (no `groundflare` block): the local SeaweedFS sidecar at
+   * http://127.0.0.1:8333 in anonymous mode.
+   *
+   * With overrides: the adapter signs every request with SigV4 using
+   * credentials resolved from the named secrets. Common targets:
+   *   - Backblaze B2 (s3.<region>.backblazeb2.com)
+   *   - Wasabi (s3.<region>.wasabisys.com)
+   *   - real Cloudflare R2 (<account>.r2.cloudflarestorage.com)
+   *   - any other S3-compatible store
+   *
+   * Both `access_key_id_secret` and `secret_access_key_secret` must be
+   * set together — config validation rejects mixed presence.
+   */
+  groundflare?: {
+    /** Endpoint URL with no trailing slash. */
+    endpoint?: string
+    /** AWS region. Default 'us-east-1' (SeaweedFS-compatible). */
+    region?: string
+    /** Name of the secret in `groundflare secret put` holding the access key id. */
+    access_key_id_secret?: string
+    /** Name of the secret holding the secret access key. */
+    secret_access_key_secret?: string
+  }
 }
 
 export interface WranglerDOBinding {

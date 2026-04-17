@@ -246,11 +246,16 @@ function nodeForService(s: CapnpService): CapnpNode {
         ['disk', struct(disk)],
       ])
     }
-    case 'network':
+    case 'network': {
+      const networkFields: Array<[string, CapnpNode]> = []
+      if (s.allow && s.allow.length > 0) {
+        networkFields.push(['allow', list(s.allow.map((a) => str(a)))])
+      }
       return struct([
         ['name', str(s.name)],
-        ['network', struct([])],
+        ['network', struct(networkFields)],
       ])
+    }
   }
 }
 
