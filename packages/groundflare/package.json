@@ -1,6 +1,6 @@
 {
   "name": "groundflare",
-  "version": "0.5.3",
+  "version": "0.5.4",
   "description": "Run your Cloudflare Worker on your own hardware. Wrangler-like DX for self-hosted workerd deployments.",
   "keywords": [
     "cloudflare",

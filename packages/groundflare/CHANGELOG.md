@@ -1,9 +1,9 @@
 # Changelog
 
-## v0.5.3 — Purge stale known_hosts on destroy
+## v0.5.4 — Drift detection hardening + destroy paper-cuts
 
-One-liner patch targeting a real UX paper cut caught during live
-smoke-testing against Hetzner. No API / config changes.
+Four small improvements bundled after live-testing v0.5.2 on DO +
+Hetzner. No API / config changes.
 
 ### Fixed: "host key has changed" on the next `up` after destroy
 
@@ -24,6 +24,62 @@ nothing matches, so the common case is a quiet no-op. Failures
 (permission errors, `ssh-keygen` missing on a stripped-down
 Windows env) surface as warnings — a stale entry is irritating,
 not destructive, and we don't want to block destroy on it.
+
+### New: capnp hash diff drift category
+
+`status --check-drift` now catches out-of-band edits to
+`/var/lib/groundflare/worker.capnp` that stat-based checks can't
+see (e.g. someone vim'd the file on the VPS, or a misfired deploy
+wrote partial bytes with a matching size).
+
+Deploy writes a small marker in the same atomic install batch as
+the capnp:
+
+```jsonc
+// /var/lib/groundflare/.deployed.json
+{
+  "marker": 1,
+  "workspace": "demo",
+  "capnpSha256": "<sha256 of what we uploaded>",
+  "deployedAt": "2026-04-17T..."
+}
+```
+
+Drift check runs `cat .deployed.json && sha256sum worker.capnp` in
+one SSH round trip and compares:
+
+- `ok` — sha matches marker's capnpSha256
+- `drift` — mismatch (with a truncated 12-char preview of each)
+- `warn` — marker absent (pre-v0.5.4 deploys don't have one) or
+  unparseable JSON
+
+Re-run `groundflare up --workspace <w>` to repopulate the marker
+after a drift → apply cycle.
+
+### New: reconcile hint on drift detection
+
+When `status --check-drift` surfaces drift, it now appends:
+
+```
+  → run `groundflare up --workspace <w>` to reconcile
+```
+
+so the operator doesn't have to remember which command heals this
+state. `up` resumes bootstrap + re-applies the deploy flow, which
+covers the common failure modes (stopped systemd unit, missing
+capnp, empty Caddyfile).
+
+### Fixed: `npx vitest run` works without `NODE_OPTIONS` prefix
+
+Node 22 LTS gates `node:sqlite` behind `--experimental-sqlite`,
+which the npm `test` scripts applied via a `NODE_OPTIONS=` prefix.
+Contributors reaching for `npx vitest run` directly were losing
+67 D1 conformance tests to `No such built-in module: node:sqlite`.
+The flag is now baked into both `vitest.config.ts` +
+`vitest.config.e2e.ts` as `poolOptions.forks.execArgv`, so every
+vitest invocation gets it regardless of how the binary is
+launched. Drop the execArgv line when `engines.node` bumps to
+>=24 (where node:sqlite is stable).
 
 ---
 
