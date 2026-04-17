@@ -2,8 +2,26 @@ name = "{{name}}"
 main = "src/index.ts"
 compatibility_date = "{{compatibility_date}}"
 
+# ── Framework build (optional) ────────────────────────────────────
+# If you later adopt a framework that builds to a deployable output
+# (Astro, Next on Workers, Remix + workerd), uncomment and adjust.
+# groundflare runs the command before bundling and reads the built
+# entry from `main` (or auto-detects common framework output paths).
+# [build]
+# command = "npm run build"    # or "astro build" / "next build" / …
+# cwd     = "."                # default: wrangler.toml's directory
+
+# ── Static assets (optional) ──────────────────────────────────────
+# Point at the framework's output directory of static files. Caddy
+# serves matching files directly (fast, no Worker invocation); paths
+# that don't match a file fall through to the Worker. The framework's
+# `_worker.js/` subdir (if any) is excluded from upload so Worker
+# source never leaks as text.
+# [assets]
+# directory = "./dist"
+
 # ── groundflare deploy target ──────────────────────────────────────
-# Fill in a provider (hetzner | digitalocean | linode | vultr | contabo),
+# Fill in a provider (hetzner | digitalocean | linode | vultr),
 # a region for that provider, and a VPS size. Then:
 #   1. `groundflare secret set provider.<provider>.token <your-token>`
 #   2. `groundflare up`
@@ -12,5 +30,5 @@ compatibility_date = "{{compatibility_date}}"
 # region   = "hel1"
 # size     = "cx22"
 # email    = "ops@example.com"
-# domain   = "{{name}}.example.com"
+# domain   = "{{name}}.example.com"  # omit for a sslip.io preview URL
 # runtime  = "workerd"   # or "bun" — see `groundflare bun analyze`

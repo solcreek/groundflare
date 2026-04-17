@@ -22,13 +22,30 @@ compatibility_date = "{{compatibility_date}}"
 # # For groundflare: no id needed.
 # # id = "paste-from-wrangler-kv-create"
 
+# ── Framework build (optional) ────────────────────────────────────
+# Hono is a runtime library — no build step needed; esbuild bundles
+# `src/index.ts` directly. If you swap to Hono-on-Astro, Next on
+# Workers, or any other framework that compiles to a Worker entry,
+# uncomment and adjust:
+# [build]
+# command = "npm run build"    # or "astro build" / "next build" / …
+# cwd     = "."                # default: wrangler.toml's directory
+
+# ── Static assets (optional) ──────────────────────────────────────
+# Point at a directory of static files you want Caddy to serve
+# directly. Paths that don't match a file fall through to the Worker;
+# the framework's `_worker.js/` subdir (if any) is excluded from
+# upload so Worker source never leaks as text.
+# [assets]
+# directory = "./dist"
+
 # ── Deploy target ─────────────────────────────────────────────────
 # This section is read by groundflare only; wrangler ignores it.
 # Fill in to deploy on your own VPS with `groundflare up`.
 [groundflare]
-# provider = "hetzner"
+# provider = "hetzner"         # hetzner | digitalocean | linode | vultr
 # region   = "hel1"
 # size     = "cx22"
 # email    = "ops@example.com"
-# domain   = "{{name}}.example.com"
+# domain   = "{{name}}.example.com"  # omit for a sslip.io preview URL
 # runtime  = "workerd"   # or "bun" — see `groundflare bun analyze`
