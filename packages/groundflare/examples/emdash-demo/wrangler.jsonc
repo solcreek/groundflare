@@ -1,0 +1,37 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "my-emdash-site",
+  "main": "./src/worker.ts",
+  "compatibility_date": "2026-02-24",
+  "compatibility_flags": ["nodejs_compat"],
+
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "my-emdash-site",
+      "database_id": "local"
+    }
+  ],
+
+  "r2_buckets": [
+    {
+      "binding": "MEDIA",
+      "bucket_name": "my-emdash-media"
+    }
+  ],
+
+  // Plugin sandboxing — emdash runs plugins inside dedicated Workers
+  // spawned via workerd's WorkerLoader. groundflare implements this
+  // natively; v0.4 added the binding.
+  "worker_loaders": [{ "binding": "LOADER" }],
+
+  // groundflare-specific block — ignored by wrangler / CF, consumed
+  // by `groundflare up`. Swap email + domain for your own.
+  "groundflare": {
+    "provider": "digitalocean",
+    "region": "sgp1",
+    "size": "s-1vcpu-1gb",
+    "email": "you@example.com",
+    "domain": "emdash.example.com"
+  }
+}
