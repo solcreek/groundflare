@@ -15,6 +15,7 @@
  */
 
 import { execSync } from 'node:child_process'
+import { randomBytes } from 'node:crypto'
 import { mkdtemp, readFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve as resolvePath } from 'node:path'
@@ -416,42 +417,106 @@ export async function runDeploy(opts: RunDeployOptions): Promise<DeployResult> {
   }
 
   // ─── 5b. Upload static assets ─────────────────────────────────
-  // Exclude _worker.js/ from the assets directory — the Worker bundle
-  // was already uploaded via the capnp pipeline. Exposing it via Caddy's
-  // file_server would leak Worker source code.
+  // Capistrano / Kamal pattern: each deploy lands in its own timestamped
+  // version directory, and a single symlink at `<workerDir>/assets` is
+  // flipped to the new target via POSIX `rename(2)` — atomic on same
+  // filesystem. Caddy's `root * <workerDir>/assets` follows the symlink
+  // per-request and sees either the old version dir or the new one,
+  // never a gap.
   //
-  // Path layout: Caddy's `root * <workerDir>/assets` expects files at
-  // `<workerDir>/assets/<file>`. scp recursive into an already-existing
-  // dir nests the source AS a child of dest (`<workerDir>/assets/assets/
-  // <file>`), so we must upload to the parent workerDir — not to an
-  // ensured-empty assets dir — and let scp create `assets/` at the right
-  // level. We also `rm -rf` any prior assets directory first, both to
-  // avoid double-nesting on redeploys and to drop stale files that a
-  // prior deploy shipped but the current build no longer emits.
+  // Zero sudo: `<workerDir>` is already groundflare-owned (assigned in
+  // atomicInstall above), so every fs op here runs as the SSH user.
+  //
+  // Side benefit: the prior version stays around as a rollback slot.
+  // `groundflare rollback` (future) becomes one `ln -sfn old assets.tmp
+  // && mv assets.tmp assets`. The GC below keeps the current + 1 prior
+  // and prunes anything older.
+  //
+  // `_worker.js/` is filtered out of the local copy; Caddy's file_server
+  // must never be able to serve the Worker source. That's a defense-in-
+  // depth guard — the bundle already went up the capnp pipeline to a
+  // different path.
   if (hasAssets && assetsLocalDir !== undefined) {
     const { cpSync } = await import('node:fs')
-    const assetsStagingDir = join(
-      await mkdtemp(join(tmpdir(), 'gf-assets-')),
-      'assets',
-    )
-    cpSync(assetsLocalDir, assetsStagingDir, {
+    const versionName = `assets-v${isoCompact(new Date())}-${randomBytes(3).toString('hex')}`
+    const stagingRoot = await mkdtemp(join(tmpdir(), 'gf-assets-'))
+    const localVersionDir = join(stagingRoot, versionName)
+    cpSync(assetsLocalDir, localVersionDir, {
       recursive: true,
       filter: (src) => !src.includes('_worker.js'),
     })
 
-    for (const w of manifest.workers) {
-      const workerDir = `/var/lib/groundflare/workers/${w.name}`
-      log('info', `uploading static assets to ${workerDir}/assets`)
-      const clear = await ssh.run(
-        `rm -rf ${workerDir}/assets`,
-        { timeoutMs: 30_000 },
-      )
-      if (clear.exitCode !== 0) {
-        log('warn', `could not clear ${workerDir}/assets: ${clear.stderr}`)
+    try {
+      for (const w of manifest.workers) {
+        const workerDir = `/var/lib/groundflare/workers/${w.name}`
+        log('info', `uploading static assets to ${workerDir}/${versionName}`)
+        // Phase 1: scp the new version alongside any existing versions.
+        await ssh.upload(localVersionDir, workerDir, { recursive: true })
+
+        // Phase 2: one-time migration for VPSes deployed before this
+        // commit, where `<workerDir>/assets` is still a real directory.
+        // Rename it out of the way so the symlink flip has nothing
+        // blocking it. After the first post-migration deploy, assets
+        // is a symlink and the `! -L` guard makes this a no-op.
+        const legacyTs = Math.floor(Date.now() / 1000)
+        await ssh.run(
+          `if [ -d ${workerDir}/assets ] && [ ! -L ${workerDir}/assets ]; then ` +
+            `mv ${workerDir}/assets ${workerDir}/assets-legacy-${legacyTs}; ` +
+          `fi`,
+          { timeoutMs: 30_000 },
+        )
+
+        // Phase 3: atomic flip. `ln -sfn X Y.tmp` creates a symlink at
+        // Y.tmp pointing to X (the -n on ln prevents dereferencing if
+        // Y.tmp were itself a symlink-to-dir). `mv -T Y.tmp Y` is
+        // `rename(2)` — atomic for symlinks, POSIX guarantees Caddy
+        // sees either the old target or the new one, never a gap.
+        //
+        // The `-T` on mv is load-bearing: without it, GNU `mv` follows
+        // the *destination* symlink when it points at a directory and
+        // moves source INTO that directory (end state: the old target
+        // dir gains an `assets.tmp` subentry, the `assets` symlink
+        // stays pointing at the old target). `-T` / --no-target-
+        // directory forces `rename(2)` semantics regardless. Classic
+        // pitfall; same flag Capistrano / Kamal use.
+        //
+        // Relative target (`assets-v...` not absolute) keeps the
+        // symlink portable across any parent-dir rename.
+        const flip = await ssh.run(
+          `cd ${workerDir} && ` +
+            `ln -sfn ${versionName} assets.tmp && ` +
+            `mv -T assets.tmp assets`,
+          { timeoutMs: 30_000 },
+        )
+        if (flip.exitCode !== 0) {
+          throw new DeployError(
+            `assets symlink flip failed: ${flip.stderr || flip.stdout}`,
+            'upload_failed',
+          )
+        }
+
+        // Phase 4: GC. Keep the current version plus 1 prior as a
+        // rollback slot; delete everything older. Glob covers both
+        // `assets-v*` (this code's output) and `assets-legacy-*` (the
+        // one-time migration).
+        const gc = await ssh.run(
+          `cd ${workerDir} && ` +
+            `current=$(readlink assets); ` +
+            `ls -d assets-v* assets-legacy-* 2>/dev/null | ` +
+              `grep -Fxv "$current" | sort -r | tail -n +2 | ` +
+              `xargs -r rm -rf`,
+          { timeoutMs: 60_000 },
+        )
+        if (gc.exitCode !== 0) {
+          log(
+            'warn',
+            `asset GC returned ${gc.exitCode}: ${gc.stderr} (non-fatal)`,
+          )
+        }
       }
-      await ssh.upload(assetsStagingDir, workerDir, { recursive: true })
+    } finally {
+      await rm(stagingRoot, { recursive: true, force: true }).catch(() => {})
     }
-    await rm(assetsStagingDir, { recursive: true, force: true }).catch(() => {})
   }
 
   // ─── 5c. Pre-create R2 buckets in SeaweedFS ────────────────────
@@ -604,6 +669,23 @@ async function probeHealth(
 // Unused import silencer — `readFile` is there for future config ingestion
 // paths (e.g. reading a local static-assets manifest).
 void readFile
+
+/**
+ * UTC timestamp in a lex-sortable compact form: `YYYYMMDDTHHMMSS`.
+ * Used in asset version directory names so `sort -r` on the remote GC
+ * step orders them chronologically.
+ */
+export function isoCompact(d: Date): string {
+  const pad = (n: number): string => String(n).padStart(2, '0')
+  return (
+    `${d.getUTCFullYear()}` +
+    `${pad(d.getUTCMonth() + 1)}` +
+    `${pad(d.getUTCDate())}` +
+    `T${pad(d.getUTCHours())}` +
+    `${pad(d.getUTCMinutes())}` +
+    `${pad(d.getUTCSeconds())}`
+  )
+}
 
 /**
  * Walk every R2 binding and swap secret *names* (parsed by from-config

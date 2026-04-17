@@ -192,20 +192,99 @@ describe.skipIf(!dockerAvailable)('e2e: framework-shaped deploy', () => {
     // (dist/style.css, dist/index.html). The deploy pipeline must
     // upload the statics while filtering out _worker.js — otherwise
     // Caddy's file_server would serve the Worker source as text.
-    const remoteAssets = `/var/lib/groundflare/workers/framework-demo/assets`
-    const lsAssets = await container!.exec(`ls ${remoteAssets}`)
+    const remoteWorkerDir = `/var/lib/groundflare/workers/framework-demo`
+    const lsAssets = await container!.exec(`ls ${remoteWorkerDir}/assets`)
     expect(lsAssets.exitCode).toBe(0)
     expect(lsAssets.stdout).toContain('style.css')
     expect(lsAssets.stdout).toContain('index.html')
     expect(lsAssets.stdout).not.toContain('_worker.js')
 
     // Double-check: the _worker.js directory must not exist at all
-    // under the assets tree (a previous regression was to upload
-    // then `rm -rf` it — fine for the final state but racy during
-    // the window, and leaky if the rm silently failed).
+    // under the assets tree.
     const lsWorkerJs = await container!.exec(
-      `test -d ${remoteAssets}/_worker.js && echo LEAK || echo clean`,
+      `test -d ${remoteWorkerDir}/assets/_worker.js && echo LEAK || echo clean`,
     )
     expect(lsWorkerJs.stdout.trim()).toBe('clean')
+
+    // ─── Atomic symlink layout probe ────────────────────────────
+    // After the Capistrano-style swap, `<workerDir>/assets` is a
+    // symlink, not a real directory; the real content lives under
+    // `assets-v<timestamp>-<hex>/`. Verify both the symlink and its
+    // target so a future regression to "real directory" would be
+    // loud rather than silent.
+    const isSymlink = await container!.exec(
+      `test -L ${remoteWorkerDir}/assets && echo symlink || echo other`,
+    )
+    expect(isSymlink.stdout.trim()).toBe('symlink')
+
+    const target = await container!.exec(`readlink ${remoteWorkerDir}/assets`)
+    expect(target.stdout.trim()).toMatch(
+      /^assets-v\d{8}T\d{6}-[0-9a-f]{6}$/,
+    )
+
+    // ─── Redeploy: swap + GC ─────────────────────────────────────
+    // Rewrite build.sh to emit a different style.css (the original
+    // build does `rm -rf dist` so patching files in dist/ would be
+    // wiped on next invocation). Then redeploy. After the second
+    // runDeploy:
+    //   - `assets` symlink points at a NEW versioned dir
+    //   - the PRIOR versioned dir is still present (rollback slot)
+    //   - the new symlink's target content is the updated content
+    await writeFile(
+      join(workerDir, 'build.sh'),
+      [
+        '#!/bin/sh',
+        'set -e',
+        'rm -rf dist',
+        'mkdir -p dist/_worker.js/chunks',
+        '',
+        'cat > dist/_worker.js/chunks/greet.js <<"EOF"',
+        'export function greet(name) { return `hello, ${name}` }',
+        'EOF',
+        '',
+        'cat > dist/_worker.js/index.js <<"EOF"',
+        'import { createHash } from "node:crypto"',
+        'import { greet } from "./chunks/greet.js"',
+        'export default {',
+        '  async fetch() {',
+        '    const hash = createHash("sha256").update("groundflare").digest("hex").slice(0, 12)',
+        '    return new Response(`${greet("framework")} sha=${hash}`, { status: 200 })',
+        '  }',
+        '}',
+        'EOF',
+        '',
+        'echo "body { color: goldenrod; }" > dist/style.css',
+        'echo "<!doctype html><title>fw</title>" > dist/index.html',
+      ].join('\n'),
+      'utf-8',
+    )
+    const second = await runDeploy({
+      workspace: 'e2eframework',
+      workingDirectory: workerDir,
+      bootstrapState: state,
+      acmeEmail: 'ops@example.com',
+      log: () => {},
+    })
+    expect(second.healthCheck!.status).toBe(200)
+
+    const targetAfter = await container!.exec(
+      `readlink ${remoteWorkerDir}/assets`,
+    )
+    expect(targetAfter.stdout.trim()).not.toBe(target.stdout.trim())
+    expect(targetAfter.stdout.trim()).toMatch(
+      /^assets-v\d{8}T\d{6}-[0-9a-f]{6}$/,
+    )
+
+    // Prior version kept for rollback:
+    const priorStillThere = await container!.exec(
+      `test -d ${remoteWorkerDir}/${target.stdout.trim()} && echo kept || echo gone`,
+    )
+    expect(priorStillThere.stdout.trim()).toBe('kept')
+
+    // New content served through the new target:
+    const newCss = await container!.exec(
+      `cat ${remoteWorkerDir}/assets/style.css`,
+    )
+    expect(newCss.stdout).toContain('goldenrod')
   }, 240_000)
 })
