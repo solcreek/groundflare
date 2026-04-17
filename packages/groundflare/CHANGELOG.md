@@ -1,5 +1,32 @@
 # Changelog
 
+## v0.5.3 — Purge stale known_hosts on destroy
+
+One-liner patch targeting a real UX paper cut caught during live
+smoke-testing against Hetzner. No API / config changes.
+
+### Fixed: "host key has changed" on the next `up` after destroy
+
+When a provider recycles a public IP (Hetzner hel1 in particular
+is aggressive about this), the operator's `~/.ssh/known_hosts`
+still caches the *previous* VPS's host key at that address. The
+next `up` then hits OpenSSH's safe-TOFU guard mid-deploy:
+
+```
+scp: Connection closed
+  → Host key for <ip> has changed and you have requested strict checking.
+```
+
+`destroy` now shells out to `ssh-keygen -R <host>` for the retired
+VPS's ipv4, ipv6 (if assigned), and `[host]:port` form (when a
+non-default SSH port was in use). `ssh-keygen` exits cleanly when
+nothing matches, so the common case is a quiet no-op. Failures
+(permission errors, `ssh-keygen` missing on a stripped-down
+Windows env) surface as warnings — a stale entry is irritating,
+not destructive, and we don't want to block destroy on it.
+
+---
+
 ## v0.5.2 — Plan / apply, sslip.io previews, drift detection
 
 Minor UX release. Non-breaking for existing workflows — every new
