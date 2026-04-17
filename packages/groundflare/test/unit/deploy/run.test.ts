@@ -31,7 +31,7 @@ interface MockSshOptions {
 interface MockSshSetup {
   client: SshClient
   runCalls: Array<{ command: string; opts?: RunOptions }>
-  uploads: Array<{ local: string; remote: string }>
+  uploads: Array<{ local: string; remote: string; content?: string }>
 }
 
 function mockSsh(opts: MockSshOptions = {}): MockSshSetup {
@@ -52,7 +52,21 @@ function mockSsh(opts: MockSshOptions = {}): MockSshSetup {
     }),
     stream: vi.fn(),
     upload: vi.fn(async (local: string, remote: string) => {
-      uploads.push({ local, remote })
+      // Read the file content before atomicInstall's post-script rm can
+      // delete it — tests that assert on capnp content need a snapshot.
+      let content: string | undefined
+      try {
+        const fs = await import('node:fs/promises')
+        content = await fs.readFile(local, 'utf-8')
+      } catch {
+        // Not all uploads are text files (assets can be dirs); ignore.
+      }
+      const entry: { local: string; remote: string; content?: string } = {
+        local,
+        remote,
+      }
+      if (content !== undefined) entry.content = content
+      uploads.push(entry)
       if (opts.uploadShouldThrow) throw opts.uploadShouldThrow
     }),
     download: vi.fn(),
@@ -681,5 +695,240 @@ describe('runDeploy — Bun track', () => {
     expect(uploads).toHaveLength(1)
     const installCalls = runCalls.filter((c) => c.command === 'sudo sh -s')
     expect(installCalls).toHaveLength(0)
+  })
+})
+
+// ─── R2 binding integration ─────────────────────────────────────────
+
+describe('runDeploy — R2 bindings (workerd track)', () => {
+  // r2 wrangler with one binding pointing at the local SeaweedFS sidecar
+  // (no `groundflare` block → default endpoint, no SigV4).
+  function r2Wrangler(): string {
+    return [
+      `name = "api"`,
+      `main = "src/index.ts"`,
+      `compatibility_date = "2026-04-01"`,
+      ``,
+      `[[r2_buckets]]`,
+      `binding = "MEDIA"`,
+      `bucket_name = "media"`,
+      ``,
+      `[groundflare]`,
+      `domain = "api.example.com"`,
+    ].join('\n')
+  }
+
+  // Helper: scrape the uploaded capnp content. atomicInstall uploads
+  // each file via scp with a text copy we can re-read.
+  function capnpOf(uploads: MockSshSetup['uploads']): string {
+    const capnp = uploads.find((u) => u.content?.includes('using Workerd'))
+    expect(capnp, 'expected a capnp upload with "using Workerd"').toBeDefined()
+    return capnp!.content!
+  }
+
+  it('bundles adapter, pre-creates bucket, restarts services', async () => {
+    await scaffoldWorker(r2Wrangler())
+    // SSH command sequence with one R2 binding:
+    //   1. sudo sh -s (atomic install: bundle + capnp + Caddyfile)
+    //   2. curl -X PUT http://127.0.0.1:8333/media (bucket pre-create)
+    //   3. systemctl daemon-reload + restart workerd + reload caddy
+    //   4. curl health probe (200)
+    const { client, runCalls, uploads } = mockSsh({
+      runs: [
+        { exitCode: 0 }, // atomic install
+        { exitCode: 0, stdout: '200' }, // bucket curl PUT
+        { exitCode: 0 }, // systemctl restart
+        { exitCode: 0, stdout: '200' }, // health probe
+      ],
+    })
+    const result = await runDeploy({
+      workspace: 'demo',
+      workingDirectory: tmp,
+      acmeEmail: 'ops@example.com',
+      bootstrapState: baseState(),
+      ssh: client,
+      log: () => {},
+    })
+    expect(result.dryRun).toBe(false)
+    expect(result.healthCheck?.status).toBe(200)
+
+    // Capnp content (scraped from the scp'd file before install) should
+    // mention the per-binding R2 adapter service + shared outbound network.
+    const capnp = capnpOf(uploads)
+    expect(capnp).toContain('adapter-r2-api-MEDIA')
+    expect(capnp).toContain('r2-internet')
+    expect(capnp).toContain('BUCKET_NAME')
+    expect(capnp).toContain('http://127.0.0.1:8333')
+
+    // Bucket curl PUT — second SSH command, idempotent against weed.
+    expect(runCalls[1]?.command).toContain('curl')
+    expect(runCalls[1]?.command).toContain('-X PUT')
+    expect(runCalls[1]?.command).toContain('http://127.0.0.1:8333/media')
+  })
+
+  it('skips local bucket pre-creation when groundflare.endpoint is set', async () => {
+    await scaffoldWorker(
+      [
+        `name = "api"`,
+        `main = "src/index.ts"`,
+        `compatibility_date = "2026-04-01"`,
+        ``,
+        `[[r2_buckets]]`,
+        `binding = "MEDIA"`,
+        `bucket_name = "media"`,
+        `[r2_buckets.groundflare]`,
+        `endpoint = "https://s3.example.com"`,
+        ``,
+        `[groundflare]`,
+        `domain = "api.example.com"`,
+      ].join('\n'),
+    )
+    const { client, runCalls, uploads } = mockSsh({
+      runs: [
+        { exitCode: 0 }, // atomic install
+        { exitCode: 0 }, // systemctl restart (NOT bucket PUT)
+        { exitCode: 0, stdout: '200' }, // health probe
+      ],
+    })
+    await runDeploy({
+      workspace: 'demo',
+      workingDirectory: tmp,
+      acmeEmail: 'ops@example.com',
+      bootstrapState: baseState(),
+      ssh: client,
+      log: () => {},
+    })
+    // No curl PUT to weed — external endpoints are not our problem.
+    const bucketCalls = runCalls.filter((c) =>
+      c.command.includes('curl') && c.command.includes('http://127.0.0.1:8333'),
+    )
+    expect(bucketCalls).toHaveLength(0)
+    // Capnp should still emit the adapter service, just pointed elsewhere.
+    expect(capnpOf(uploads)).toContain('https://s3.example.com')
+  })
+
+  it('throws config_missing with remediation when an R2 secret is missing', async () => {
+    await scaffoldWorker(
+      [
+        `name = "api"`,
+        `main = "src/index.ts"`,
+        `compatibility_date = "2026-04-01"`,
+        ``,
+        `[[r2_buckets]]`,
+        `binding = "MEDIA"`,
+        `bucket_name = "media"`,
+        `[r2_buckets.groundflare]`,
+        `endpoint = "https://s3.example.com"`,
+        `access_key_id_secret = "S3_KEY"`,
+        `secret_access_key_secret = "S3_SECRET"`,
+        ``,
+        `[groundflare]`,
+        `domain = "api.example.com"`,
+      ].join('\n'),
+    )
+    const { MemorySecretStore } = await import('../../../src/secret/index.js')
+    const secretStore = new MemorySecretStore() // empty — both secrets missing
+    const { client } = mockSsh()
+    await expect(
+      runDeploy({
+        workspace: 'demo',
+        workingDirectory: tmp,
+        acmeEmail: 'ops@example.com',
+        bootstrapState: baseState(),
+        ssh: client,
+        secretStore,
+        log: () => {},
+      }),
+    ).rejects.toThrowError(/secret "S3_KEY" not found.*groundflare secret set S3_KEY/s)
+  })
+
+  it('passes resolved credentials through to the capnp adapter bindings', async () => {
+    await scaffoldWorker(
+      [
+        `name = "api"`,
+        `main = "src/index.ts"`,
+        `compatibility_date = "2026-04-01"`,
+        ``,
+        `[[r2_buckets]]`,
+        `binding = "MEDIA"`,
+        `bucket_name = "media"`,
+        `[r2_buckets.groundflare]`,
+        `endpoint = "https://s3.example.com"`,
+        `region = "us-east-1"`,
+        `access_key_id_secret = "S3_KEY"`,
+        `secret_access_key_secret = "S3_SECRET"`,
+        ``,
+        `[groundflare]`,
+        `domain = "api.example.com"`,
+      ].join('\n'),
+    )
+    const { MemorySecretStore } = await import('../../../src/secret/index.js')
+    const secretStore = new MemorySecretStore()
+    await secretStore.set('S3_KEY', 'AKIAFAKEKEY')
+    await secretStore.set('S3_SECRET', 'fake-secret-value')
+    const { client, uploads } = mockSsh({
+      runs: [
+        { exitCode: 0 }, // atomic install
+        { exitCode: 0 }, // systemctl restart (no bucket — external endpoint)
+        { exitCode: 0, stdout: '200' }, // health probe
+      ],
+    })
+    await runDeploy({
+      workspace: 'demo',
+      workingDirectory: tmp,
+      acmeEmail: 'ops@example.com',
+      bootstrapState: baseState(),
+      ssh: client,
+      secretStore,
+      log: () => {},
+    })
+    // Capnp embeds the resolved values, NOT the secret names.
+    const capnp = capnpOf(uploads)
+    expect(capnp).toContain('AKIAFAKEKEY')
+    expect(capnp).toContain('fake-secret-value')
+    expect(capnp).not.toContain('"S3_KEY"')
+    expect(capnp).not.toContain('"S3_SECRET"')
+  })
+
+  it('deduplicates bucket pre-creation when several bindings share a bucket', async () => {
+    await scaffoldWorker(
+      [
+        `name = "api"`,
+        `main = "src/index.ts"`,
+        `compatibility_date = "2026-04-01"`,
+        ``,
+        `[[r2_buckets]]`,
+        `binding = "MEDIA"`,
+        `bucket_name = "shared"`,
+        ``,
+        `[[r2_buckets]]`,
+        `binding = "ALIAS"`,
+        `bucket_name = "shared"`,
+        ``,
+        `[groundflare]`,
+        `domain = "api.example.com"`,
+      ].join('\n'),
+    )
+    const { client, runCalls } = mockSsh({
+      runs: [
+        { exitCode: 0 }, // atomic install
+        { exitCode: 0, stdout: '200' }, // bucket curl PUT (single, not per binding)
+        { exitCode: 0 }, // systemctl restart
+        { exitCode: 0, stdout: '200' }, // health probe
+      ],
+    })
+    await runDeploy({
+      workspace: 'demo',
+      workingDirectory: tmp,
+      acmeEmail: 'ops@example.com',
+      bootstrapState: baseState(),
+      ssh: client,
+      log: () => {},
+    })
+    const bucketCalls = runCalls.filter((c) =>
+      c.command.includes('curl') && c.command.includes('http://127.0.0.1:8333'),
+    )
+    expect(bucketCalls).toHaveLength(1)
+    expect(bucketCalls[0]?.command).toContain('http://127.0.0.1:8333/shared')
   })
 })

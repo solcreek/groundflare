@@ -180,37 +180,7 @@ export async function runDeploy(opts: RunDeployOptions): Promise<DeployResult> {
     if (hasR2) {
       const { bundleR2Adapter } = await import('../runtime/workerd/r2/bundle.js')
       r2AdapterSource = (await bundleR2Adapter()).code
-      // Walk every R2 binding; if it points at a secret name (rather
-      // than a literal value), resolve via FileSecretStore. The from-
-      // config layer parses access_key_id_secret/secret_access_key_secret
-      // as the *secret names* (since wrangler is pure JSON, no async
-      // resolution there); we swap them to actual values here.
-      const { FileSecretStore } = await import('../secret/index.js')
-      const secrets = new FileSecretStore()
-      for (const w of manifest.workers) {
-        for (const r2 of w.r2Buckets ?? []) {
-          if (r2.accessKeyId !== undefined) {
-            const v = await secrets.get(r2.accessKeyId)
-            if (v === null || v.length === 0) {
-              throw new Error(
-                `r2_buckets[${r2.binding}]: secret "${r2.accessKeyId}" not found. ` +
-                  `Run \`groundflare secret set ${r2.accessKeyId} <value>\`.`,
-              )
-            }
-            ;(r2 as { accessKeyId?: string }).accessKeyId = v
-          }
-          if (r2.secretAccessKey !== undefined) {
-            const v = await secrets.get(r2.secretAccessKey)
-            if (v === null || v.length === 0) {
-              throw new Error(
-                `r2_buckets[${r2.binding}]: secret "${r2.secretAccessKey}" not found. ` +
-                  `Run \`groundflare secret set ${r2.secretAccessKey} <value>\`.`,
-              )
-            }
-            ;(r2 as { secretAccessKey?: string }).secretAccessKey = v
-          }
-        }
-      }
+      await resolveR2Secrets(manifest, opts.secretStore)
     }
     const capnpConfig = buildCapnpFromWorkspace(manifest, {
       listenAddress: LISTEN_ADDRESS,
@@ -326,24 +296,6 @@ export async function runDeploy(opts: RunDeployOptions): Promise<DeployResult> {
     })
   } else if (capnpText !== null) {
     log('info', `installing bundle + capnp + Caddyfile atomically on ${opts.bootstrapState.vps.ipv4}`)
-    // Per-binding state dirs (D1 sqlite roots, KV stores, etc.) sit outside
-    // the staging→install dance: they persist across deploys and aren't
-    // managed by atomicInstall. workerd refuses to start if any localDisk
-    // path is missing, so create them up-front before the new capnp lands.
-    for (const w of manifest.workers) {
-      for (const d1 of w.d1Databases ?? []) {
-        await ensureRemoteDir(
-          ssh,
-          `/var/lib/groundflare/do-state/${w.name}/d1/${d1.databaseName}`,
-        )
-      }
-      for (const kv of w.kvNamespaces ?? []) {
-        await ensureRemoteDir(
-          ssh,
-          `/var/lib/groundflare/do-state/${w.name}/kv/${kv.binding}`,
-        )
-      }
-    }
     const filesToInstall: AtomicInstallFile[] = [
       ...manifest.workers.map((w) => ({
         content: bundle.code,
@@ -364,13 +316,29 @@ export async function runDeploy(opts: RunDeployOptions): Promise<DeployResult> {
         mode: '0644',
       },
     ]
-    const groundflareOwnedDirs = manifest.workers.flatMap((w) => [
+    // groundflareOwnedDirs are mkdir'd + chowned inside the same atomic
+    // install script. Per-binding state dirs (D1 sqlite roots, KV stores)
+    // must exist before workerd starts — its localDisk services refuse
+    // to load when the path is missing — so list them here too. mkdir -p
+    // is idempotent; the dirs persist across deploys.
+    const groundflareOwnedDirs: string[] = []
+    for (const w of manifest.workers) {
       // The worker dir itself must be groundflare-owned so the assets
       // scp below (running as the groundflare user) can create / replace
       // the `assets/` subdirectory without sudo.
-      `/var/lib/groundflare/workers/${w.name}`,
-      `/var/lib/groundflare/workers/${w.name}/code/current`,
-    ])
+      groundflareOwnedDirs.push(`/var/lib/groundflare/workers/${w.name}`)
+      groundflareOwnedDirs.push(`/var/lib/groundflare/workers/${w.name}/code/current`)
+      for (const d1 of w.d1Databases ?? []) {
+        groundflareOwnedDirs.push(
+          `/var/lib/groundflare/do-state/${w.name}/d1/${d1.databaseName}`,
+        )
+      }
+      for (const kv of w.kvNamespaces ?? []) {
+        groundflareOwnedDirs.push(
+          `/var/lib/groundflare/do-state/${w.name}/kv/${kv.binding}`,
+        )
+      }
+    }
     await atomicInstall(ssh, { files: filesToInstall, groundflareOwnedDirs })
   }
 
@@ -562,3 +530,50 @@ async function probeHealth(
 // Unused import silencer — `readFile` is there for future config ingestion
 // paths (e.g. reading a local static-assets manifest).
 void readFile
+
+/**
+ * Walk every R2 binding and swap secret *names* (parsed by from-config
+ * from `access_key_id_secret` / `secret_access_key_secret`) for the
+ * actual credential values. Mutates the manifest in place — buildCapnp
+ * runs right after and reads the resolved values.
+ *
+ * Default secret source is FileSecretStore at the standard XDG path;
+ * tests inject MemorySecretStore.
+ */
+async function resolveR2Secrets(
+  manifest: WorkspaceManifest,
+  injected: import('../secret/index.js').SecretStore | undefined,
+): Promise<void> {
+  let store = injected
+  if (store === undefined) {
+    const { FileSecretStore } = await import('../secret/index.js')
+    store = new FileSecretStore()
+  }
+  for (const w of manifest.workers) {
+    for (const r2 of w.r2Buckets ?? []) {
+      const mut = r2 as { accessKeyId?: string; secretAccessKey?: string }
+      if (mut.accessKeyId !== undefined) {
+        mut.accessKeyId = await fetchSecret(store, mut.accessKeyId, r2.binding)
+      }
+      if (mut.secretAccessKey !== undefined) {
+        mut.secretAccessKey = await fetchSecret(store, mut.secretAccessKey, r2.binding)
+      }
+    }
+  }
+}
+
+async function fetchSecret(
+  store: import('../secret/index.js').SecretStore,
+  name: string,
+  bindingForError: string,
+): Promise<string> {
+  const v = await store.get(name)
+  if (v === null || v.length === 0) {
+    throw new DeployError(
+      `r2_buckets[${bindingForError}]: secret ${JSON.stringify(name)} not found. ` +
+        `Run \`groundflare secret set ${name} <value>\`.`,
+      'config_missing',
+    )
+  }
+  return v
+}

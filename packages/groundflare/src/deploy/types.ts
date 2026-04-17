@@ -8,6 +8,7 @@
  */
 
 import type { BootstrapState, LogFn } from '../bootstrap/index.js'
+import type { SecretStore } from '../secret/index.js'
 import type { SshClient } from '../ssh/index.js'
 
 export interface RunDeployOptions {
@@ -28,6 +29,14 @@ export interface RunDeployOptions {
    * OpenSshClient from the bootstrap state. Tests inject a mock here.
    */
   readonly ssh?: SshClient
+
+  /**
+   * Source for resolving wrangler R2 `*_secret` references. Defaults to
+   * a FileSecretStore at the standard XDG path. Tests inject an in-
+   * memory store; can also be used to resolve secrets from a different
+   * backend (Vault, env, etc.) without environment manipulation.
+   */
+  readonly secretStore?: SecretStore
 
   /**
    * ACME email for Caddy's Let's Encrypt registration. Reused from the
