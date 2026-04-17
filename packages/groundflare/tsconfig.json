@@ -38,6 +38,11 @@
     "src/runtime/bun/adapters/d1.ts",
     "src/runtime/bun/adapters/r2.ts",
     "src/runtime/bun/adapters/sigv4.ts",
+    // workerd R2 adapter Worker — runs inside workerd, references DOM
+    // BodyInit + transitively imports the Bun-runtime sigv4 (which uses
+    // BufferSource). Behaviour verified by the L2 spawn-workerd
+    // integration tests + L3 e2e tests against real SeaweedFS.
+    "src/runtime/workerd/r2/adapter.worker.ts",
     "test/bun/**"
   ]
 }

@@ -39,7 +39,7 @@
     "LICENSE"
   ],
   "scripts": {
-    "build": "tsc -p tsconfig.build.json && node scripts/copy-bun-adapters.mjs",
+    "build": "tsc -p tsconfig.build.json && node scripts/copy-bun-adapters.mjs && node scripts/copy-workerd-r2-adapter.mjs",
     "check": "tsc --noEmit",
     "dev": "tsx src/cli/index.ts",
     "test": "NODE_OPTIONS='--experimental-sqlite' vitest run",

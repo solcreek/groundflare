@@ -32,6 +32,8 @@
     "src/runtime/bun/adapters/kv.ts",
     "src/runtime/bun/adapters/d1.ts",
     "src/runtime/bun/adapters/r2.ts",
-    "src/runtime/bun/adapters/sigv4.ts"
+    "src/runtime/bun/adapters/sigv4.ts",
+    // workerd R2 adapter — see tsconfig.json comment.
+    "src/runtime/workerd/r2/adapter.worker.ts"
   ]
 }
