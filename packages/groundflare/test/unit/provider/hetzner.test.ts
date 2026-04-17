@@ -440,8 +440,8 @@ describe('VPS lifecycle', () => {
 describe('estimateMonthlyCost', () => {
   it('returns the static price for known sizes', () => {
     const provider = new HetznerProvider({ token: 't' })
-    expect(provider.estimateMonthlyCost({ size: 'cx22', region: 'hel1' })).toBe(599)
-    expect(provider.estimateMonthlyCost({ size: 'cax11', region: 'fsn1' })).toBe(414)
+    expect(provider.estimateMonthlyCost({ size: 'cx23', region: 'hel1' })).toBe(499)
+    expect(provider.estimateMonthlyCost({ size: 'cax11', region: 'fsn1' })).toBe(549)
   })
 
   it('returns 0 for unknown sizes (caller treats as no quote)', () => {

@@ -194,7 +194,9 @@ interface HetznerServerType {
 
 function toSize(t: HetznerServerType): Size {
   // Hetzner reports prices per location. Pick the first one as canonical;
-  // most sizes are priced uniformly. (cx22 in hel1 == cx22 in fsn1.)
+  // EU locations (hel1/fsn1) are uniformly priced, but ash (US-east) runs
+  // ~€1/mo higher on most sizes — callers that need precise US pricing
+  // should look at the full `prices` array.
   const firstPrice = t.prices[0]
   const monthly = firstPrice ? Number.parseFloat(firstPrice.price_monthly.gross) : 0
   return {
@@ -335,17 +337,31 @@ function synthesizeAccountId(token: string): string {
 
 /**
  * Snapshot of common Hetzner shared-vCPU sizes, in EUR cents/month
- * (gross). Refreshed manually; estimateMonthlyCost falls back to 0 for
- * sizes not in the table. The CLI's `groundflare estimate` should call
- * `listSizes()` for live numbers when an API token is available.
+ * (gross, hel1/fsn1 EU pricing). Refreshed manually against
+ * api.hetzner.cloud/v1/server_types; estimateMonthlyCost falls back to
+ * 0 for sizes not in the table. The CLI's `groundflare estimate`
+ * should call `listSizes()` for live numbers when an API token is
+ * available.
+ *
+ * Last refreshed: 2026-04-17. Note that Hetzner deprecated the cx22/
+ * cx32/cx42/cx52 line in favour of cx23+; ARM (cax) and x86 (cpx) had
+ * across-the-board price increases since v0.1.
  */
 const HETZNER_PRICE_TABLE = new Map<string, number>([
-  ['cx22', 599],
-  ['cx32', 1059],
-  ['cx42', 2099],
-  ['cx52', 4099],
-  ['cax11', 414],
-  ['cax21', 749],
-  ['cax31', 1349],
-  ['cax41', 2699],
+  // Shared x86, current gen (cx22 line deprecated 2026Q1):
+  ['cx23', 499],
+  ['cx33', 799],
+  ['cx43', 1399],
+  ['cx53', 2649],
+  // Shared x86, higher-perf tier (cpx):
+  ['cpx11', 599],
+  ['cpx21', 1099],
+  ['cpx31', 2049],
+  ['cpx41', 3799],
+  ['cpx51', 8349],
+  // Shared ARM (Ampere Altra) — cheapest tier for low-traffic workers:
+  ['cax11', 549],
+  ['cax21', 949],
+  ['cax31', 1849],
+  ['cax41', 3699],
 ])
