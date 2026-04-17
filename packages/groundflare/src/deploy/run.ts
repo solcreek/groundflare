@@ -171,9 +171,51 @@ export async function runDeploy(opts: RunDeployOptions): Promise<DeployResult> {
       listenAddress: LISTEN_ADDRESS,
     })
   } else {
+    // R2 bindings need (a) the bundled adapter Worker source and (b)
+    // resolved SigV4 credentials. Both are deferred until we know the
+    // workspace actually uses R2 — bundle is ~200 ms, credential read
+    // is async.
+    const hasR2 = manifest.workers.some((w) => (w.r2Buckets?.length ?? 0) > 0)
+    let r2AdapterSource: string | undefined
+    if (hasR2) {
+      const { bundleR2Adapter } = await import('../runtime/workerd/r2/bundle.js')
+      r2AdapterSource = (await bundleR2Adapter()).code
+      // Walk every R2 binding; if it points at a secret name (rather
+      // than a literal value), resolve via FileSecretStore. The from-
+      // config layer parses access_key_id_secret/secret_access_key_secret
+      // as the *secret names* (since wrangler is pure JSON, no async
+      // resolution there); we swap them to actual values here.
+      const { FileSecretStore } = await import('../secret/index.js')
+      const secrets = new FileSecretStore()
+      for (const w of manifest.workers) {
+        for (const r2 of w.r2Buckets ?? []) {
+          if (r2.accessKeyId !== undefined) {
+            const v = await secrets.get(r2.accessKeyId)
+            if (v === null || v.length === 0) {
+              throw new Error(
+                `r2_buckets[${r2.binding}]: secret "${r2.accessKeyId}" not found. ` +
+                  `Run \`groundflare secret set ${r2.accessKeyId} <value>\`.`,
+              )
+            }
+            ;(r2 as { accessKeyId?: string }).accessKeyId = v
+          }
+          if (r2.secretAccessKey !== undefined) {
+            const v = await secrets.get(r2.secretAccessKey)
+            if (v === null || v.length === 0) {
+              throw new Error(
+                `r2_buckets[${r2.binding}]: secret "${r2.secretAccessKey}" not found. ` +
+                  `Run \`groundflare secret set ${r2.secretAccessKey} <value>\`.`,
+              )
+            }
+            ;(r2 as { secretAccessKey?: string }).secretAccessKey = v
+          }
+        }
+      }
+    }
     const capnpConfig = buildCapnpFromWorkspace(manifest, {
       listenAddress: LISTEN_ADDRESS,
       stateBaseDir: 'do-state',
+      ...(r2AdapterSource !== undefined ? { r2AdapterSource } : {}),
     })
     capnpText = renderCapnpConfig(capnpConfig)
   }
@@ -369,6 +411,31 @@ export async function runDeploy(opts: RunDeployOptions): Promise<DeployResult> {
       await ssh.upload(assetsStagingDir, workerDir, { recursive: true })
     }
     await rm(assetsStagingDir, { recursive: true, force: true }).catch(() => {})
+  }
+
+  // ─── 5c. Pre-create R2 buckets in SeaweedFS (workerd track) ──
+  // weed's anonymous mode does NOT auto-create buckets on first PUT;
+  // it returns AccessDenied/NoSuchBucket. Idempotent PUT to the bucket
+  // path creates it (HTTP 200 first time, ~409 thereafter — both fine).
+  // Bun track uses its own R2 adapter that talks directly to CF R2 (no
+  // local SeaweedFS), so we skip it.
+  if (!isBunTrack) {
+    const r2BucketsToCreate = new Set<string>()
+    for (const w of manifest.workers) {
+      for (const r2 of w.r2Buckets ?? []) {
+        // Skip when an external endpoint is configured — only the local
+        // SeaweedFS sidecar needs us to bootstrap buckets.
+        if (r2.endpoint !== undefined) continue
+        r2BucketsToCreate.add(r2.bucketName ?? r2.binding.toLowerCase())
+      }
+    }
+    for (const bucket of r2BucketsToCreate) {
+      const create = await ssh.run(
+        `curl -fsS -o /dev/null -w '%{http_code}' --max-time 10 -X PUT http://127.0.0.1:8333/${encodeURIComponent(bucket)} || true`,
+        { timeoutMs: 15_000 },
+      )
+      log('info', `R2 bucket ${JSON.stringify(bucket)} ensured (HTTP ${create.stdout.trim()})`)
+    }
   }
 
   // ─── 6. Restart services ───────────────────────────────────────
