@@ -132,6 +132,7 @@ export default defineCommand({
       region,
       size,
       domain,
+      preview: gfRead.preview,
       vpsExists:
         existingState !== null &&
         existingState.vps !== undefined &&
@@ -197,6 +198,12 @@ export default defineCommand({
       log.success(`up complete: ${result.tenants.length} tenant(s) deployed`)
       if (result.healthCheck) {
         log.info(`  health: ${result.healthCheck.status} in ${result.healthCheck.durationMs}ms`)
+      }
+      if (result.previewUrl !== undefined) {
+        log.info(`  preview: ${result.previewUrl}`)
+        log.info(
+          '  (sslip.io-backed; set [groundflare].domain + point DNS at the VPS IP for production)',
+        )
       }
     } catch (err) {
       if (err instanceof DeployError) {

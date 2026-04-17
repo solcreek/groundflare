@@ -78,6 +78,7 @@ export default defineCommand({
       region,
       size,
       domain: groundflare.domain,
+      preview: groundflare.preview,
       vpsExists:
         existingState !== null &&
         existingState.vps !== undefined &&

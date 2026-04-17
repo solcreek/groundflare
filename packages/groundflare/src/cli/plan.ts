@@ -63,6 +63,14 @@ export interface UpPlanInput {
   readonly size: string
   readonly domain: string | undefined
   /**
+   * The `[groundflare].preview` config value — drives whether a
+   * sslip.io / nip.io hostname will be auto-derived when `domain` is
+   * unset. `undefined`/`true` = default sslip.io; `false` = no
+   * preview; string = explicit provider. The plan's warnings depend
+   * on which of these got picked.
+   */
+  readonly preview: boolean | 'sslip.io' | 'nip.io' | undefined
+  /**
    * Existing bootstrap state. When non-null + vps is live on provider,
    * the plan becomes "redeploy only" rather than "fresh provision".
    */
@@ -132,9 +140,17 @@ export function buildUpPlan(input: UpPlanInput): Plan {
 
   const warnings: string[] = []
   if (!input.domain) {
-    warnings.push(
-      'no [groundflare].domain set — Caddy will serve a placeholder cert until you bind a real domain',
-    )
+    if (input.preview === false) {
+      warnings.push(
+        'no [groundflare].domain set AND preview disabled — Caddy will have no site; add a domain or re-enable preview',
+      )
+    } else {
+      const provider =
+        typeof input.preview === 'string' ? input.preview : 'sslip.io'
+      warnings.push(
+        `no [groundflare].domain — a ${provider} preview hostname will be derived from the VPS IP (set domain to override)`,
+      )
+    }
   }
 
   return {

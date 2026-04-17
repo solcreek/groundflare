@@ -205,6 +205,34 @@ export interface GroundflareSection {
   limits?: GroundflareRuntimeLimits
   observability?: GroundflareObservability
   env?: Record<string, Omit<GroundflareSection, 'env'>>
+
+  /**
+   * Preview TLS hostname behaviour when `domain` is unset.
+   *
+   *   - `true` (default) — derive `<hyphenated-vps-ip>.sslip.io` so
+   *     the box gets a valid Let's Encrypt cert on first deploy with
+   *     zero DNS configuration. sslip.io is a public DNS service that
+   *     resolves IP-in-hostname patterns; LE's HTTP-01 challenge works
+   *     over the sidecar's port 80.
+   *   - `false` — skip the preview hostname entirely. Caddy will have
+   *     no site block to answer on; useful when the box is behind a
+   *     private network (Tailscale, corporate VPN) and you'll add a
+   *     domain later.
+   *   - `"sslip.io"` / `"nip.io"` — explicitly pick a provider. Both
+   *     work identically for IPv4; `sslip.io` is the default.
+   *
+   * Ignored when `domain` is set.
+   *
+   * Trade-offs the user should know:
+   *   - sslip.io shares its Let's Encrypt rate-limit budget globally.
+   *     Rare groundflare deploys are fine; high-churn CI that spins
+   *     fresh droplets per commit can hit the limit.
+   *   - Hostnames that embed an IP are sometimes blocked by
+   *     enterprise DNS / HTTP proxies.
+   *   - Only meant for preview / first-run — migrate to a real domain
+   *     before production.
+   */
+  preview?: boolean | 'sslip.io' | 'nip.io'
 }
 
 // ─── Config file I/O ───────────────────────────────────────────────

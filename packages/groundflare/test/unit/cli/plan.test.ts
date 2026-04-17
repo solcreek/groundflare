@@ -35,6 +35,7 @@ describe('buildUpPlan', () => {
       region: 'sgp1',
       size: 's-1vcpu-1gb',
       domain: 'demo.example.com',
+      preview: undefined,
       vpsExists: false,
       completedStages: [],
       workers: [worker('api')],
@@ -55,6 +56,7 @@ describe('buildUpPlan', () => {
       region: 'sgp1',
       size: 's-1vcpu-1gb',
       domain: 'demo.example.com',
+      preview: undefined,
       vpsExists: true,
       completedStages: [
         'provider.auth',
@@ -83,6 +85,7 @@ describe('buildUpPlan', () => {
       region: 'sgp1',
       size: 's-1vcpu-1gb',
       domain: 'demo.example.com',
+      preview: undefined,
       vpsExists: true,
       completedStages: ['provider.auth', 'provider.ssh-key'],
       workers: [worker('api')],
@@ -100,6 +103,7 @@ describe('buildUpPlan', () => {
       region: 'sgp1',
       size: 's-1vcpu-1gb',
       domain: 'demo.example.com',
+      preview: undefined,
       vpsExists: false,
       completedStages: [],
       workers: [
@@ -125,6 +129,7 @@ describe('buildUpPlan', () => {
       region: 'sgp1',
       size: 's-1vcpu-1gb',
       domain: undefined,
+      preview: undefined,
       vpsExists: false,
       completedStages: [],
       workers: [worker('api')],
@@ -139,11 +144,57 @@ describe('buildUpPlan', () => {
       region: 'sgp1',
       size: 's-1vcpu-1gb',
       domain: 'demo.example.com',
+      preview: undefined,
       vpsExists: false,
       completedStages: [],
       workers: [worker('api')],
     })
     expect(plan.warnings ?? []).toEqual([])
+  })
+
+  it('mentions sslip.io preview in the warning when domain is unset + preview is default', () => {
+    const plan = buildUpPlan({
+      workspace: 'demo',
+      provider: 'digitalocean',
+      region: 'sgp1',
+      size: 's-1vcpu-1gb',
+      domain: undefined,
+      preview: undefined,
+      vpsExists: false,
+      completedStages: [],
+      workers: [worker('api')],
+    })
+    expect(plan.warnings!.some((w) => /sslip\.io/.test(w))).toBe(true)
+  })
+
+  it('mentions nip.io when preview opts into a different provider', () => {
+    const plan = buildUpPlan({
+      workspace: 'demo',
+      provider: 'digitalocean',
+      region: 'sgp1',
+      size: 's-1vcpu-1gb',
+      domain: undefined,
+      preview: 'nip.io',
+      vpsExists: false,
+      completedStages: [],
+      workers: [worker('api')],
+    })
+    expect(plan.warnings!.some((w) => /nip\.io/.test(w))).toBe(true)
+  })
+
+  it('warns more sharply when preview is disabled and no domain is set', () => {
+    const plan = buildUpPlan({
+      workspace: 'demo',
+      provider: 'digitalocean',
+      region: 'sgp1',
+      size: 's-1vcpu-1gb',
+      domain: undefined,
+      preview: false,
+      vpsExists: false,
+      completedStages: [],
+      workers: [worker('api')],
+    })
+    expect(plan.warnings!.some((w) => /preview disabled/.test(w))).toBe(true)
   })
 })
 

@@ -92,6 +92,14 @@ export interface DeployResult {
     readonly status: number
     readonly durationMs: number
   }
+  /**
+   * Preview hostname derived when no custom domain was configured —
+   * `<hyphenated-ip>.sslip.io` (or nip.io, per `[groundflare].preview`).
+   * Set only when the preview path actually kicked in; undefined when
+   * the workspace has its own domain OR `preview = false`. The `up`
+   * command prints this as a "🎉 preview: https://…" line at the end.
+   */
+  readonly previewUrl?: string
   readonly dryRun: boolean
 }
 

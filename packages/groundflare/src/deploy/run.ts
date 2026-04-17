@@ -40,6 +40,10 @@ import type { SecretStore } from '../secret/index.js'
 import { bundleWorker } from './bundle.js'
 import { detectBuildCommand } from './detect-pm.js'
 import { resolveBuiltEntry } from './detect-built-entry.js'
+import {
+  derivePreviewHostname,
+  resolvePreviewProvider,
+} from './preview.js'
 import { planBunStaging } from './bun-track.js'
 import {
   atomicInstall,
@@ -159,6 +163,32 @@ export async function runDeploy(opts: RunDeployOptions): Promise<DeployResult> {
   }
   const isBunTrack = manifest.runtime === 'bun'
 
+  // ─── 3b. Preview hostname (sslip.io) ───────────────────────────
+  // When the workspace has no explicit domain, derive one from the
+  // VPS IP via sslip.io so Caddy gets a valid hostname to request an
+  // LE certificate for. Users who opt out (`preview = false`) get a
+  // Caddy with no site blocks — workerd still runs, but nothing on
+  // port 443 will respond until a real domain is added later.
+  //
+  // Preview is skipped when the bootstrap state doesn't yet carry a
+  // VPS record (shouldn't normally happen — runDeploy requires one —
+  // but the type allows undefined).
+  let previewHostname: string | null = null
+  if (worker.domain === undefined && opts.bootstrapState.vps !== undefined) {
+    const provider = resolvePreviewProvider(groundflare.preview)
+    if (provider !== null) {
+      previewHostname = derivePreviewHostname({
+        ipv4: opts.bootstrapState.vps.ipv4,
+        provider,
+      })
+      ;(worker as { domain?: string }).domain = previewHostname
+      log(
+        'info',
+        `preview hostname: ${previewHostname} (set [groundflare].domain to override)`,
+      )
+    }
+  }
+
   // ─── 4. Render ─────────────────────────────────────────────────
   //
   // Both tracks share the Caddy reverse-proxy config (same listen
@@ -262,6 +292,7 @@ export async function runDeploy(opts: RunDeployOptions): Promise<DeployResult> {
           )
         : 0,
       caddyfileBytes: Buffer.byteLength(caddyfile, 'utf-8'),
+      ...(previewHostname !== null ? { previewUrl: `https://${previewHostname}` } : {}),
       dryRun: true,
     }
   }
@@ -489,6 +520,7 @@ export async function runDeploy(opts: RunDeployOptions): Promise<DeployResult> {
     bunArtifactBytes: bunStage?.artifactBytes ?? 0,
     caddyfileBytes: Buffer.byteLength(caddyfile, 'utf-8'),
     healthCheck: { status, durationMs: probeDuration },
+    ...(previewHostname !== null ? { previewUrl: `https://${previewHostname}` } : {}),
     dryRun: false,
   }
 }
