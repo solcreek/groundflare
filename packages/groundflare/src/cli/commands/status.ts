@@ -178,7 +178,19 @@ async function runDriftSection(
   })
   process.stdout.write(renderDriftChecks(checks))
   process.stdout.write(`  ${summarizeDrift(checks)}\n`)
-  return hasDrift(checks)
+  const drift = hasDrift(checks)
+  if (drift) {
+    // Most drift states reconcile by re-running the deploy flow:
+    // `up` resumes bootstrap from wherever state left off, restarts
+    // missing systemd units, and re-uploads the capnp/Caddyfile. The
+    // minority that doesn't heal this way (IP rotated externally,
+    // DNS pointing elsewhere) still needs operator attention, but
+    // pointing them at `up` first is the right default hint.
+    process.stdout.write(
+      `  → run \`groundflare up --workspace ${state.workspace}\` to reconcile\n`,
+    )
+  }
+  return drift
 }
 
 /**
