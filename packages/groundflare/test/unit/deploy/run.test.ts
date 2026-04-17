@@ -637,9 +637,10 @@ describe('runDeploy — Bun track', () => {
     )
     const { client, runCalls } = mockSsh({
       runs: [
-        { exitCode: 0 },
-        { exitCode: 0 },
-        { exitCode: 0, stdout: '200' },
+        { exitCode: 0 }, // atomic install
+        { exitCode: 0, stdout: '200' }, // R2 bucket pre-create (Bun track now uses the local SeaweedFS sidecar by default)
+        { exitCode: 0 }, // systemctl restart
+        { exitCode: 0, stdout: '200' }, // health probe
       ],
     })
     await runDeploy({

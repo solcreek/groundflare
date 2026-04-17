@@ -133,20 +133,26 @@ describe('generateBunShim', () => {
   it('wires R2 facade to the real BunR2Adapter (Phase 2d+)', () => {
     const src = generateBunShim({ entryModule: './user.js' })
     expect(src).toContain('import { BunR2Adapter } from "./adapters/r2.ts"')
-    // The facade reads credentials from env vars rather than baking
-    // them into the compiled server.ts — secrets stay out of the artifact.
+    // The facade reads endpoint + credentials from env vars rather
+    // than baking them into the compiled server.ts — secrets stay out
+    // of the artifact. Default (no env set) falls back to the local
+    // SeaweedFS sidecar inside the BunR2Adapter constructor.
     expect(src).toContain('const envPrefix = "R2_" + binding.toUpperCase()')
+    expect(src).toContain('process.env[envPrefix + "ENDPOINT"]')
     expect(src).toContain('process.env[envPrefix + "ACCESS_KEY_ID"]')
-    expect(src).toContain('new BunR2Adapter({')
-    expect(src).not.toContain(
-      'R2.${op}() — groundflare Bun adapter not yet implemented',
-    )
+    expect(src).toContain('new BunR2Adapter(adapterOpts)')
   })
 
-  it('R2 facade raises a helpful error when credentials are missing', () => {
+  it('R2 facade defaults to local SeaweedFS when no env overrides are set', () => {
     const src = generateBunShim({ entryModule: './user.js' })
-    expect(src).toContain('missing credentials')
-    expect(src).toContain('groundflare secret put')
+    // Default is the adapter's own fallback to 127.0.0.1:8333 — the
+    // shim doesn't hard-code endpoint. The comments above the facade
+    // explicitly document the zero-env case.
+    expect(src).toContain('local SeaweedFS sidecar at 127.0.0.1:8333')
+    // Credentials are optional — no shim-level throw on missing creds.
+    // Paired validation (one set but not both) happens inside the
+    // adapter constructor with a clear TypeError.
+    expect(src).toContain('Credential pairing is validated inside the adapter')
   })
 
   // D1 stub assertions removed — Phase 2c replaced the stub with

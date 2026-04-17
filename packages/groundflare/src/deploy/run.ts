@@ -395,18 +395,18 @@ export async function runDeploy(opts: RunDeployOptions): Promise<DeployResult> {
     await rm(assetsStagingDir, { recursive: true, force: true }).catch(() => {})
   }
 
-  // ─── 5c. Pre-create R2 buckets in SeaweedFS (workerd track) ──
+  // ─── 5c. Pre-create R2 buckets in SeaweedFS ────────────────────
   // weed's anonymous mode does NOT auto-create buckets on first PUT;
   // it returns AccessDenied/NoSuchBucket. Idempotent PUT to the bucket
   // path creates it (HTTP 200 first time, ~409 thereafter — both fine).
-  // Bun track uses its own R2 adapter that talks directly to CF R2 (no
-  // local SeaweedFS), so we skip it.
-  if (!isBunTrack) {
+  //
+  // Both tracks go through the same sidecar by default. Bun bindings
+  // that opt in to a remote endpoint (groundflare.endpoint set) skip
+  // this step — there's nothing for us to bootstrap on external S3.
+  {
     const r2BucketsToCreate = new Set<string>()
     for (const w of manifest.workers) {
       for (const r2 of w.r2Buckets ?? []) {
-        // Skip when an external endpoint is configured — only the local
-        // SeaweedFS sidecar needs us to bootstrap buckets.
         if (r2.endpoint !== undefined) continue
         r2BucketsToCreate.add(r2.bucketName ?? r2.binding.toLowerCase())
       }

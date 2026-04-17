@@ -84,14 +84,42 @@ export interface R2Adapter {
 // ─── adapter ──────────────────────────────────────────────────────
 
 export interface BunR2AdapterOptions {
-  /** Cloudflare account ID — first URL segment of the R2 endpoint. */
-  readonly accountId: string
-  /** Bucket name. */
+  /** Bucket name. Always required. */
   readonly bucket: string
-  /** R2 API token access key. */
-  readonly accessKeyId: string
-  /** R2 API token secret. */
-  readonly secretAccessKey: string
+
+  /**
+   * Endpoint URL (no trailing slash) the adapter routes S3 traffic to.
+   * Mutually exclusive with `accountId`. When neither is set, defaults
+   * to `http://127.0.0.1:8333` — the local SeaweedFS sidecar
+   * groundflare's cloud-init installs on the Bun track (same default
+   * as the Mirror track).
+   */
+  readonly endpoint?: string
+
+  /**
+   * Cloudflare account ID shortcut. Equivalent to setting
+   * `endpoint = "https://<accountId>.r2.cloudflarestorage.com"`.
+   * Preserved for backwards compatibility with the pre-v0.5.1 Bun
+   * adapter where accountId was the only way to target CF R2.
+   */
+  readonly accountId?: string
+
+  /**
+   * AWS region for SigV4 signing. Default `"auto"` when using
+   * accountId (CF R2 convention), `"us-east-1"` otherwise.
+   */
+  readonly region?: string
+
+  /**
+   * SigV4 access key. Optional — when absent (along with
+   * secretAccessKey), requests go out unsigned, which is fine for a
+   * local SeaweedFS sidecar in anonymous mode. Signed mode is
+   * required for CF R2 / B2 / Wasabi / any other S3-compatible
+   * endpoint with authentication.
+   */
+  readonly accessKeyId?: string
+  readonly secretAccessKey?: string
+
   /**
    * Override the fetch implementation (tests inject a mock; production
    * uses globalThis.fetch). Must match the standard fetch signature.
@@ -101,29 +129,53 @@ export interface BunR2AdapterOptions {
   readonly now?: () => number
 }
 
-const REGION = 'auto'
+const DEFAULT_ENDPOINT = 'http://127.0.0.1:8333'
 const SERVICE = 's3'
 
 export class BunR2Adapter implements R2Adapter {
   private readonly baseUrl: string
-  private readonly credentials: SigV4Credentials
+  private readonly credentials: SigV4Credentials | null
+  private readonly region: string
   private readonly fetchImpl: typeof fetch
   private readonly now: () => number
 
   constructor(private readonly opts: BunR2AdapterOptions) {
-    if (!opts.accountId || !opts.bucket) {
-      throw new TypeError('BunR2Adapter: accountId and bucket are required')
+    if (!opts.bucket) {
+      throw new TypeError('BunR2Adapter: bucket is required')
     }
-    if (!opts.accessKeyId || !opts.secretAccessKey) {
+    const hasAccessKey = Boolean(opts.accessKeyId)
+    const hasSecret = Boolean(opts.secretAccessKey)
+    if (hasAccessKey !== hasSecret) {
       throw new TypeError(
-        'BunR2Adapter: accessKeyId and secretAccessKey are required',
+        'BunR2Adapter: accessKeyId and secretAccessKey must be set together',
       )
     }
-    this.baseUrl = `https://${opts.accountId}.r2.cloudflarestorage.com/${encodeURIComponent(opts.bucket)}`
-    this.credentials = {
-      accessKeyId: opts.accessKeyId,
-      secretAccessKey: opts.secretAccessKey,
+    // Resolve endpoint precedence: explicit endpoint > accountId shortcut
+    // > local SeaweedFS default. accountId + endpoint both set is a
+    // config error worth shouting about.
+    let root: string
+    let defaultRegion: string
+    if (opts.endpoint) {
+      if (opts.accountId) {
+        throw new TypeError(
+          'BunR2Adapter: pass either endpoint or accountId, not both',
+        )
+      }
+      root = opts.endpoint.replace(/\/$/, '')
+      defaultRegion = 'us-east-1'
+    } else if (opts.accountId) {
+      root = `https://${opts.accountId}.r2.cloudflarestorage.com`
+      defaultRegion = 'auto'
+    } else {
+      root = DEFAULT_ENDPOINT
+      defaultRegion = 'us-east-1'
     }
+    this.baseUrl = `${root}/${encodeURIComponent(opts.bucket)}`
+    this.credentials =
+      hasAccessKey && hasSecret
+        ? { accessKeyId: opts.accessKeyId!, secretAccessKey: opts.secretAccessKey! }
+        : null
+    this.region = opts.region ?? defaultRegion
     this.fetchImpl = opts.fetch ?? globalThis.fetch
     this.now = opts.now ?? Date.now
   }
@@ -226,15 +278,27 @@ export class BunR2Adapter implements R2Adapter {
   ): Promise<Response> {
     const path = key ? '/' + encodeKey(key) : ''
     const url = this.baseUrl + path + (query ? '?' + query : '')
+    const headers = init.headers ?? {}
+    // Unsigned path: local SeaweedFS in anonymous mode. The adapter
+    // skips SigV4 entirely — headers pass through, no x-amz-date,
+    // no Authorization. weed serves the request the same as any
+    // direct curl would.
+    if (this.credentials === null) {
+      return this.fetchImpl(url, {
+        method,
+        headers,
+        body: init.body ? (init.body as BodyInit) : undefined,
+      })
+    }
     const payloadHash =
       init.payloadHash ??
       (init.body ? await hexSha256Bytes(init.body) : EMPTY_SHA256)
     const signed = await signRequest({
       method,
       url,
-      headers: init.headers ?? {},
+      headers,
       payloadHash,
-      region: REGION,
+      region: this.region,
       service: SERVICE,
       nowMs: this.now(),
       credentials: this.credentials,

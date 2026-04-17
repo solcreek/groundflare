@@ -62,22 +62,74 @@ const BASE = {
 }
 
 describe('BunR2Adapter — constructor', () => {
-  test('rejects missing accountId / bucket', () => {
-    expect(
-      () => new BunR2Adapter({ ...BASE, accountId: '' }),
-    ).toThrow(/accountId/)
+  test('rejects missing bucket', () => {
     expect(
       () => new BunR2Adapter({ ...BASE, bucket: '' }),
     ).toThrow(/bucket/)
   })
 
-  test('rejects missing credentials', () => {
+  test('rejects half-set credentials (paired or neither)', () => {
     expect(
-      () => new BunR2Adapter({ ...BASE, accessKeyId: '' }),
-    ).toThrow(/accessKeyId/)
+      () => new BunR2Adapter({ ...BASE, accessKeyId: '', secretAccessKey: 'x' }),
+    ).toThrow(/together/)
     expect(
-      () => new BunR2Adapter({ ...BASE, secretAccessKey: '' }),
-    ).toThrow(/secretAccessKey/)
+      () => new BunR2Adapter({ ...BASE, accessKeyId: 'x', secretAccessKey: '' }),
+    ).toThrow(/together/)
+  })
+
+  test('rejects endpoint + accountId simultaneously', () => {
+    expect(
+      () =>
+        new BunR2Adapter({
+          bucket: 'x',
+          accountId: 'acc',
+          endpoint: 'https://example.com',
+        }),
+    ).toThrow(/endpoint or accountId/)
+  })
+
+  test('defaults to the local SeaweedFS sidecar when neither endpoint nor accountId is set', async () => {
+    const { fetch, calls } = mockFetch(
+      () => new Response(null, { status: 200 }),
+    )
+    const r2 = new BunR2Adapter({ bucket: 'my-bucket', fetch })
+    await r2.delete('k')
+    expect(calls[0]!.url).toBe('http://127.0.0.1:8333/my-bucket/k')
+    // No credentials → no Authorization header emitted.
+    expect(calls[0]!.headers.authorization).toBeUndefined()
+    expect(calls[0]!.headers['x-amz-date']).toBeUndefined()
+  })
+
+  test('custom endpoint + anonymous mode round-trips via signed-less fetch', async () => {
+    const { fetch, calls } = mockFetch(
+      () => new Response('hi', { status: 200, headers: { etag: '"z"' } }),
+    )
+    const r2 = new BunR2Adapter({
+      bucket: 'b',
+      endpoint: 'http://seaweed.internal:9000',
+      fetch,
+    })
+    await r2.get('x')
+    expect(calls[0]!.url).toBe('http://seaweed.internal:9000/b/x')
+    expect(calls[0]!.headers.authorization).toBeUndefined()
+  })
+
+  test('endpoint + credentials produces signed requests', async () => {
+    const { fetch, calls } = mockFetch(
+      () => new Response('hi', { status: 200, headers: { etag: '"z"' } }),
+    )
+    const r2 = new BunR2Adapter({
+      bucket: 'b',
+      endpoint: 'https://s3.example.com',
+      accessKeyId: 'AKEY',
+      secretAccessKey: 'SECRET',
+      region: 'us-west-002',
+      fetch,
+      now: () => Date.UTC(2026, 3, 15, 10, 0, 0),
+    })
+    await r2.get('x')
+    expect(calls[0]!.headers.authorization).toMatch(/^AWS4-HMAC-SHA256 /)
+    expect(calls[0]!.headers.authorization).toContain('us-west-002/s3/aws4_request')
   })
 })
 

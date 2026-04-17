@@ -90,12 +90,12 @@ export function provisionStage(opts: ProvisionStageOptions): Stage {
         ...(!isBun && opts.workerdVersion !== undefined
           ? { workerdVersion: opts.workerdVersion }
           : {}),
-        // Workerd track ships with the SeaweedFS sidecar pre-installed so
-        // any subsequent deploy that uses an R2 binding works zero-config.
-        // Bun track has its own R2 adapter path and skips weed.
-        ...(!isBun
-          ? { installSeaweedfs: true, seaweedfsVersion: SEAWEEDFS_VERSION }
-          : {}),
+        // Both tracks ship with the SeaweedFS sidecar pre-installed. On
+        // workerd the R2 adapter Worker routes binding ops through weed;
+        // on Bun the bun:sqlite R2 adapter fetches the same S3 endpoint
+        // at 127.0.0.1:8333 when no external endpoint is configured.
+        installSeaweedfs: true,
+        seaweedfsVersion: SEAWEEDFS_VERSION,
       })
 
       const hostname = opts.hostnameOverride ?? `gf-${ctx.workspace}`
