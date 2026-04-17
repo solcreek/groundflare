@@ -197,6 +197,10 @@ export function generateTenantKvShim(bindings: readonly KvShimBinding[]): string
 // Wraps the user's Worker entry to expose DO-backed KV bindings as CF KV.
 
 import user from './user.js'
+// Re-export user's named exports so workerd can resolve DO classes
+// declared on the user module (this shim is the main module; workerd
+// looks up namespace class names on the main module's export set).
+export * from './user.js'
 
 const KV_SHARDS = ${shardsLiteral}
 

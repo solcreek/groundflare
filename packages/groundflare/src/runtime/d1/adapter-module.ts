@@ -205,6 +205,9 @@ export function generateTenantD1Shim(d1BindingNames: readonly string[]): string 
 // Wraps DO-backed D1 adapter as the CF D1 API.
 
 import user from './user.js'
+// Re-export user's named exports so workerd can resolve DO classes
+// declared on the user module.
+export * from './user.js'
 
 const D1_BINDINGS = new Set(${listLiteral})
 

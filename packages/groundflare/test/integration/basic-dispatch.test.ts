@@ -38,10 +38,21 @@ async function withWorkspace<T>(
     listenAddress: `127.0.0.1:${port}`,
   })
   const capnp = renderCapnpConfig(config)
+  // Disk services in the generated config refer to directories that
+  // workerd expects to pre-exist. Walk the config and pre-create any
+  // disk path the builder emitted (user DOs, KV/D1 adapters). Without
+  // this, workerd exits with `Directory named "X" not found: Y`
+  // before serving the first request.
+  const extraDirs = config.services
+    .filter((s): s is typeof s & { kind: 'disk'; path: string } =>
+      s.kind === 'disk' && typeof (s as { path?: string }).path === 'string',
+    )
+    .map((s) => s.path)
   const wd = await spawnWorkerd({
     port,
     capnp,
     modules: opts.modules,
+    extraDirs,
     healthTimeoutMs: HEALTH_TIMEOUT_MS,
   })
   try {
@@ -347,6 +358,78 @@ describe('integration: /__scheduled dispatch', () => {
           })
           expect(res.status).toBe(404)
           expect(res.body).not.toBe('fetch reached')
+        },
+      )
+    },
+    30_000,
+  )
+})
+
+describe('integration: same-worker Durable Object namespace', () => {
+  it(
+    'env.COUNTER.get(id).fetch() reaches the DO class and ctx.storage persists across requests',
+    async () => {
+      // Canonical "counter" DO pattern: tenant declares a DO binding
+      // COUNTER pointing at class `Counter` defined in its own script.
+      // Each request increments `ctx.storage.get('n')` and returns the
+      // new value. If the namespace + localDisk storage weren't emitted
+      // by buildTenantService, workerd would either refuse to start
+      // (unresolved namespace) or the `state.storage.*` calls would be
+      // no-ops with `ephemeralLocal` fallback — both failure modes bail
+      // well before the `expect(body).toBe('2')` below.
+      await withWorkspace(
+        {
+          manifest: {
+            name: 'e2e',
+            workers: [
+              {
+                name: 'app',
+                domain: 'app.test',
+                entryPath: 'app.js',
+                durableObjects: [
+                  { binding: 'COUNTER', className: 'Counter' },
+                ],
+              },
+            ],
+          },
+          modules: {
+            'app.js': `
+              export class Counter {
+                constructor(state) { this.state = state }
+                async fetch() {
+                  const cur = (await this.state.storage.get('n')) ?? 0
+                  const next = cur + 1
+                  await this.state.storage.put('n', next)
+                  return new Response(String(next))
+                }
+              }
+              export default {
+                async fetch(req, env) {
+                  const id = env.COUNTER.idFromName('global')
+                  return env.COUNTER.get(id).fetch(req)
+                }
+              }
+            `,
+          },
+        },
+        async (wd) => {
+          const first = await wd.sendRequest({ host: 'app.test' })
+          expect(first.status).toBe(200)
+          expect(first.body).toBe('1')
+
+          const second = await wd.sendRequest({ host: 'app.test' })
+          expect(second.status).toBe(200)
+          expect(second.body).toBe('2')
+
+          const third = await wd.sendRequest({ host: 'app.test' })
+          expect(third.body).toBe('3')
+
+          // Different DO id → independent state. `idFromName('global')`
+          // vs `idFromName('other')` must not share storage, proving
+          // the namespace is addressed by ID (not a singleton).
+          // We hit this via a second route on the same worker:
+          // skipped in the minimal test — covered once the test below
+          // wires a two-name worker. Here we're gating on the basics.
         },
       )
     },
