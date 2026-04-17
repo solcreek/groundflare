@@ -23,7 +23,9 @@ import {
 import { DeployError, runDeploy } from '../../deploy/index.js'
 import { resolveConfig } from '../../config/index.js'
 import type { ProviderName } from '../../provider/index.js'
+import { workspaceWorkerFromConfig } from '../../runtime/workspace/index.js'
 import { log } from '../log.js'
+import { buildUpPlan, confirmPlan } from '../plan.js'
 
 const SUPPORTED_PROVIDERS: readonly ProviderName[] = [
   'hetzner',
@@ -75,6 +77,10 @@ export default defineCommand({
       type: 'boolean',
       description: 'Run bootstrap only; do not bundle + upload Worker code',
     },
+    yes: {
+      type: 'boolean',
+      description: 'Auto-approve the plan without the interactive prompt',
+    },
   },
   async run({ args }) {
     const workspace = args.workspace
@@ -112,8 +118,37 @@ export default defineCommand({
       else log.info(message)
     }
 
-    // ─── Bootstrap ─────────────────────────────────────────────────
+    // ─── Plan + confirm ────────────────────────────────────────────
+    // Show the user what's about to happen before we spend real money
+    // on a droplet. For repeat `up` on an existing workspace this
+    // collapses to "redeploy" and stays out of the way.
     const stateStore = new BootstrapStateStore()
+    const existingState = await stateStore.load(workspace)
+    const { wrangler, groundflare: gfRead } = await resolveConfig({ cwd })
+    const worker = workspaceWorkerFromConfig(wrangler, gfRead)
+    const plan = buildUpPlan({
+      workspace,
+      provider,
+      region,
+      size,
+      domain,
+      vpsExists:
+        existingState !== null &&
+        existingState.vps !== undefined &&
+        existingState.vps.ipv4.length > 0,
+      completedStages: existingState?.completedStages ?? [],
+      workers: [worker],
+    })
+    const approved = await confirmPlan(plan, {
+      skip: args.yes === true,
+      defaultAnswer: existingState !== null, // redeploy: default yes; fresh: default no
+    })
+    if (!approved) {
+      log.info('aborted')
+      return
+    }
+
+    // ─── Bootstrap ─────────────────────────────────────────────────
     let state
     if (args['skip-bootstrap'] === true) {
       state = await stateStore.load(workspace)

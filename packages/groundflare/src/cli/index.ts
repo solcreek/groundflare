@@ -12,6 +12,7 @@ import statusCommand from './commands/status.js'
 import configCommand from './commands/config.js'
 import secretCommand from './commands/secret.js'
 import bunCommand from './commands/bun.js'
+import planCommand from './commands/plan.js'
 
 interface PackageJsonShape {
   name: string
@@ -39,6 +40,7 @@ export async function buildMain() {
     },
     subCommands: {
       up: upCommand,
+      plan: planCommand,
       deploy: deployCommand,
       tail: tailCommand,
       estimate: estimateCommand,

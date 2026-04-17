@@ -16,10 +16,10 @@
  */
 
 import { defineCommand } from 'citty'
-import { consola } from 'consola'
 import { unlink } from 'node:fs/promises'
 
 import { BootstrapStateStore } from '../../bootstrap/index.js'
+import { resolveConfig } from '../../config/index.js'
 import {
   ProviderError,
   UnknownProviderError,
@@ -27,8 +27,13 @@ import {
   type Provider,
   type ProviderName,
 } from '../../provider/index.js'
+import {
+  workspaceWorkerFromConfig,
+  type WorkspaceWorker,
+} from '../../runtime/workspace/index.js'
 import { FileSecretStore } from '../../secret/index.js'
 import { log } from '../log.js'
+import { buildDestroyPlan, confirmPlan } from '../plan.js'
 
 export default defineCommand({
   meta: {
@@ -55,21 +60,30 @@ export default defineCommand({
       return
     }
 
-    const vpsDesc = state.vps
-      ? `${state.vps.id} (${state.vps.ipv4} @ ${state.provider})`
-      : '(no VPS recorded — will only remove local state)'
-    log.info(`workspace: ${workspace}`)
-    log.info(`vps: ${vpsDesc}`)
-
-    if (args.yes !== true) {
-      const confirmed = await consola.prompt(
-        `Destroy VPS and delete local state for ${JSON.stringify(workspace)}?`,
-        { type: 'confirm', initial: false },
-      )
-      if (confirmed !== true) {
-        log.info('aborted')
-        return
-      }
+    // Recover the workspace shape for the data-loss summary. Missing
+    // wrangler is non-fatal — we fall back to "no workers recovered"
+    // rather than blocking destroy just because config is gone.
+    let workers: WorkspaceWorker[] = []
+    try {
+      const { wrangler, groundflare } = await resolveConfig({ cwd: process.cwd() })
+      workers = [workspaceWorkerFromConfig(wrangler, groundflare)]
+    } catch {
+      // No config in cwd — fine for destroy, we still know the VPS id
+      // from state.
+    }
+    const plan = buildDestroyPlan({
+      workspace,
+      provider: state.provider as ProviderName,
+      vps: state.vps ? { id: state.vps.id, ipv4: state.vps.ipv4 } : null,
+      workers,
+    })
+    const approved = await confirmPlan(plan, {
+      skip: args.yes === true,
+      typeToConfirm: workspace,
+    })
+    if (!approved) {
+      log.info('aborted')
+      return
     }
 
     if (state.vps !== undefined) {
