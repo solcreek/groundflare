@@ -1,5 +1,122 @@
 # Changelog
 
+## v0.5.0 — Self-host R2 end-to-end
+
+The headline: **R2 bindings work on self-hosted boxes with zero config.**
+A fresh `groundflare up` provisions a VPS that ships with a SeaweedFS
+sidecar installed and running; any subsequent deploy that declares
+`[[r2_buckets]]` hooks up automatically — `env.MEDIA.put(...)`,
+`env.MEDIA.get(...)`, and the rest of the R2 surface hit the sidecar
+with no operator intervention. Live-validated on a $6/mo DigitalOcean
+1 GB droplet: PUT/GET/HEAD/LIST/DELETE all round-trip, httpMetadata +
+customMetadata preserved, total RAM footprint (workerd + Caddy + weed)
+well under 500 MB.
+
+Also supports hybrid + BYO-S3 modes: point a bucket at Backblaze B2,
+Wasabi, Tigris, real R2, MinIO, or anything else S3-compatible via a
+tiny `[r2_buckets.groundflare]` override resolved at deploy time from
+credentials in `groundflare secret set`.
+
+### New: R2 ↔ S3 adapter Worker
+
+groundflare's workerd config now emits one adapter Worker service per
+R2 binding. The adapter translates workerd's internal R2 wire protocol
+into S3 REST calls and back; user code is completely unaware:
+
+```jsonc
+// Default — local SeaweedFS sidecar, anonymous mode
+"r2_buckets": [
+  { "binding": "MEDIA", "bucket_name": "uploads" }
+]
+
+// Hybrid — point at B2 / Wasabi / real R2 / anywhere S3-compatible
+"r2_buckets": [
+  {
+    "binding": "MEDIA",
+    "bucket_name": "my-bucket",
+    "groundflare": {
+      "endpoint": "https://s3.us-west-002.backblazeb2.com",
+      "region": "us-west-002",
+      "access_key_id_secret": "B2_KEY_ID",
+      "secret_access_key_secret": "B2_APP_KEY"
+    }
+  }
+]
+```
+
+All 9 R2 operations supported: `head` / `get` / `put` / `delete` /
+`list` + `createMultipartUpload` / `uploadPart` /
+`completeMultipartUpload` / `abortMultipartUpload`. R2HttpFields,
+customFields, conditional headers (etagMatches / etagDoesNotMatch /
+uploadedBefore / uploadedAfter), range requests, storage class, AWS
+error-code → R2 v4-code mapping — all round-trip. Streaming PUT /
+uploadPart through the adapter without buffering (verified with 1 MB
++ 5 MB payloads in tests).
+
+### New: SeaweedFS sidecar
+
+Workerd-track bootstraps now install SeaweedFS v4.20 (+ ~30 MB binary
+download, ~50 MB idle RAM). A `groundflare-r2.service` systemd unit
+runs it on 127.0.0.1:8333 with `Before=groundflare-worker.service` so
+workerd's first start always sees the sidecar ready. Weed's default
+volume server port (8080) collided with workerd's listen port; the
+unit explicitly pins `master.port=9333 volume.port=8088
+filer.port=8888` to prevent that regression from surfacing again.
+Bun-track bootstraps skip weed (Bun adapter still talks to external S3
+directly; see Deferred below).
+
+`deploy` detects R2 bindings and:
+
+- Runs esbuild once per deploy to produce the adapter Worker bundle;
+  embeds it in the generated capnp via `inline`.
+- Resolves `*_secret` references from `FileSecretStore`
+  (~/.config/groundflare/secrets.json) and injects plaintext values as
+  adapter env bindings. Mixed-presence credentials rejected at
+  config-read time.
+- Idempotently pre-creates each bucket on the local sidecar (weed's
+  anonymous mode refuses AccessDenied on first-PUT-to-missing-bucket).
+
+### Testing
+
+1002 tests across three tiers:
+
+- **L1** (`test/unit/runtime/workerd/r2/`, 126 tests): pure-function
+  codec + mapping coverage. Wire-protocol edge cases (malformed JSON,
+  body shorter than declared, streaming PUT chunk straddling metadata/
+  payload boundary, forward-compat unknown op methods); conditional
+  discriminator forms; AWS → R2 error code precedence; list XML quirks.
+- **L2** (`test/integration/r2-adapter/`, 27 tests): real workerd
+  binary driving the real adapter Worker against a Node `http.Server`
+  mocking S3. Catches wire bugs no pure-function test can — specifically
+  the GET-header / PUT-body-prefix asymmetry that cost two hours during
+  the PoC. Covers full multipart sequence, large-object streaming,
+  every S3 error-code mapping, Unicode keys.
+- **L3** (`test/e2e/r2/`, 14 tests): real workerd + real adapter + real
+  SeaweedFS. Downloads + caches the weed binary for the current
+  platform (`.cache/weed-4.20-<arch>`), verifies actual disk
+  persistence, round-trips 5 MB objects, exercises full multipart
+  upload end-to-end.
+
+### Bug fixes
+
+- `atomicInstall`'s `groundflareOwnedDirs` now includes per-binding D1
+  and KV state dirs. workerd's localDisk services refuse to start if
+  their path is missing; the fix adds them to the same mkdir script
+  that sets up worker bundle dirs. Originally discovered during the
+  v0.4 emdash live validation.
+
+### Deferred to v0.6
+
+- The existing Bun R2 adapter still hits CF R2 passthrough, not the
+  local SeaweedFS sidecar. Matching the workerd-track defaults requires
+  reshaping the Bun deploy pipeline and shared S3 client helpers —
+  tracked with the rest of the Bun parity gap (DO, WorkerLoader, Cache
+  API).
+- SigV4 payload signing for streaming PUTs uses `UNSIGNED-PAYLOAD`; the
+  headers are still authenticated so the wire remains tamper-evident,
+  but a future revision will add chunked signing for operators who
+  need end-to-end payload integrity over untrusted paths.
+
 ## v0.4.0 — DigitalOcean provider, framework support, WorkerLoader
 
 The headline: **groundflare deploys real-world frameworks now.** Astro

@@ -9,7 +9,7 @@
 
 Run any Cloudflare Worker on your own hardware. Same code, your machine, no vendor lock-in.
 
-**Status** — v0.4 is the current release. Two runtime tracks from one CLI: **Mirror** (workerd, zero source change, bug-for-bug CF semantics) and **Bun** (`Bun.serve` + `bun:sqlite` KV/D1 + S3-compat R2, 7K–9K rps/binding on a $6 VPS). v0.4 adds the DigitalOcean provider (live-validated end-to-end), framework support via wrangler-native `[build]` + `[assets]` + `[[routes]] custom_domain`, auto-detected package manager, and the `WorkerLoader` binding for plugin sandboxing — apps like emdash CMS that use CF's "Workers for Platforms" pattern run unmodified. Providers: Hetzner, DigitalOcean, Linode (Vultr planned). OIDC-published with SLSA provenance.
+**Status** — v0.5 is the current release. Two runtime tracks from one CLI: **Mirror** (workerd, zero source change, bug-for-bug CF semantics) and **Bun** (`Bun.serve` + `bun:sqlite` KV/D1 + S3-compat R2, 7K–9K rps/binding on a $6 VPS). v0.5 ships self-hosted R2: a SeaweedFS sidecar installs with `groundflare up` and `env.MEDIA.put/get/...` works zero-config — or point any bucket at B2/Wasabi/Tigris/MinIO/real R2 via an `[r2_buckets.groundflare]` block with secret-resolved SigV4 creds. Live-validated on a 1 GB DO droplet; full R2 surface incl. multipart + conditional + range + metadata round-trip, 1002 tests across L1 pure-function / L2 workerd-driven / L3 real-SeaweedFS layers. v0.4 added the DigitalOcean provider, framework support via wrangler-native `[build]` + `[assets]` + `[[routes]] custom_domain`, auto-detected package manager, and the `WorkerLoader` binding for plugin sandboxing — apps like emdash CMS that use CF's "Workers for Platforms" pattern run unmodified. Providers: Hetzner, DigitalOcean, Linode (Vultr planned). OIDC-published with SLSA provenance.
 
 ## Quick start
 
@@ -71,7 +71,7 @@ Blockers the analyzer refuses to migrate (stay on Mirror): `HTMLRewriter`, `WebS
 | Workers runtime | ✅ v0.1 | ✅ v0.2 | workerd / Bun.serve |
 | KV | ✅ v0.1 | ✅ v0.2 | SQLite (WAL, embedded, optional shards=N) |
 | D1 | ✅ v0.1 | ✅ v0.2 | node:sqlite / bun:sqlite |
-| R2 | ✅ v0.1 | ✅ v0.2 | passthrough to Cloudflare R2 (default) · SeaweedFS (self-host) |
+| R2 | ✅ v0.5 | ✅ v0.2 | SeaweedFS sidecar (default) · BYO S3 endpoint (B2/Wasabi/real R2/…) · passthrough (Bun) |
 | Durable Objects | ✅ v0.1 | ❌ Mirror-only | workerd native `ctx.storage` |
 | Cache API | ✅ v0.1 | ⚠️ v0.3 | in-memory |
 | Service Bindings | ✅ v0.1 | ⚠️ v0.4 | same-process dispatch |
