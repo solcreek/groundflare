@@ -15,6 +15,7 @@
 import { DigitalOceanProvider } from './digitalocean.js'
 import { HetznerProvider } from './hetzner.js'
 import { LinodeProvider } from './linode.js'
+import { VultrProvider } from './vultr.js'
 import type { HttpProviderOptions } from './http-base.js'
 import type { Provider, ProviderName } from './types.js'
 
@@ -24,9 +25,7 @@ export const PROVIDER_REGISTRY: Readonly<Partial<Record<ProviderName, ProviderFa
   hetzner: (opts) => new HetznerProvider(opts),
   digitalocean: (opts) => new DigitalOceanProvider(opts),
   linode: (opts) => new LinodeProvider(opts),
-  // `vultr`: README lists it as planned. ProviderName includes it so
-  // config validation and CLI help stay consistent; attempting to use it
-  // throws the "not implemented" path below.
+  vultr: (opts) => new VultrProvider(opts),
 }
 
 export class UnknownProviderError extends Error {

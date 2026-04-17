@@ -7,6 +7,9 @@ export type { HetznerClientOptions } from './hetzner.js'
 export { LinodeProvider } from './linode.js'
 export type { LinodeClientOptions } from './linode.js'
 
+export { VultrProvider } from './vultr.js'
+export type { VultrClientOptions } from './vultr.js'
+
 export { HttpProvider } from './http-base.js'
 export type { HttpProviderOptions } from './http-base.js'
 

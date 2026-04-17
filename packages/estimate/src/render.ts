@@ -141,6 +141,8 @@ function providerDisplayName(provider: string): string {
       return 'DigitalOcean'
     case 'linode':
       return 'Linode'
+    case 'vultr':
+      return 'Vultr'
     case 'hetzner':
       return 'Hetzner'
     default:

@@ -59,7 +59,7 @@ export type Profile =
 
 export type HetznerTier = 'cx22' | 'cx32' | 'cx42' | 'cx52'
 
-export type TargetProvider = 'hetzner' | 'digitalocean' | 'linode'
+export type TargetProvider = 'hetzner' | 'digitalocean' | 'linode' | 'vultr'
 
 export type Confidence = 'high' | 'medium' | 'low'
 
@@ -78,6 +78,7 @@ export interface Prices {
   readonly hetzner: Record<string, VPSTierSpec>
   readonly digitalocean: Record<string, VPSTierSpec>
   readonly linode: Record<string, VPSTierSpec>
+  readonly vultr: Record<string, VPSTierSpec>
   readonly extras: ExtrasPrices
 }
 
@@ -108,6 +109,7 @@ export interface ExtrasPrices {
   readonly hetzner_egress_overage_per_tb: number
   readonly do_egress_overage_per_tb: number
   readonly linode_egress_overage_per_tb: number
+  readonly vultr_egress_overage_per_tb: number
   readonly restic_b2_monthly_flat: number
   readonly bunny_cdn_per_gb: number
 }

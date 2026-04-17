@@ -47,6 +47,7 @@ function parseArgs(argv: readonly string[]): ParsedArgs {
       const v = argv[++i]!
       if (v === 'digitalocean' || v === 'do') provider = 'digitalocean'
       else if (v === 'linode') provider = 'linode'
+      else if (v === 'vultr') provider = 'vultr'
       else if (v === 'hetzner') provider = 'hetzner'
     }
   }
@@ -56,12 +57,12 @@ function parseArgs(argv: readonly string[]): ParsedArgs {
 function printHelp(): void {
   process.stdout.write(
     [
-      'Usage: groundflare-estimate [--provider hetzner|do|linode] [--no-live] [--json]',
+      'Usage: groundflare-estimate [--provider hetzner|do|linode|vultr] [--no-live] [--json]',
       '',
       'Compare your Cloudflare usage cost against a self-hosted VPS.',
       '',
       'Flags:',
-      '  --provider <p>  Target VPS provider: hetzner (default), do/digitalocean, or linode.',
+      '  --provider <p>  Target VPS provider: hetzner (default), do/digitalocean, linode, or vultr.',
       '  --no-live       Skip live pricing refresh; use the baked table only.',
       '  --json          Emit JSON to stdout instead of the ASCII summary.',
       '  -h, --help      Show this help.',
@@ -70,6 +71,7 @@ function printHelp(): void {
       '  HCLOUD_TOKEN     Hetzner Cloud API token. Enables live pricing.',
       '  DO_API_KEY       DigitalOcean API token. Enables live pricing.',
       '  LINODE_TOKEN     Linode API token. Enables live pricing.',
+      '  VULTR_API_KEY    Vultr API key. Enables live pricing.',
       '',
     ].join('\n'),
   )

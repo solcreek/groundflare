@@ -6,8 +6,10 @@ import {
   LinodeProvider,
   PROVIDER_REGISTRY,
   UnknownProviderError,
+  VultrProvider,
   createProvider,
   listImplementedProviders,
+  type ProviderName,
 } from '../../../src/provider/index.js'
 
 describe('createProvider', () => {
@@ -29,18 +31,29 @@ describe('createProvider', () => {
     expect(p.name).toBe('linode')
   })
 
-  it('throws UnknownProviderError for a name that has no implementation yet', () => {
-    expect(() => createProvider('vultr', { token: 't' })).toThrow(
+  it('returns a VultrProvider for name="vultr"', () => {
+    const p = createProvider('vultr', { token: 't' })
+    expect(p).toBeInstanceOf(VultrProvider)
+    expect(p.name).toBe('vultr')
+  })
+
+  it('throws UnknownProviderError for a name outside the supported set', () => {
+    // Every ProviderName in the union is now implemented — reach
+    // outside it to exercise the UnknownProviderError path.
+    const bogus = 'aws' as ProviderName
+    expect(() => createProvider(bogus, { token: 't' })).toThrow(
       UnknownProviderError,
     )
     try {
-      createProvider('vultr', { token: 't' })
+      createProvider(bogus, { token: 't' })
     } catch (err) {
       expect(err).toBeInstanceOf(UnknownProviderError)
-      expect((err as UnknownProviderError).providerName).toBe('vultr')
-      expect((err as Error).message).toContain('vultr')
+      expect((err as UnknownProviderError).providerName).toBe('aws')
+      expect((err as Error).message).toContain('aws')
       // Error lists what IS supported, not what isn't.
-      expect((err as Error).message).toMatch(/hetzner|digitalocean|linode/)
+      expect((err as Error).message).toMatch(
+        /hetzner|digitalocean|linode|vultr/,
+      )
     }
   })
 
@@ -52,13 +65,12 @@ describe('createProvider', () => {
 })
 
 describe('listImplementedProviders', () => {
-  it('returns only names that have a factory in the registry', () => {
+  it('returns every name in the registry', () => {
     const names = listImplementedProviders()
     expect(names).toContain('hetzner')
     expect(names).toContain('digitalocean')
     expect(names).toContain('linode')
-    // Planned-but-unimplemented providers are absent.
-    expect(names).not.toContain('vultr')
+    expect(names).toContain('vultr')
   })
 
   it('stays in sync with PROVIDER_REGISTRY', () => {

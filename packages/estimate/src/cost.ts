@@ -38,6 +38,15 @@ const LINODE_TIERS: readonly string[] = [
   'g6-dedicated-4',
   'g6-standard-6',
 ]
+const VULTR_TIERS: readonly string[] = [
+  'vc2-1c-1gb',
+  'vc2-1c-2gb',
+  'vc2-2c-2gb',
+  'vc2-2c-4gb',
+  'vc2-4c-8gb',
+  'vc2-6c-16gb',
+  'vc2-8c-32gb',
+]
 
 /** ─── Classification ─────────────────────────────────────────── */
 
@@ -92,6 +101,8 @@ function tierList(provider: TargetProvider): readonly string[] {
       return DO_TIERS
     case 'linode':
       return LINODE_TIERS
+    case 'vultr':
+      return VULTR_TIERS
     case 'hetzner':
       return HETZNER_TIERS
   }
@@ -103,6 +114,8 @@ function tierTable(provider: TargetProvider, prices: Prices): Record<string, VPS
       return prices.digitalocean
     case 'linode':
       return prices.linode
+    case 'vultr':
+      return prices.vultr
     case 'hetzner':
       return prices.hetzner
   }
@@ -311,6 +324,8 @@ function providerLabel(provider: TargetProvider): string {
       return 'DigitalOcean'
     case 'linode':
       return 'Linode'
+    case 'vultr':
+      return 'Vultr'
     case 'hetzner':
       return 'Hetzner'
   }
@@ -322,6 +337,8 @@ function egressOverageRate(provider: TargetProvider, prices: Prices): number {
       return prices.extras.do_egress_overage_per_tb
     case 'linode':
       return prices.extras.linode_egress_overage_per_tb
+    case 'vultr':
+      return prices.extras.vultr_egress_overage_per_tb
     case 'hetzner':
       return prices.extras.hetzner_egress_overage_per_tb
   }

@@ -9,7 +9,7 @@
 
 Run any Cloudflare Worker on your own hardware. Same code, your machine, no vendor lock-in.
 
-**Status** — v0.5 is the current release. Two runtime tracks from one CLI: **Mirror** (workerd, zero source change, bug-for-bug CF semantics) and **Bun** (`Bun.serve` + `bun:sqlite` KV/D1 + S3-compat R2, 7K–9K rps/binding on a $6 VPS). v0.5 ships self-hosted R2: a SeaweedFS sidecar installs with `groundflare up` and `env.MEDIA.put/get/...` works zero-config — or point any bucket at B2/Wasabi/Tigris/MinIO/real R2 via an `[r2_buckets.groundflare]` block with secret-resolved SigV4 creds. Live-validated on a 1 GB DO droplet; full R2 surface incl. multipart + conditional + range + metadata round-trip, 1002 tests across L1 pure-function / L2 workerd-driven / L3 real-SeaweedFS layers. v0.4 added the DigitalOcean provider, framework support via wrangler-native `[build]` + `[assets]` + `[[routes]] custom_domain`, auto-detected package manager, and the `WorkerLoader` binding for plugin sandboxing — apps like emdash CMS that use CF's "Workers for Platforms" pattern run unmodified. Providers: Hetzner, DigitalOcean, Linode (Vultr planned). OIDC-published with SLSA provenance.
+**Status** — v0.5 is the current release. Two runtime tracks from one CLI: **Mirror** (workerd, zero source change, bug-for-bug CF semantics) and **Bun** (`Bun.serve` + `bun:sqlite` KV/D1 + S3-compat R2, 7K–9K rps/binding on a $6 VPS). v0.5 ships self-hosted R2: a SeaweedFS sidecar installs with `groundflare up` and `env.MEDIA.put/get/...` works zero-config — or point any bucket at B2/Wasabi/Tigris/MinIO/real R2 via an `[r2_buckets.groundflare]` block with secret-resolved SigV4 creds. Live-validated on a 1 GB DO droplet; full R2 surface incl. multipart + conditional + range + metadata round-trip, 1002 tests across L1 pure-function / L2 workerd-driven / L3 real-SeaweedFS layers. v0.4 added the DigitalOcean provider, framework support via wrangler-native `[build]` + `[assets]` + `[[routes]] custom_domain`, auto-detected package manager, and the `WorkerLoader` binding for plugin sandboxing — apps like emdash CMS that use CF's "Workers for Platforms" pattern run unmodified. Providers: Hetzner, DigitalOcean, Linode, Vultr. OIDC-published with SLSA provenance.
 
 ## Quick start
 
@@ -24,7 +24,7 @@ npx groundflare bun analyze
 
 # Deploy to your own VPS:
 npx groundflare up
-#   → provisions (Hetzner / DigitalOcean / Linode; Vultr planned)
+#   → provisions (Hetzner / DigitalOcean / Linode / Vultr)
 #   → runs cloud-init + installs runtime
 #   → bundles your Worker, pushes it, starts workerd/Bun under systemd
 #   → Caddy terminates TLS via Let's Encrypt

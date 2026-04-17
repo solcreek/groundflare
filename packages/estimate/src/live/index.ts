@@ -11,6 +11,7 @@ import type { PriceSource, Prices, VPSTierSpec } from '../types.js'
 import { fetchDOPricing, DOPricingError } from './digitalocean.js'
 import { fetchHetznerPricing, HetznerPricingError } from './hetzner.js'
 import { fetchLinodePricing, LinodePricingError } from './linode.js'
+import { fetchVultrPricing, VultrPricingError } from './vultr.js'
 
 export { fetchDOPricing, DOPricingError } from './digitalocean.js'
 export type { FetchDOPricingOptions, DOLivePrices } from './digitalocean.js'
@@ -18,6 +19,8 @@ export { fetchHetznerPricing, HetznerPricingError } from './hetzner.js'
 export type { FetchHetznerOptions, HetznerLivePrices } from './hetzner.js'
 export { fetchLinodePricing, LinodePricingError } from './linode.js'
 export type { FetchLinodePricingOptions, LinodeLivePrices } from './linode.js'
+export { fetchVultrPricing, VultrPricingError } from './vultr.js'
+export type { FetchVultrPricingOptions, VultrLivePrices } from './vultr.js'
 
 export interface RefreshPricesOptions {
   readonly baked: Prices
@@ -41,6 +44,7 @@ export async function refreshPrices(
     sources.push({ provider: 'hetzner', kind: 'baked', reason: 'live disabled' })
     sources.push({ provider: 'digitalocean', kind: 'baked', reason: 'live disabled' })
     sources.push({ provider: 'linode', kind: 'baked', reason: 'live disabled' })
+    sources.push({ provider: 'vultr', kind: 'baked', reason: 'live disabled' })
     return { prices, sources }
   }
 
@@ -119,12 +123,35 @@ export async function refreshPrices(
     }
   }
 
+  // ─── Vultr ──────────────────────────────────────────────────
+  const vultrToken = await opts.secrets.get('provider.vultr.token')
+  if (vultrToken === null || vultrToken.length === 0) {
+    sources.push({ provider: 'vultr', kind: 'baked', reason: 'no token configured' })
+  } else {
+    try {
+      const live = await fetchVultrPricing({
+        token: vultrToken,
+        ...(opts.fetchImpl !== undefined ? { fetchImpl: opts.fetchImpl } : {}),
+      })
+      prices = mergeLiveTiers(prices, 'vultr', live.tiers)
+      sources.push({ provider: 'vultr', kind: 'live', fetchedAt: live.fetchedAt })
+    } catch (err) {
+      const reason =
+        err instanceof VultrPricingError
+          ? `${err.code}: ${err.message}`
+          : err instanceof Error
+            ? err.message
+            : String(err)
+      sources.push({ provider: 'vultr', kind: 'baked', reason })
+    }
+  }
+
   return { prices, sources }
 }
 
 function mergeLiveTiers(
   prices: Prices,
-  provider: 'hetzner' | 'digitalocean' | 'linode',
+  provider: 'hetzner' | 'digitalocean' | 'linode' | 'vultr',
   liveTiers: Partial<Record<string, VPSTierSpec>>,
 ): Prices {
   const bakedTable = prices[provider]

@@ -61,4 +61,5 @@ const ENV_KEY_MAP: Readonly<Record<string, readonly string[]>> = {
   'provider.hetzner.token': ['HCLOUD_TOKEN', 'GROUNDFLARE_HETZNER_TOKEN'],
   'provider.digitalocean.token': ['DO_API_KEY', 'DIGITALOCEAN_TOKEN', 'GROUNDFLARE_DO_TOKEN'],
   'provider.linode.token': ['LINODE_TOKEN', 'LINODE_API_TOKEN', 'GROUNDFLARE_LINODE_TOKEN'],
+  'provider.vultr.token': ['VULTR_API_KEY', 'VULTR_TOKEN', 'GROUNDFLARE_VULTR_TOKEN'],
 }

@@ -65,11 +65,25 @@ export const BAKED_PRICES: Prices = {
     'g6-dedicated-4': { price: 72, vcpu: 4, ram_gb: 8, disk_gb: 160, traffic_tb: 5 },
     'g6-standard-6': { price: 96, vcpu: 8, ram_gb: 16, disk_gb: 320, traffic_tb: 8 },
   },
+  vultr: {
+    // Vultr Cloud Compute (vc2) shared-CPU tiers. Prices from Vultr's
+    // public plan catalog; ordered cheapest-first so chooseTier picks
+    // the smallest fitting one.
+    'vc2-1c-1gb': { price: 6, vcpu: 1, ram_gb: 1, disk_gb: 25, traffic_tb: 1 },
+    'vc2-1c-2gb': { price: 12, vcpu: 1, ram_gb: 2, disk_gb: 55, traffic_tb: 2 },
+    'vc2-2c-2gb': { price: 18, vcpu: 2, ram_gb: 2, disk_gb: 65, traffic_tb: 3 },
+    'vc2-2c-4gb': { price: 24, vcpu: 2, ram_gb: 4, disk_gb: 80, traffic_tb: 3 },
+    'vc2-4c-8gb': { price: 48, vcpu: 4, ram_gb: 8, disk_gb: 160, traffic_tb: 4 },
+    'vc2-6c-16gb': { price: 96, vcpu: 6, ram_gb: 16, disk_gb: 320, traffic_tb: 5 },
+    'vc2-8c-32gb': { price: 192, vcpu: 8, ram_gb: 32, disk_gb: 640, traffic_tb: 6 },
+  },
   extras: {
     hetzner_egress_overage_per_tb: 1.0,
     do_egress_overage_per_tb: 10.24,
     // Linode: $0.005/GB outbound above the plan allowance = $5/TB.
     linode_egress_overage_per_tb: 5.0,
+    // Vultr: $0.01/GB outbound above plan = $10/TB.
+    vultr_egress_overage_per_tb: 10.0,
     restic_b2_monthly_flat: 3.0,
     bunny_cdn_per_gb: 0.005,
   },
