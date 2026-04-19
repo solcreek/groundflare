@@ -121,6 +121,23 @@ const METRIC_DURATION_COUNT =
   'groundflare_worker_request_duration_seconds_count'
 const METRIC_ERRORS_TOTAL = 'groundflare_worker_errors_total'
 
+const METRIC_KV_OPS_TOTAL = 'groundflare_binding_kv_ops_total'
+const METRIC_D1_OPS_TOTAL = 'groundflare_binding_d1_ops_total'
+const METRIC_R2_OPS_TOTAL = 'groundflare_binding_r2_ops_total'
+
+/**
+ * Binding-level rollup for one (worker, binding kind) pair. Values are
+ * sums across all individual bindings + status classes; the status
+ * split is exposed via `errCount` so UIs can flag failures without
+ * needing the label-raw series.
+ */
+export interface BindingRollup {
+  /** "kv" | "d1" | "r2" */
+  readonly kind: 'kv' | 'd1' | 'r2'
+  readonly opCount: number
+  readonly errCount: number
+}
+
 export interface WorkerMetrics {
   readonly worker: string
   readonly requestCount: number
@@ -134,6 +151,12 @@ export interface WorkerMetrics {
     readonly p95: number
     readonly p99: number
   } | null
+  /**
+   * Binding op rollups, empty if the worker has no bindings that emit
+   * metrics (or if the scrape missed the binding-level endpoints). Order
+   * matches the emit order in the Router's fan-out: kv, d1, r2.
+   */
+  readonly bindings: readonly BindingRollup[]
 }
 
 /**
@@ -152,6 +175,8 @@ export function aggregateByWorker(series: readonly PromSeries[]): WorkerMetrics[
       infBucket: number | null
       sum: number
       count: number
+      /** key "kv"|"d1"|"r2" → { total, err }. Populated from binding-level scrapes. */
+      bindingTotals: Map<'kv' | 'd1' | 'r2', { total: number; err: number }>
     }
   >()
 
@@ -165,15 +190,47 @@ export function aggregateByWorker(series: readonly PromSeries[]): WorkerMetrics[
         infBucket: null,
         sum: 0,
         count: 0,
+        bindingTotals: new Map(),
       }
       byWorker.set(worker, e)
     }
     return e
   }
 
+  function bumpBinding(
+    worker: string,
+    kind: 'kv' | 'd1' | 'r2',
+    status: string,
+    value: number,
+  ): void {
+    const e = entry(worker)
+    let t = e.bindingTotals.get(kind)
+    if (!t) {
+      t = { total: 0, err: 0 }
+      e.bindingTotals.set(kind, t)
+    }
+    t.total += value
+    if (status === 'err') t.err += value
+  }
+
   for (const s of series) {
     const worker = s.labels.worker
     if (worker === undefined) continue
+
+    // Binding-level ops counters — distinct metric names per kind.
+    if (s.name === METRIC_KV_OPS_TOTAL) {
+      bumpBinding(worker, 'kv', s.labels.status ?? 'ok', s.value)
+      continue
+    }
+    if (s.name === METRIC_D1_OPS_TOTAL) {
+      bumpBinding(worker, 'd1', s.labels.status ?? 'ok', s.value)
+      continue
+    }
+    if (s.name === METRIC_R2_OPS_TOTAL) {
+      bumpBinding(worker, 'r2', s.labels.status ?? 'ok', s.value)
+      continue
+    }
+
     const e = entry(worker)
 
     if (s.name === METRIC_REQUESTS_TOTAL) {
@@ -218,6 +275,16 @@ export function aggregateByWorker(series: readonly PromSeries[]): WorkerMetrics[
     let errorCount = 0
     for (const v of e.errorCounts.values()) errorCount += v
 
+    const bindings: BindingRollup[] = []
+    // Stable order regardless of scrape order, so the CLI table lines
+    // up across deploys even when binding mix changes.
+    for (const kind of ['kv', 'd1', 'r2'] as const) {
+      const t = e.bindingTotals.get(kind)
+      if (t !== undefined) {
+        bindings.push({ kind, opCount: t.total, errCount: t.err })
+      }
+    }
+
     out.push({
       worker,
       requestCount,
@@ -225,6 +292,7 @@ export function aggregateByWorker(series: readonly PromSeries[]): WorkerMetrics[
       errorCount,
       byErrorKind: Object.fromEntries(e.errorCounts),
       latencyMs,
+      bindings,
     })
   }
   out.sort((a, b) => a.worker.localeCompare(b.worker))
@@ -272,13 +340,35 @@ export function renderMetricsTable(workers: readonly WorkerMetrics[]): string {
     return '  no tenant activity recorded yet\n'
   }
   const rows: string[][] = [
-    ['worker', 'reqs', 'err', '2xx/3xx/4xx/5xx', 'p50 ms', 'p95 ms', 'p99 ms'],
+    [
+      'worker',
+      'reqs',
+      'err',
+      '2xx/3xx/4xx/5xx',
+      'p50 ms',
+      'p95 ms',
+      'p99 ms',
+      'bindings',
+    ],
   ]
   for (const w of workers) {
     const classes = ['2xx', '3xx', '4xx', '5xx']
       .map((c) => String(Math.trunc(w.byStatusClass[c] ?? 0)))
       .join('/')
     const lat = w.latencyMs
+    // Binding summary: "kv:5/1 d1:2/0" — ops total, errs after slash.
+    // Absent when no binding scrapes landed for this worker.
+    const bindings =
+      w.bindings.length === 0
+        ? '—'
+        : w.bindings
+            .map(
+              (b) =>
+                `${b.kind}:${Math.trunc(b.opCount)}${
+                  b.errCount > 0 ? `/${Math.trunc(b.errCount)}` : ''
+                }`,
+            )
+            .join(' ')
     rows.push([
       w.worker,
       String(Math.trunc(w.requestCount)),
@@ -287,6 +377,7 @@ export function renderMetricsTable(workers: readonly WorkerMetrics[]): string {
       lat ? lat.p50.toFixed(1) : '—',
       lat ? lat.p95.toFixed(1) : '—',
       lat ? lat.p99.toFixed(1) : '—',
+      bindings,
     ])
   }
   const widths = rows[0]!.map((_, col) =>
@@ -295,7 +386,11 @@ export function renderMetricsTable(workers: readonly WorkerMetrics[]): string {
   const out: string[] = []
   for (const r of rows) {
     const padded = r
-      .map((cell, i) => (i === 0 ? cell.padEnd(widths[i]!) : cell.padStart(widths[i]!)))
+      .map((cell, i) =>
+        i === 0 || i === r.length - 1
+          ? cell.padEnd(widths[i]!)
+          : cell.padStart(widths[i]!),
+      )
       .join('  ')
     out.push('  ' + padded)
   }

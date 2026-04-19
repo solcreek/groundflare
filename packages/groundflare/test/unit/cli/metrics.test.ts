@@ -115,6 +115,34 @@ describe('aggregateByWorker', () => {
     expect(agg.map((w) => w.worker)).toEqual(['a', 'm', 'z'])
   })
 
+  it('rolls up binding-level series (kv/d1/r2) per worker with err split', () => {
+    const agg = aggregateByWorker(
+      parsePromText(
+        [
+          // Router-level so the worker gets a base entry too.
+          'groundflare_worker_requests_total{status_class="2xx",worker="api"} 3',
+          // KV: 5 ok + 1 err across two bindings → kv total 6, err 1.
+          'groundflare_binding_kv_ops_total{binding="CACHE",op="get",status="ok",worker="api"} 3',
+          'groundflare_binding_kv_ops_total{binding="CACHE",op="put",status="ok",worker="api"} 2',
+          'groundflare_binding_kv_ops_total{binding="CACHE",op="get",status="err",worker="api"} 1',
+          // D1: 2 ok only.
+          'groundflare_binding_d1_ops_total{binding="DB",op="run",status="ok",worker="api"} 2',
+          // R2 attributed to a different worker — must not leak.
+          'groundflare_binding_r2_ops_total{binding="MEDIA",op="get",status="ok",worker="cdn"} 4',
+        ].join('\n'),
+      ),
+    )
+    const api = agg.find((w) => w.worker === 'api')!
+    expect(api.bindings).toEqual([
+      { kind: 'kv', opCount: 6, errCount: 1 },
+      { kind: 'd1', opCount: 2, errCount: 0 },
+    ])
+    const cdn = agg.find((w) => w.worker === 'cdn')!
+    expect(cdn.bindings).toEqual([
+      { kind: 'r2', opCount: 4, errCount: 0 },
+    ])
+  })
+
   it('skips series without a worker label', () => {
     const agg = aggregateByWorker(
       parsePromText(
@@ -191,6 +219,10 @@ describe('renderMetricsTable', () => {
         errorCount: 1,
         byErrorKind: { uncaught: 1 },
         latencyMs: { p50: 2.4, p95: 45, p99: 120 },
+        bindings: [
+          { kind: 'kv', opCount: 30, errCount: 0 },
+          { kind: 'd1', opCount: 5, errCount: 1 },
+        ],
       },
     ])
     expect(table).toContain('worker')
@@ -199,10 +231,13 @@ describe('renderMetricsTable', () => {
     // 3xx/4xx are absent (rendered as 0).
     expect(table).toContain('11/0/0/1')
     expect(table).toContain('2.4')
+    // Binding rollup: ops total, errs after slash when > 0.
+    expect(table).toContain('kv:30')
+    expect(table).toContain('d1:5/1')
     expect(table).toMatch(/\n$/)
   })
 
-  it('renders dashes when latencyMs is null', () => {
+  it('renders dashes when latencyMs is null and bindings are empty', () => {
     const table = renderMetricsTable([
       {
         worker: 'idle',
@@ -211,6 +246,7 @@ describe('renderMetricsTable', () => {
         errorCount: 0,
         byErrorKind: {},
         latencyMs: null,
+        bindings: [],
       },
     ])
     expect(table).toMatch(/idle\s.*—\s+—\s+—/)

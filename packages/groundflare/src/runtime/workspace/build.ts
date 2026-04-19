@@ -32,7 +32,11 @@ import {
   generateTenantD1Shim,
 } from '../d1/adapter-module.js'
 import { TENANT_METRICS_SHIM_SOURCE } from '../metrics/tenant-shim-source.js'
-import { generateRouterJs, routerBindingName } from './router.js'
+import {
+  generateRouterJs,
+  routerBindingName,
+  type InternalScrapeTarget,
+} from './router.js'
 import type {
   R2BindingSpec,
   VarValue,
@@ -181,17 +185,60 @@ export function buildCapnpFromWorkspace(
 
 // ─── Router service ────────────────────────────────────────────────
 
+/**
+ * Derive the env-binding name the Router uses to reach one R2 adapter
+ * service for internal metric scraping. Must be a valid JS identifier,
+ * unique across every (worker, binding) pair in the workspace.
+ */
+function r2AdapterMetricsBinding(worker: string, binding: string): string {
+  return (
+    'METRICS_R2_' +
+    worker.toUpperCase().replace(/-/g, '_') +
+    '_' +
+    binding.toUpperCase().replace(/-/g, '_')
+  )
+}
+
 function buildRouterService(
   manifest: WorkspaceManifest,
   opts: BuildOptions,
 ): CapnpService {
   // Every worker gets a service binding from the router so cron dispatch
-  // can reach workers without a domain too.
+  // can reach workers without a domain too. The same binding doubles as
+  // the Router's /__metrics fan-out target for tenants with shims.
   const bindings: CapnpBinding[] = manifest.workers.map((w) => ({
     name: routerBindingName(w.name),
     kind: 'service',
     service: tenantServiceName(w.name),
   }))
+
+  // Fan-out list: tenant workers that have a KV or D1 binding (and
+  // therefore a shim that responds to /__gf_metrics), plus one entry
+  // per R2 adapter service.
+  const scrapeTargets: InternalScrapeTarget[] = []
+  for (const w of manifest.workers) {
+    const hasShim =
+      (w.kvNamespaces?.length ?? 0) > 0 ||
+      (w.d1Databases?.length ?? 0) > 0
+    if (hasShim) {
+      scrapeTargets.push({
+        bindingName: routerBindingName(w.name),
+        label: w.name,
+      })
+    }
+    for (const r2 of w.r2Buckets ?? []) {
+      const bindingName = r2AdapterMetricsBinding(w.name, r2.binding)
+      bindings.push({
+        name: bindingName,
+        kind: 'service',
+        service: r2AdapterServiceName(w.name, r2.binding),
+      })
+      scrapeTargets.push({
+        bindingName,
+        label: `${w.name}:${r2.binding}`,
+      })
+    }
+  }
 
   const worker: CapnpWorker = {
     modules: [
@@ -201,6 +248,7 @@ function buildRouterService(
           kind: 'esModule',
           inline: generateRouterJs(manifest.workers, {
             version: opts.groundflareVersion,
+            scrapeTargets,
           }),
         },
       },
@@ -312,7 +360,11 @@ function buildTenantService(
       shards: kv.shards ?? 1,
     }))
     const d1Names = (worker.d1Databases ?? []).map((d1) => d1.binding)
-    const shimSource = generateTenantBindingShim({ kvBindings, d1Names })
+    const shimSource = generateTenantBindingShim({
+      kvBindings,
+      d1Names,
+      workerName: worker.name,
+    })
     modules.push({
       name: DEFAULT_TENANT_MODULE_NAME,
       source: { kind: 'esModule', inline: shimSource },
@@ -398,14 +450,15 @@ function buildTenantService(
 function generateTenantBindingShim(opts: {
   kvBindings: readonly { name: string; shards: number }[]
   d1Names: readonly string[]
+  workerName: string
 }): string {
   // If only one kind of binding is present, defer to the dedicated shim
   // generator — they each produce a complete entry module.
   if (opts.kvBindings.length > 0 && opts.d1Names.length === 0) {
-    return generateTenantKvShim(opts.kvBindings)
+    return generateTenantKvShim(opts.kvBindings, { workerName: opts.workerName })
   }
   if (opts.d1Names.length > 0 && opts.kvBindings.length === 0) {
-    return generateTenantD1Shim(opts.d1Names)
+    return generateTenantD1Shim(opts.d1Names, { workerName: opts.workerName })
   }
   // Combined shim: import the user module once, wrap env with both
   // facades, forward fetch/scheduled.
@@ -424,6 +477,7 @@ function generateTenantBindingShim(opts: {
     // declared on the user module. `export *` skips `default`, which
     // the shim owns itself.
     "export * from './user.js'",
+    `const GF_WORKER_NAME = ${JSON.stringify(opts.workerName)}`,
     TENANT_METRICS_SHIM_SOURCE,
     `const KV_SHARDS = ${kvShardsLiteral}`,
     `const D1_BINDINGS = new Set(${JSON.stringify([...opts.d1Names].sort())})`,

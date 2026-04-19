@@ -185,7 +185,19 @@ function normalizeShimBinding(b: KvShimBinding): { name: string; shards: number 
  *      across N DO instances via FNV-1a 32-bit (see design/kv-sharding.md).
  *   4. Forwards fetch/scheduled/other handler invocations to the user module.
  */
-export function generateTenantKvShim(bindings: readonly KvShimBinding[]): string {
+export interface GenerateTenantKvShimOptions {
+  /**
+   * Worker name emitted as the `worker` label on every metric series.
+   * Required so aggregated scrapes can attribute binding series to the
+   * right tenant without post-processing.
+   */
+  readonly workerName: string
+}
+
+export function generateTenantKvShim(
+  bindings: readonly KvShimBinding[],
+  opts: GenerateTenantKvShimOptions,
+): string {
   const normalized = bindings.map(normalizeShimBinding)
   const shardsLiteral = JSON.stringify(
     Object.fromEntries(
@@ -204,6 +216,7 @@ import user from './user.js'
 // looks up namespace class names on the main module's export set).
 export * from './user.js'
 
+const GF_WORKER_NAME = ${JSON.stringify(opts.workerName)}
 ${TENANT_METRICS_SHIM_SOURCE}
 const KV_SHARDS = ${shardsLiteral}
 

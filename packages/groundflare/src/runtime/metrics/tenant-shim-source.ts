@@ -10,10 +10,15 @@
  *     (which serves the CLI / tests, not the Worker hot path).
  *
  * Conventions (same as the Router's own /__metrics):
- *   - Counter labels: `binding`, `op`, `status` ("ok"|"err")
- *   - Histogram labels: `binding`, `op`
+ *   - Counter labels:   `binding`, `worker`, `op`, `status` ("ok"|"err")
+ *   - Histogram labels: `binding`, `worker`, `op`
  *   - Bucket boundaries match DEFAULT_LATENCY_BUCKETS in registry.ts so
  *     dashboards that align series across router + tenant don't break.
+ *
+ * The `worker` label is emitted from a `GF_WORKER_NAME` constant that
+ * each shim generator defines right before this blob, so one scraped
+ * body can be attributed to its worker without the Router having to
+ * rewrite series at aggregation time.
  *
  * Internal endpoint contract:
  *   - Router's /__metrics handler fans out with
@@ -98,6 +103,7 @@ function gf_escapeLabel(v) {
 
 function gf_renderOps(lines, opsMap, metricName, helpText) {
   if (opsMap.size === 0) return
+  const w = gf_escapeLabel(GF_WORKER_NAME)
   lines.push('# HELP ' + metricName + ' ' + helpText)
   lines.push('# TYPE ' + metricName + ' counter')
   for (const [key, value] of opsMap) {
@@ -106,13 +112,15 @@ function gf_renderOps(lines, opsMap, metricName, helpText) {
       metricName +
         '{binding="' + gf_escapeLabel(parts[0]) +
         '",op="' + gf_escapeLabel(parts[1]) +
-        '",status="' + gf_escapeLabel(parts[2]) + '"} ' + value,
+        '",status="' + gf_escapeLabel(parts[2]) +
+        '",worker="' + w + '"} ' + value,
     )
   }
 }
 
 function gf_renderHist(lines, latMap, metricName, helpText) {
   if (latMap.size === 0) return
+  const w = gf_escapeLabel(GF_WORKER_NAME)
   lines.push('# HELP ' + metricName + ' ' + helpText)
   lines.push('# TYPE ' + metricName + ' histogram')
   for (const [key, hist] of latMap) {
@@ -121,18 +129,18 @@ function gf_renderHist(lines, latMap, metricName, helpText) {
     const o = gf_escapeLabel(parts[1])
     for (let i = 0; i < GF_LATENCY_BUCKETS.length; i++) {
       lines.push(
-        metricName + '_bucket{le="' + GF_LATENCY_BUCKETS[i] +
-          '",binding="' + b + '",op="' + o + '"} ' + hist.counts[i],
+        metricName + '_bucket{binding="' + b + '",le="' + GF_LATENCY_BUCKETS[i] +
+          '",op="' + o + '",worker="' + w + '"} ' + hist.counts[i],
       )
     }
     lines.push(
-      metricName + '_bucket{le="+Inf",binding="' + b + '",op="' + o + '"} ' + hist.count,
+      metricName + '_bucket{binding="' + b + '",le="+Inf",op="' + o + '",worker="' + w + '"} ' + hist.count,
     )
     lines.push(
-      metricName + '_sum{binding="' + b + '",op="' + o + '"} ' + hist.sum,
+      metricName + '_sum{binding="' + b + '",op="' + o + '",worker="' + w + '"} ' + hist.sum,
     )
     lines.push(
-      metricName + '_count{binding="' + b + '",op="' + o + '"} ' + hist.count,
+      metricName + '_count{binding="' + b + '",op="' + o + '",worker="' + w + '"} ' + hist.count,
     )
   }
 }

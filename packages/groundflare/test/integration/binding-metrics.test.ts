@@ -130,19 +130,20 @@ describe('integration: tenant shim /__gf_metrics endpoint', () => {
             /text\/plain; version=0\.0\.4/,
           )
 
-          // Each KV op lands as an "ok" counter under the CACHE binding.
+          // Each KV op lands as an "ok" counter under the CACHE binding,
+          // tagged with the tenant worker name so scrapes are attributable.
           expect(metrics.body).toContain(
-            'groundflare_binding_kv_ops_total{binding="CACHE",op="put",status="ok"} 1',
+            'groundflare_binding_kv_ops_total{binding="CACHE",op="put",status="ok",worker="api"} 1',
           )
           expect(metrics.body).toContain(
-            'groundflare_binding_kv_ops_total{binding="CACHE",op="get",status="ok"} 2',
+            'groundflare_binding_kv_ops_total{binding="CACHE",op="get",status="ok",worker="api"} 2',
           )
           expect(metrics.body).toContain(
-            'groundflare_binding_kv_ops_total{binding="CACHE",op="delete",status="ok"} 1',
+            'groundflare_binding_kv_ops_total{binding="CACHE",op="delete",status="ok",worker="api"} 1',
           )
-          // Histogram buckets + totals also surface per (binding, op).
+          // Histogram buckets + totals also surface per (binding, op, worker).
           expect(metrics.body).toContain(
-            'groundflare_binding_kv_duration_seconds_count{binding="CACHE",op="get"} 2',
+            'groundflare_binding_kv_duration_seconds_count{binding="CACHE",op="get",worker="api"} 2',
           )
         },
       )
@@ -204,16 +205,16 @@ describe('integration: tenant shim /__gf_metrics endpoint', () => {
           expect(metrics.status).toBe(200)
 
           expect(metrics.body).toContain(
-            'groundflare_binding_kv_ops_total{binding="CACHE",op="put",status="ok"} 1',
+            'groundflare_binding_kv_ops_total{binding="CACHE",op="put",status="ok",worker="api"} 1',
           )
           expect(metrics.body).toContain(
-            'groundflare_binding_d1_ops_total{binding="DB",op="exec",status="ok"} 1',
+            'groundflare_binding_d1_ops_total{binding="DB",op="exec",status="ok",worker="api"} 1',
           )
           expect(metrics.body).toContain(
-            'groundflare_binding_d1_ops_total{binding="DB",op="run",status="ok"} 1',
+            'groundflare_binding_d1_ops_total{binding="DB",op="run",status="ok",worker="api"} 1',
           )
           expect(metrics.body).toContain(
-            'groundflare_binding_d1_ops_total{binding="DB",op="all",status="ok"} 1',
+            'groundflare_binding_d1_ops_total{binding="DB",op="all",status="ok",worker="api"} 1',
           )
         },
       )
@@ -268,7 +269,7 @@ describe('integration: tenant shim /__gf_metrics endpoint', () => {
           // check is simply that the op registered at all — detailed
           // error tracking (probing result.success) is a follow-up.
           expect(metrics.body).toMatch(
-            /groundflare_binding_d1_ops_total\{binding="DB",op="run",status="ok"\} 1/,
+            /groundflare_binding_d1_ops_total\{binding="DB",op="run",status="ok",worker="api"\} 1/,
           )
         },
       )
