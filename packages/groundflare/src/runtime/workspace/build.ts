@@ -792,6 +792,12 @@ function buildR2AdapterService(
   const bindings: CapnpBinding[] = [
     { name: 'BUCKET_NAME', kind: 'text', value: bucketName },
     { name: 'S3_ENDPOINT', kind: 'text', value: endpoint },
+    // Labels for /__gf_metrics output so aggregated dashboards can
+    // tell series from different (worker, binding) pairs apart. The
+    // adapter service is already scoped per-pair, so these are
+    // constants from the adapter's perspective.
+    { name: 'GF_WORKER_NAME', kind: 'text', value: worker.name },
+    { name: 'GF_BINDING_NAME', kind: 'text', value: r2.binding },
   ]
   if (r2.region !== undefined) {
     bindings.push({ name: 'S3_REGION', kind: 'text', value: r2.region })

@@ -28,6 +28,10 @@ import {
   signRequest,
   type SigV4Credentials,
 } from '../../bun/adapters/sigv4.js'
+import {
+  handleInternalMetrics,
+  recordR2Op,
+} from '../../metrics/r2-adapter-metrics.js'
 
 import {
   R2WireProtocolError,
@@ -54,6 +58,13 @@ interface Env {
   S3_REGION?: string
   S3_ACCESS_KEY?: string
   S3_SECRET_KEY?: string
+  /**
+   * Tenant worker + binding names used as metric labels. Set by
+   * buildR2AdapterService so one adapter's scraped series distinguishes
+   * itself from another (worker, binding) pair's series.
+   */
+  GF_WORKER_NAME?: string
+  GF_BINDING_NAME?: string
 }
 
 const DEFAULT_REGION = 'us-east-1'
@@ -61,6 +72,12 @@ const SERVICE = 's3'
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
+    // Internal metrics endpoint — short-circuit before any R2 wire
+    // parsing. Guarded by `gf-internal` hostname, which Caddy never
+    // forwards to tenants / adapters.
+    const internal = handleInternalMetrics(request)
+    if (internal) return internal
+
     let parsed
     try {
       parsed = await parseR2Request(request)
@@ -74,9 +91,27 @@ export default {
         `wire protocol error: ${asMessage(e)}`,
       )
     }
+    const workerName = env.GF_WORKER_NAME ?? 'unknown'
+    const bindingName = env.GF_BINDING_NAME ?? 'unknown'
+    const start = Date.now()
     try {
-      return await dispatch(parsed.op, parsed.payload, env)
+      const response = await dispatch(parsed.op, parsed.payload, env)
+      recordR2Op(
+        workerName,
+        bindingName,
+        parsed.op.method,
+        Date.now() - start,
+        response.status < 400,
+      )
+      return response
     } catch (e) {
+      recordR2Op(
+        workerName,
+        bindingName,
+        parsed.op.method,
+        Date.now() - start,
+        false,
+      )
       return buildR2ErrorResponse(
         500,
         10001,

@@ -170,6 +170,10 @@ export default {
     const spec = await req.json()
     const bucket = env.MEDIA
     try {
+      if (spec.op === 'scrape-metrics') {
+        const r = await env.ADAPTER_RAW.fetch('http://gf-internal/__gf_metrics')
+        return Response.json({ ok: true, status: r.status, body: await r.text() })
+      }
       switch (spec.op) {
         case 'head':
           return Response.json({ ok: true, result: r2ObjectToJson(await bucket.head(spec.key)) })
@@ -243,6 +247,10 @@ function generateCapnp(opts: CapnpOptions): string {
   const adapterBindings: string[] = [
     `( name = "BUCKET_NAME", text = "${opts.bucket}" )`,
     `( name = "S3_ENDPOINT", text = "${opts.s3Endpoint}" )`,
+    // Labels so /__gf_metrics output distinguishes adapters. Mirror
+    // what buildR2AdapterService emits in production.
+    `( name = "GF_WORKER_NAME", text = "user" )`,
+    `( name = "GF_BINDING_NAME", text = "MEDIA" )`,
   ]
   if (cred) {
     adapterBindings.push(`( name = "S3_REGION", text = "${cred.region ?? 'us-east-1'}" )`)
@@ -257,7 +265,14 @@ const config :Workerd.Config = (
       worker = (
         compatibilityDate = "2024-09-23",
         modules = [( name = "user.js", esModule = embed "user.js" )],
-        bindings = [( name = "MEDIA", r2Bucket = "r2-adapter" )],
+        bindings = [
+          ( name = "MEDIA", r2Bucket = "r2-adapter" ),
+          # Raw service binding used by the /scrape-metrics test op so
+          # user code can hit the adapter's /__gf_metrics endpoint
+          # without going through the R2 wire protocol. In production
+          # the Router holds this binding, not user code.
+          ( name = "ADAPTER_RAW", service = "r2-adapter" ),
+        ],
       ),
     ),
     ( name = "r2-adapter",
