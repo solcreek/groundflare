@@ -17,6 +17,8 @@
  * execute it from unit tests with a JS vm.
  */
 
+import { TENANT_METRICS_SHIM_SOURCE } from '../metrics/tenant-shim-source.js'
+
 /**
  * The KvStore Durable Object class. One instance (by `idFromName('default')`)
  * per tenant-binding pair. Exposes `kvGet / kvPut / kvDelete / kvList /
@@ -202,6 +204,7 @@ import user from './user.js'
 // looks up namespace class names on the main module's export set).
 export * from './user.js'
 
+${TENANT_METRICS_SHIM_SOURCE}
 const KV_SHARDS = ${shardsLiteral}
 
 function fnv1a32(s) {
@@ -241,49 +244,55 @@ function makeFacade(doNamespace, binding) {
   const stubFor = (key) => doNamespace.get(doNamespace.idFromName(shardName(binding, key)))
   return {
     async get(key, options) {
-      const row = await stubFor(key).kvGet(key)
-      if (!row) return null
-      return decodeValue(row.value, normalizeType(options))
+      return gf_timeKv(binding, 'get', async () => {
+        const row = await stubFor(key).kvGet(key)
+        if (!row) return null
+        return decodeValue(row.value, normalizeType(options))
+      })
     },
     async getWithMetadata(key, options) {
-      const row = await stubFor(key).kvGetWithMetadata(key)
-      if (!row.value) return { value: null, metadata: null }
-      return {
-        value: decodeValue(row.value, normalizeType(options)),
-        metadata: row.metadata,
-      }
+      return gf_timeKv(binding, 'getWithMetadata', async () => {
+        const row = await stubFor(key).kvGetWithMetadata(key)
+        if (!row.value) return { value: null, metadata: null }
+        return {
+          value: decodeValue(row.value, normalizeType(options)),
+          metadata: row.metadata,
+        }
+      })
     },
     async put(key, value, options) {
-      return stubFor(key).kvPut(key, value, options)
+      return gf_timeKv(binding, 'put', () => stubFor(key).kvPut(key, value, options))
     },
     async delete(key) {
-      return stubFor(key).kvDelete(key)
+      return gf_timeKv(binding, 'delete', () => stubFor(key).kvDelete(key))
     },
     async list(options) {
-      const n = KV_SHARDS[binding] || 1
-      if (n === 1) {
-        return doNamespace.get(doNamespace.idFromName('default')).kvList(options)
-      }
-      // Phase 1 naive: iterate all shards, merge in memory, no cursor.
-      // Proper composite-cursor implementation lands in Phase 2 — see
-      // design/kv-sharding.md §List semantics.
-      if (options && options.cursor) {
-        throw new Error(
-          'KV list() pagination across shards is not yet supported (Phase 2). ' +
-          'Either set shards=1 or request a larger single page.',
+      return gf_timeKv(binding, 'list', async () => {
+        const n = KV_SHARDS[binding] || 1
+        if (n === 1) {
+          return doNamespace.get(doNamespace.idFromName('default')).kvList(options)
+        }
+        // Phase 1 naive: iterate all shards, merge in memory, no cursor.
+        // Proper composite-cursor implementation lands in Phase 2 — see
+        // design/kv-sharding.md §List semantics.
+        if (options && options.cursor) {
+          throw new Error(
+            'KV list() pagination across shards is not yet supported (Phase 2). ' +
+            'Either set shards=1 or request a larger single page.',
+          )
+        }
+        const perShard = Math.max(1, (options?.limit ?? 1000))
+        const pages = await Promise.all(
+          Array.from({ length: n }, (_, i) =>
+            doNamespace.get(doNamespace.idFromName('shard-' + i)).kvList({ ...options, limit: perShard }),
+          ),
         )
-      }
-      const perShard = Math.max(1, (options?.limit ?? 1000))
-      const pages = await Promise.all(
-        Array.from({ length: n }, (_, i) =>
-          doNamespace.get(doNamespace.idFromName('shard-' + i)).kvList({ ...options, limit: perShard }),
-        ),
-      )
-      const merged = []
-      for (const page of pages) for (const k of page.keys) merged.push(k)
-      merged.sort((a, b) => a.name < b.name ? -1 : a.name > b.name ? 1 : 0)
-      const capped = merged.slice(0, perShard)
-      return { keys: capped, list_complete: capped.length === merged.length }
+        const merged = []
+        for (const page of pages) for (const k of page.keys) merged.push(k)
+        merged.sort((a, b) => a.name < b.name ? -1 : a.name > b.name ? 1 : 0)
+        const capped = merged.slice(0, perShard)
+        return { keys: capped, list_complete: capped.length === merged.length }
+      })
     },
   }
 }
@@ -301,6 +310,8 @@ function wrapEnv(env) {
 
 export default {
   async fetch(request, env, ctx) {
+    const internal = gf_handleInternalMetrics(request)
+    if (internal) return internal
     return user.fetch(request, wrapEnv(env), ctx)
   },
   async scheduled(event, env, ctx) {

@@ -31,6 +31,7 @@ import {
   D1_DO_CLASS_NAME,
   generateTenantD1Shim,
 } from '../d1/adapter-module.js'
+import { TENANT_METRICS_SHIM_SOURCE } from '../metrics/tenant-shim-source.js'
 import { generateRouterJs, routerBindingName } from './router.js'
 import type {
   R2BindingSpec,
@@ -423,6 +424,7 @@ function generateTenantBindingShim(opts: {
     // declared on the user module. `export *` skips `default`, which
     // the shim owns itself.
     "export * from './user.js'",
+    TENANT_METRICS_SHIM_SOURCE,
     `const KV_SHARDS = ${kvShardsLiteral}`,
     `const D1_BINDINGS = new Set(${JSON.stringify([...opts.d1Names].sort())})`,
     `${kvFacadeFunctions()}`,
@@ -435,12 +437,16 @@ function generateTenantBindingShim(opts: {
     '  }',
     '  for (const name of D1_BINDINGS) {',
     '    const raw = out[name]',
-    "    if (raw && typeof raw.idFromName === 'function') out[name] = makeD1Facade(raw)",
+    "    if (raw && typeof raw.idFromName === 'function') out[name] = makeD1Facade(raw, name)",
     '  }',
     '  return out',
     '}',
     'export default {',
-    '  async fetch(request, env, ctx) { return user.fetch(request, wrapEnv(env), ctx) },',
+    '  async fetch(request, env, ctx) {',
+    '    const internal = gf_handleInternalMetrics(request)',
+    '    if (internal) return internal',
+    '    return user.fetch(request, wrapEnv(env), ctx)',
+    '  },',
     '  async scheduled(event, env, ctx) {',
     '    if (user.scheduled) return user.scheduled(event, wrapEnv(env), ctx)',
     '  },',
@@ -487,63 +493,75 @@ function makeKvFacade(doNamespace, binding) {
   const stubFor = (key) => doNamespace.get(doNamespace.idFromName(kvShardName(binding, key)))
   return {
     async get(key, options) {
-      const row = await stubFor(key).kvGet(key)
-      if (!row) return null
-      return decodeValue(row.value, normalizeKvType(options))
+      return gf_timeKv(binding, 'get', async () => {
+        const row = await stubFor(key).kvGet(key)
+        if (!row) return null
+        return decodeValue(row.value, normalizeKvType(options))
+      })
     },
     async getWithMetadata(key, options) {
-      const row = await stubFor(key).kvGetWithMetadata(key)
-      if (!row.value) return { value: null, metadata: null }
-      return { value: decodeValue(row.value, normalizeKvType(options)), metadata: row.metadata }
+      return gf_timeKv(binding, 'getWithMetadata', async () => {
+        const row = await stubFor(key).kvGetWithMetadata(key)
+        if (!row.value) return { value: null, metadata: null }
+        return { value: decodeValue(row.value, normalizeKvType(options)), metadata: row.metadata }
+      })
     },
-    async put(key, value, options) { return stubFor(key).kvPut(key, value, options) },
-    async delete(key) { return stubFor(key).kvDelete(key) },
+    async put(key, value, options) {
+      return gf_timeKv(binding, 'put', () => stubFor(key).kvPut(key, value, options))
+    },
+    async delete(key) {
+      return gf_timeKv(binding, 'delete', () => stubFor(key).kvDelete(key))
+    },
     async list(options) {
-      const n = KV_SHARDS[binding] || 1
-      if (n === 1) return doNamespace.get(doNamespace.idFromName('default')).kvList(options)
-      if (options && options.cursor) {
-        throw new Error('KV list() pagination across shards not yet supported (Phase 2)')
-      }
-      const perShard = Math.max(1, (options?.limit ?? 1000))
-      const pages = await Promise.all(
-        Array.from({ length: n }, (_, i) =>
-          doNamespace.get(doNamespace.idFromName('shard-' + i)).kvList({ ...options, limit: perShard }),
-        ),
-      )
-      const merged = []
-      for (const page of pages) for (const k of page.keys) merged.push(k)
-      merged.sort((a, b) => a.name < b.name ? -1 : a.name > b.name ? 1 : 0)
-      const capped = merged.slice(0, perShard)
-      return { keys: capped, list_complete: capped.length === merged.length }
+      return gf_timeKv(binding, 'list', async () => {
+        const n = KV_SHARDS[binding] || 1
+        if (n === 1) return doNamespace.get(doNamespace.idFromName('default')).kvList(options)
+        if (options && options.cursor) {
+          throw new Error('KV list() pagination across shards not yet supported (Phase 2)')
+        }
+        const perShard = Math.max(1, (options?.limit ?? 1000))
+        const pages = await Promise.all(
+          Array.from({ length: n }, (_, i) =>
+            doNamespace.get(doNamespace.idFromName('shard-' + i)).kvList({ ...options, limit: perShard }),
+          ),
+        )
+        const merged = []
+        for (const page of pages) for (const k of page.keys) merged.push(k)
+        merged.sort((a, b) => a.name < b.name ? -1 : a.name > b.name ? 1 : 0)
+        const capped = merged.slice(0, perShard)
+        return { keys: capped, list_complete: capped.length === merged.length }
+      })
     },
   }
 }`
 }
 
 function d1FacadeFunctions(): string {
-  return `function makeD1PreparedStatement(stub, sql, args) {
+  return `function makeD1PreparedStatement(binding, stub, sql, args) {
   return {
-    bind(...newArgs) { return makeD1PreparedStatement(stub, sql, [...args, ...newArgs]) },
-    async first(column) { return stub.d1First(sql, args, column) },
-    async run() { return stub.d1Run(sql, args) },
-    async all() { return stub.d1All(sql, args) },
-    async raw() { return stub.d1Raw(sql, args) },
+    bind(...newArgs) { return makeD1PreparedStatement(binding, stub, sql, [...args, ...newArgs]) },
+    async first(column) { return gf_timeD1(binding, 'first', () => stub.d1First(sql, args, column)) },
+    async run() { return gf_timeD1(binding, 'run', () => stub.d1Run(sql, args)) },
+    async all() { return gf_timeD1(binding, 'all', () => stub.d1All(sql, args)) },
+    async raw() { return gf_timeD1(binding, 'raw', () => stub.d1Raw(sql, args)) },
     _gfStatement: { sql, args },
   }
 }
-function makeD1Facade(doNamespace) {
+function makeD1Facade(doNamespace, binding) {
   const stub = () => doNamespace.get(doNamespace.idFromName('default'))
   return {
-    prepare(sql) { return makeD1PreparedStatement(stub(), sql, []) },
+    prepare(sql) { return makeD1PreparedStatement(binding, stub(), sql, []) },
     async batch(statements) {
-      const payload = statements.map((s) => {
-        const inner = s._gfStatement
-        if (!inner) throw new TypeError('D1.batch: every entry must be from .prepare()')
-        return inner
+      return gf_timeD1(binding, 'batch', () => {
+        const payload = statements.map((s) => {
+          const inner = s._gfStatement
+          if (!inner) throw new TypeError('D1.batch: every entry must be from .prepare()')
+          return inner
+        })
+        return stub().d1Batch(payload)
       })
-      return stub().d1Batch(payload)
     },
-    async exec(sql) { return stub().d1Exec(sql) },
+    async exec(sql) { return gf_timeD1(binding, 'exec', () => stub().d1Exec(sql)) },
   }
 }`
 }
