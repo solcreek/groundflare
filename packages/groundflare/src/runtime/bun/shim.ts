@@ -79,6 +79,14 @@ export interface BunShimOptions {
    * WorkingDirectory and the Mirror track's layout.
    */
   readonly stateBaseDir?: string
+
+  /**
+   * Version string surfaced on the shim's `/__health` endpoint.
+   * Mirrors `GenerateRouterOptions.version` on the workerd track so
+   * both runtimes return the same response shape. Defaults to
+   * "unknown" when not provided.
+   */
+  readonly version?: string
 }
 
 const DEFAULT_LISTEN = '0.0.0.0:8080'
@@ -96,6 +104,7 @@ export function generateBunShim(opts: BunShimOptions): string {
   const listen = opts.listenAddress ?? DEFAULT_LISTEN
   const { host, port } = parseListen(listen)
   const stateBaseDir = opts.stateBaseDir ?? DEFAULT_STATE_BASE_DIR
+  const version = opts.version ?? 'unknown'
   const vars = opts.vars ?? {}
   const kv = opts.kvNamespaces ?? []
   const d1 = opts.d1Databases ?? []
@@ -138,6 +147,8 @@ export function generateBunShim(opts: BunShimOptions): string {
     `const D1_BINDINGS = ${d1Literal}`,
     `const R2_BINDINGS = ${r2Literal}`,
     `const STATE_BASE_DIR = ${JSON.stringify(stateBaseDir)}`,
+    `const VERSION = ${JSON.stringify(version)}`,
+    'const BOOT_TIME_MS = Date.now()',
     '',
     '// ── binding facades ───────────────────────────────────────────',
     '// KV: bun:sqlite (adapters/kv.ts). One file per binding —',
@@ -207,6 +218,22 @@ export function generateBunShim(opts: BunShimOptions): string {
     `  port: ${port},`,
     '  development: false,',
     '  async fetch(request) {',
+    '    // /__health — public liveness; intercepted before user code',
+    '    // so the response shape matches the workerd Router (which has',
+    '    // its own /__health handler upstream of tenant workers).',
+    '    // Deploy probes parse this body, so it MUST stay JSON with',
+    '    // `status: "ok"`.',
+    '    const url = new URL(request.url)',
+    '    if (url.pathname === "/__health") {',
+    '      return new Response(',
+    '        JSON.stringify({',
+    '          status: "ok",',
+    '          uptime_seconds: Math.floor((Date.now() - BOOT_TIME_MS) / 1000),',
+    '          version: VERSION,',
+    '        }),',
+    '        { status: 200, headers: { "content-type": "application/json; charset=utf-8" } },',
+    '      )',
+    '    }',
     '    const ctx = {',
     '      waitUntil(promise) { promise.catch((err) => console.error("waitUntil:", err)) },',
     '      passThroughOnException() {},',

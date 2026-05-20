@@ -17,7 +17,7 @@ import {
   type DriftCheck,
 } from '../../../src/cli/drift.js'
 import type { BootstrapState } from '../../../src/bootstrap/index.js'
-import type { Provider, VPS } from '../../../src/provider/index.js'
+import type { Provider, VPS } from 'capstan'
 import type { RunResult, SshClient } from '../../../src/ssh/index.js'
 
 // ─── Fixtures ───────────────────────────────────────────────────────

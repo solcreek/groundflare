@@ -14,7 +14,7 @@ import {
   createProvider,
   type Provider,
   type ProviderName,
-} from '../provider/index.js'
+} from 'capstan'
 import { FileSecretStore, type SecretStore } from '../secret/index.js'
 
 import { BootstrapOrchestrator } from './orchestrator.js'

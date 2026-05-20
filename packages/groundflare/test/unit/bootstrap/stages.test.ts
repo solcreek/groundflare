@@ -18,7 +18,7 @@ import {
   type BootstrapState,
 } from '../../../src/bootstrap/index.js'
 import { MemorySecretStore } from '../../../src/secret/index.js'
-import { ProviderError, type Provider } from '../../../src/provider/index.js'
+import { ProviderError, type Provider } from 'capstan'
 import type { SshClient, SshTarget } from '../../../src/ssh/index.js'
 
 function freshState(): BootstrapState {

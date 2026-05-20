@@ -20,7 +20,7 @@ import {
   BootstrapStateStore,
   type BootstrapState,
 } from '../../../src/bootstrap/index.js'
-import type { Provider, ProviderName } from '../../../src/provider/index.js'
+import type { Provider, ProviderName } from 'capstan'
 
 let tmp: string
 

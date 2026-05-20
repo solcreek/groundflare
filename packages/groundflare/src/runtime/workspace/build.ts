@@ -31,7 +31,12 @@ import {
   D1_DO_CLASS_NAME,
   generateTenantD1Shim,
 } from '../d1/adapter-module.js'
-import { generateRouterJs, routerBindingName } from './router.js'
+import { TENANT_METRICS_SHIM_SOURCE } from '../metrics/tenant-shim-source.js'
+import {
+  generateRouterJs,
+  routerBindingName,
+  type InternalScrapeTarget,
+} from './router.js'
 import type {
   R2BindingSpec,
   VarValue,
@@ -82,6 +87,13 @@ export interface BuildOptions {
    * groundflare's cloud-init installs.
    */
   readonly defaultR2Endpoint?: string
+
+  /**
+   * Version string surfaced on the Router's `/__health` endpoint.
+   * Typically the groundflare CLI version. When unset, the router
+   * reports `"unknown"`.
+   */
+  readonly groundflareVersion?: string
 }
 
 const DEFAULT_STATE_BASE_DIR = 'do-state'
@@ -93,7 +105,7 @@ export function buildCapnpFromWorkspace(
   validateManifest(manifest)
 
   const stateBase = opts.stateBaseDir ?? DEFAULT_STATE_BASE_DIR
-  const services: CapnpService[] = [buildRouterService(manifest)]
+  const services: CapnpService[] = [buildRouterService(manifest, opts)]
 
   for (const worker of manifest.workers) {
     const { worker: tenant, disk: tenantDisk } = buildTenantService(
@@ -173,20 +185,72 @@ export function buildCapnpFromWorkspace(
 
 // ─── Router service ────────────────────────────────────────────────
 
-function buildRouterService(manifest: WorkspaceManifest): CapnpService {
+/**
+ * Derive the env-binding name the Router uses to reach one R2 adapter
+ * service for internal metric scraping. Must be a valid JS identifier,
+ * unique across every (worker, binding) pair in the workspace.
+ */
+function r2AdapterMetricsBinding(worker: string, binding: string): string {
+  return (
+    'METRICS_R2_' +
+    worker.toUpperCase().replace(/-/g, '_') +
+    '_' +
+    binding.toUpperCase().replace(/-/g, '_')
+  )
+}
+
+function buildRouterService(
+  manifest: WorkspaceManifest,
+  opts: BuildOptions,
+): CapnpService {
   // Every worker gets a service binding from the router so cron dispatch
-  // can reach workers without a domain too.
+  // can reach workers without a domain too. The same binding doubles as
+  // the Router's /__metrics fan-out target for tenants with shims.
   const bindings: CapnpBinding[] = manifest.workers.map((w) => ({
     name: routerBindingName(w.name),
     kind: 'service',
     service: tenantServiceName(w.name),
   }))
 
+  // Fan-out list: tenant workers that have a KV or D1 binding (and
+  // therefore a shim that responds to /__gf_metrics), plus one entry
+  // per R2 adapter service.
+  const scrapeTargets: InternalScrapeTarget[] = []
+  for (const w of manifest.workers) {
+    const hasShim =
+      (w.kvNamespaces?.length ?? 0) > 0 ||
+      (w.d1Databases?.length ?? 0) > 0
+    if (hasShim) {
+      scrapeTargets.push({
+        bindingName: routerBindingName(w.name),
+        label: w.name,
+      })
+    }
+    for (const r2 of w.r2Buckets ?? []) {
+      const bindingName = r2AdapterMetricsBinding(w.name, r2.binding)
+      bindings.push({
+        name: bindingName,
+        kind: 'service',
+        service: r2AdapterServiceName(w.name, r2.binding),
+      })
+      scrapeTargets.push({
+        bindingName,
+        label: `${w.name}:${r2.binding}`,
+      })
+    }
+  }
+
   const worker: CapnpWorker = {
     modules: [
       {
         name: DEFAULT_ROUTER_MODULE_NAME,
-        source: { kind: 'esModule', inline: generateRouterJs(manifest.workers) },
+        source: {
+          kind: 'esModule',
+          inline: generateRouterJs(manifest.workers, {
+            version: opts.groundflareVersion,
+            scrapeTargets,
+          }),
+        },
       },
     ],
     compatibilityDate:
@@ -296,7 +360,11 @@ function buildTenantService(
       shards: kv.shards ?? 1,
     }))
     const d1Names = (worker.d1Databases ?? []).map((d1) => d1.binding)
-    const shimSource = generateTenantBindingShim({ kvBindings, d1Names })
+    const shimSource = generateTenantBindingShim({
+      kvBindings,
+      d1Names,
+      workerName: worker.name,
+    })
     modules.push({
       name: DEFAULT_TENANT_MODULE_NAME,
       source: { kind: 'esModule', inline: shimSource },
@@ -382,14 +450,15 @@ function buildTenantService(
 function generateTenantBindingShim(opts: {
   kvBindings: readonly { name: string; shards: number }[]
   d1Names: readonly string[]
+  workerName: string
 }): string {
   // If only one kind of binding is present, defer to the dedicated shim
   // generator — they each produce a complete entry module.
   if (opts.kvBindings.length > 0 && opts.d1Names.length === 0) {
-    return generateTenantKvShim(opts.kvBindings)
+    return generateTenantKvShim(opts.kvBindings, { workerName: opts.workerName })
   }
   if (opts.d1Names.length > 0 && opts.kvBindings.length === 0) {
-    return generateTenantD1Shim(opts.d1Names)
+    return generateTenantD1Shim(opts.d1Names, { workerName: opts.workerName })
   }
   // Combined shim: import the user module once, wrap env with both
   // facades, forward fetch/scheduled.
@@ -408,6 +477,8 @@ function generateTenantBindingShim(opts: {
     // declared on the user module. `export *` skips `default`, which
     // the shim owns itself.
     "export * from './user.js'",
+    `const GF_WORKER_NAME = ${JSON.stringify(opts.workerName)}`,
+    TENANT_METRICS_SHIM_SOURCE,
     `const KV_SHARDS = ${kvShardsLiteral}`,
     `const D1_BINDINGS = new Set(${JSON.stringify([...opts.d1Names].sort())})`,
     `${kvFacadeFunctions()}`,
@@ -420,12 +491,16 @@ function generateTenantBindingShim(opts: {
     '  }',
     '  for (const name of D1_BINDINGS) {',
     '    const raw = out[name]',
-    "    if (raw && typeof raw.idFromName === 'function') out[name] = makeD1Facade(raw)",
+    "    if (raw && typeof raw.idFromName === 'function') out[name] = makeD1Facade(raw, name)",
     '  }',
     '  return out',
     '}',
     'export default {',
-    '  async fetch(request, env, ctx) { return user.fetch(request, wrapEnv(env), ctx) },',
+    '  async fetch(request, env, ctx) {',
+    '    const internal = gf_handleInternalMetrics(request)',
+    '    if (internal) return internal',
+    '    return user.fetch(request, wrapEnv(env), ctx)',
+    '  },',
     '  async scheduled(event, env, ctx) {',
     '    if (user.scheduled) return user.scheduled(event, wrapEnv(env), ctx)',
     '  },',
@@ -472,63 +547,75 @@ function makeKvFacade(doNamespace, binding) {
   const stubFor = (key) => doNamespace.get(doNamespace.idFromName(kvShardName(binding, key)))
   return {
     async get(key, options) {
-      const row = await stubFor(key).kvGet(key)
-      if (!row) return null
-      return decodeValue(row.value, normalizeKvType(options))
+      return gf_timeKv(binding, 'get', async () => {
+        const row = await stubFor(key).kvGet(key)
+        if (!row) return null
+        return decodeValue(row.value, normalizeKvType(options))
+      })
     },
     async getWithMetadata(key, options) {
-      const row = await stubFor(key).kvGetWithMetadata(key)
-      if (!row.value) return { value: null, metadata: null }
-      return { value: decodeValue(row.value, normalizeKvType(options)), metadata: row.metadata }
+      return gf_timeKv(binding, 'getWithMetadata', async () => {
+        const row = await stubFor(key).kvGetWithMetadata(key)
+        if (!row.value) return { value: null, metadata: null }
+        return { value: decodeValue(row.value, normalizeKvType(options)), metadata: row.metadata }
+      })
     },
-    async put(key, value, options) { return stubFor(key).kvPut(key, value, options) },
-    async delete(key) { return stubFor(key).kvDelete(key) },
+    async put(key, value, options) {
+      return gf_timeKv(binding, 'put', () => stubFor(key).kvPut(key, value, options))
+    },
+    async delete(key) {
+      return gf_timeKv(binding, 'delete', () => stubFor(key).kvDelete(key))
+    },
     async list(options) {
-      const n = KV_SHARDS[binding] || 1
-      if (n === 1) return doNamespace.get(doNamespace.idFromName('default')).kvList(options)
-      if (options && options.cursor) {
-        throw new Error('KV list() pagination across shards not yet supported (Phase 2)')
-      }
-      const perShard = Math.max(1, (options?.limit ?? 1000))
-      const pages = await Promise.all(
-        Array.from({ length: n }, (_, i) =>
-          doNamespace.get(doNamespace.idFromName('shard-' + i)).kvList({ ...options, limit: perShard }),
-        ),
-      )
-      const merged = []
-      for (const page of pages) for (const k of page.keys) merged.push(k)
-      merged.sort((a, b) => a.name < b.name ? -1 : a.name > b.name ? 1 : 0)
-      const capped = merged.slice(0, perShard)
-      return { keys: capped, list_complete: capped.length === merged.length }
+      return gf_timeKv(binding, 'list', async () => {
+        const n = KV_SHARDS[binding] || 1
+        if (n === 1) return doNamespace.get(doNamespace.idFromName('default')).kvList(options)
+        if (options && options.cursor) {
+          throw new Error('KV list() pagination across shards not yet supported (Phase 2)')
+        }
+        const perShard = Math.max(1, (options?.limit ?? 1000))
+        const pages = await Promise.all(
+          Array.from({ length: n }, (_, i) =>
+            doNamespace.get(doNamespace.idFromName('shard-' + i)).kvList({ ...options, limit: perShard }),
+          ),
+        )
+        const merged = []
+        for (const page of pages) for (const k of page.keys) merged.push(k)
+        merged.sort((a, b) => a.name < b.name ? -1 : a.name > b.name ? 1 : 0)
+        const capped = merged.slice(0, perShard)
+        return { keys: capped, list_complete: capped.length === merged.length }
+      })
     },
   }
 }`
 }
 
 function d1FacadeFunctions(): string {
-  return `function makeD1PreparedStatement(stub, sql, args) {
+  return `function makeD1PreparedStatement(binding, stub, sql, args) {
   return {
-    bind(...newArgs) { return makeD1PreparedStatement(stub, sql, [...args, ...newArgs]) },
-    async first(column) { return stub.d1First(sql, args, column) },
-    async run() { return stub.d1Run(sql, args) },
-    async all() { return stub.d1All(sql, args) },
-    async raw() { return stub.d1Raw(sql, args) },
+    bind(...newArgs) { return makeD1PreparedStatement(binding, stub, sql, [...args, ...newArgs]) },
+    async first(column) { return gf_timeD1(binding, 'first', () => stub.d1First(sql, args, column)) },
+    async run() { return gf_timeD1(binding, 'run', () => stub.d1Run(sql, args)) },
+    async all() { return gf_timeD1(binding, 'all', () => stub.d1All(sql, args)) },
+    async raw() { return gf_timeD1(binding, 'raw', () => stub.d1Raw(sql, args)) },
     _gfStatement: { sql, args },
   }
 }
-function makeD1Facade(doNamespace) {
+function makeD1Facade(doNamespace, binding) {
   const stub = () => doNamespace.get(doNamespace.idFromName('default'))
   return {
-    prepare(sql) { return makeD1PreparedStatement(stub(), sql, []) },
+    prepare(sql) { return makeD1PreparedStatement(binding, stub(), sql, []) },
     async batch(statements) {
-      const payload = statements.map((s) => {
-        const inner = s._gfStatement
-        if (!inner) throw new TypeError('D1.batch: every entry must be from .prepare()')
-        return inner
+      return gf_timeD1(binding, 'batch', () => {
+        const payload = statements.map((s) => {
+          const inner = s._gfStatement
+          if (!inner) throw new TypeError('D1.batch: every entry must be from .prepare()')
+          return inner
+        })
+        return stub().d1Batch(payload)
       })
-      return stub().d1Batch(payload)
     },
-    async exec(sql) { return stub().d1Exec(sql) },
+    async exec(sql) { return gf_timeD1(binding, 'exec', () => stub().d1Exec(sql)) },
   }
 }`
 }
@@ -759,6 +846,12 @@ function buildR2AdapterService(
   const bindings: CapnpBinding[] = [
     { name: 'BUCKET_NAME', kind: 'text', value: bucketName },
     { name: 'S3_ENDPOINT', kind: 'text', value: endpoint },
+    // Labels for /__gf_metrics output so aggregated dashboards can
+    // tell series from different (worker, binding) pairs apart. The
+    // adapter service is already scoped per-pair, so these are
+    // constants from the adapter's perspective.
+    { name: 'GF_WORKER_NAME', kind: 'text', value: worker.name },
+    { name: 'GF_BINDING_NAME', kind: 'text', value: r2.binding },
   ]
   if (r2.region !== undefined) {
     bindings.push({ name: 'S3_REGION', kind: 'text', value: r2.region })

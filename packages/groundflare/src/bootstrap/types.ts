@@ -11,7 +11,7 @@
  * changes.
  */
 
-import type { Provider, ProviderName } from '../provider/index.js'
+import type { Provider, ProviderName } from 'capstan'
 import type { SecretStore } from '../secret/index.js'
 import type { SshClient } from '../ssh/index.js'
 

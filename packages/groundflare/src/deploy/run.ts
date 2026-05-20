@@ -218,6 +218,9 @@ export async function runDeploy(opts: RunDeployOptions): Promise<DeployResult> {
     }
     bunArtifact = buildBunArtifact(manifest, {
       listenAddress: LISTEN_ADDRESS,
+      ...(opts.groundflareVersion !== undefined
+        ? { version: opts.groundflareVersion }
+        : {}),
     })
   } else {
     // R2 bindings need (a) the bundled adapter Worker source and (b)
@@ -235,6 +238,9 @@ export async function runDeploy(opts: RunDeployOptions): Promise<DeployResult> {
       listenAddress: LISTEN_ADDRESS,
       stateBaseDir: 'do-state',
       ...(r2AdapterSource !== undefined ? { r2AdapterSource } : {}),
+      ...(opts.groundflareVersion !== undefined
+        ? { groundflareVersion: opts.groundflareVersion }
+        : {}),
     })
     capnpText = renderCapnpConfig(capnpConfig)
   }
@@ -582,15 +588,14 @@ export async function runDeploy(opts: RunDeployOptions): Promise<DeployResult> {
   }
 
   // ─── 7. Health probe ───────────────────────────────────────────
-  // Probe via loopback on the VPS (bypasses Caddy/DNS). We pick the
-  // first tenant's domain for the Host header — if no tenant has a
-  // domain, we send a literal localhost which the router will 404 (still
-  // a valid response, proving workerd is listening).
-  const probeHost = tenants.find((t) => t.domain !== undefined)?.domain ?? 'localhost'
+  // Probe /__health via loopback on the VPS (bypasses Caddy/DNS). The
+  // endpoint is served by the Router Worker itself, so a 200 + JSON
+  // `{status:"ok",...}` body proves the whole workerd + router + capnp
+  // pipeline loaded and is answering. No Host header needed — /__health
+  // is public specifically so liveness checks can skip hostname setup.
   const { status, durationMs: probeDuration, attempts } = await probeHealth({
     ssh,
     listenAddress: LISTEN_ADDRESS,
-    probeHost,
     log,
     maxAttempts: opts.healthProbe?.maxAttempts ?? HEALTH_DEFAULT_MAX_ATTEMPTS,
     intervalMs: opts.healthProbe?.intervalMs ?? HEALTH_DEFAULT_INTERVAL_MS,
@@ -624,7 +629,6 @@ export async function runDeploy(opts: RunDeployOptions): Promise<DeployResult> {
 interface ProbeHealthOptions {
   readonly ssh: SshClient
   readonly listenAddress: string
-  readonly probeHost: string
   readonly log: LogFn
   readonly maxAttempts: number
   readonly intervalMs: number
@@ -634,13 +638,15 @@ interface ProbeHealthOptions {
 async function probeHealth(
   opts: ProbeHealthOptions,
 ): Promise<{ status: number; durationMs: number; attempts: number }> {
-  const { ssh, listenAddress, probeHost, log, maxAttempts, intervalMs } = opts
+  const { ssh, listenAddress, log, maxAttempts, intervalMs } = opts
   const started = Date.now()
+  // `%{http_code}\n<body>` — separate the status from the body with a
+  // newline so we can split reliably even when the body is JSON or empty.
   const command =
-    `curl -o /dev/null -s -w "%{http_code}" --max-time ${HEALTH_CURL_MAX_TIME_S} ` +
-    `-H "Host: ${probeHost}" http://${listenAddress}/`
+    `curl -s -w "\\n%{http_code}" --max-time ${HEALTH_CURL_MAX_TIME_S} ` +
+    `http://${listenAddress}/__health`
 
-  log('info', `probing http://${listenAddress}/ as Host: ${probeHost} (up to ${maxAttempts} attempts)`)
+  log('info', `probing http://${listenAddress}/__health (up to ${maxAttempts} attempts)`)
 
   let lastExitCode = 0
   let lastStderr = ''
@@ -653,16 +659,16 @@ async function probeHealth(
     lastStdout = probe.stdout
 
     if (probe.exitCode === 0) {
-      const status = Number.parseInt(probe.stdout.trim(), 10)
-      if (!Number.isNaN(status) && status < 500) {
-        return { status, durationMs: Date.now() - started, attempts: attempt }
+      const parsed = parseHealthProbe(probe.stdout)
+      if (parsed !== null && parsed.status === 200 && parsed.ok) {
+        return { status: parsed.status, durationMs: Date.now() - started, attempts: attempt }
       }
     }
 
     if (attempt < maxAttempts) {
       const detail = probe.exitCode !== 0
         ? `curl exit ${probe.exitCode}`
-        : `status ${probe.stdout.trim() || '?'}`
+        : `body ${JSON.stringify(probe.stdout.slice(0, 80))}`
       log('info', `health probe attempt ${attempt}/${maxAttempts} not ready (${detail}); retrying in ${intervalMs}ms`)
       await opts.sleep(intervalMs)
     }
@@ -675,17 +681,43 @@ async function probeHealth(
       'health_failed',
     )
   }
-  const status = Number.parseInt(lastStdout.trim(), 10)
-  if (Number.isNaN(status)) {
+  const parsed = parseHealthProbe(lastStdout)
+  if (parsed === null) {
     throw new DeployError(
-      `health probe returned unparsable status after ${maxAttempts} attempts: ${JSON.stringify(lastStdout)}`,
+      `health probe returned unparsable response after ${maxAttempts} attempts: ${JSON.stringify(lastStdout.slice(0, 200))}`,
       'health_failed',
     )
   }
   throw new DeployError(
-    `health probe returned ${status} after ${maxAttempts} attempts — workerd is running but erroring`,
+    `health probe returned status ${parsed.status} ok=${parsed.ok} after ${maxAttempts} attempts — workerd is reachable but /__health is not reporting ok`,
     'health_failed',
   )
+}
+
+/**
+ * Parse the `<body>\n<status>` output of `curl -s -w "\n%{http_code}"`.
+ * Returns null on any shape failure — callers treat that the same as
+ * curl-level failure (retry, then give up with a parse error).
+ */
+function parseHealthProbe(
+  stdout: string,
+): { status: number; ok: boolean } | null {
+  const trimmed = stdout.trimEnd()
+  const nl = trimmed.lastIndexOf('\n')
+  if (nl < 0) return null
+  const body = trimmed.slice(0, nl)
+  const statusRaw = trimmed.slice(nl + 1).trim()
+  const status = Number.parseInt(statusRaw, 10)
+  if (Number.isNaN(status)) return null
+  let ok = false
+  try {
+    const json = JSON.parse(body) as { status?: unknown }
+    ok = json.status === 'ok'
+  } catch {
+    // Non-JSON bodies count as not-ok; probeHealth will surface the
+    // status code in the error message.
+  }
+  return { status, ok }
 }
 
 // Unused import silencer — `readFile` is there for future config ingestion
