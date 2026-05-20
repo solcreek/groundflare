@@ -226,4 +226,43 @@ describe('generateBunShim', () => {
     })
     expect(a).toBe(b)
   })
+
+  // ── /__health interception ──────────────────────────────────────
+  // The deploy probe parses the JSON body and requires `status: "ok"`.
+  // Without an intercept the request falls through to user.fetch and
+  // returns whatever the user app emits — usually not JSON, surfacing
+  // as `health probe returned status 200 ok=false` after 6 retries.
+
+  it('intercepts /__health before delegating to user.fetch', () => {
+    const src = generateBunShim({ entryModule: './user.js' })
+    expect(src).toContain('url.pathname === "/__health"')
+    // The intercept must come BEFORE the user.fetch call inside the
+    // serve handler — otherwise the user.fetch path runs first.
+    const healthIdx = src.indexOf('url.pathname === "/__health"')
+    const userFetchIdx = src.indexOf('return user.fetch(request, ENV, ctx)')
+    expect(healthIdx).toBeGreaterThan(0)
+    expect(userFetchIdx).toBeGreaterThan(healthIdx)
+  })
+
+  it('emits BOOT_TIME_MS and VERSION constants the health response reads from', () => {
+    const src = generateBunShim({ entryModule: './user.js', version: '1.2.3' })
+    expect(src).toContain('const VERSION = "1.2.3"')
+    expect(src).toContain('const BOOT_TIME_MS = Date.now()')
+  })
+
+  it('defaults VERSION to "unknown" when version is not provided', () => {
+    const src = generateBunShim({ entryModule: './user.js' })
+    expect(src).toContain('const VERSION = "unknown"')
+  })
+
+  it('health response body is JSON with status:"ok", uptime_seconds, version', () => {
+    const src = generateBunShim({ entryModule: './user.js', version: '0.5.4' })
+    // The shim emits a JSON.stringify of an object literal whose keys
+    // are the three the workerd router emits — keeps both tracks
+    // returning the same shape to the deploy probe / scrape tools.
+    expect(src).toContain('status: "ok"')
+    expect(src).toContain('uptime_seconds: Math.floor((Date.now() - BOOT_TIME_MS) / 1000)')
+    expect(src).toContain('version: VERSION')
+    expect(src).toContain('"content-type": "application/json; charset=utf-8"')
+  })
 })

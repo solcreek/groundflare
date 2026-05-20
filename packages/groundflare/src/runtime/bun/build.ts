@@ -46,6 +46,12 @@ export interface BuildBunOptions {
    * tier without re-implementing unit composition.
    */
   readonly systemd?: Partial<BunUnitOptions>
+
+  /**
+   * Version string baked into the shim's `/__health` response.
+   * Threaded into `generateBunShim`; defaults to "unknown" there.
+   */
+  readonly version?: string
 }
 
 export interface BunArtifact {
@@ -139,6 +145,7 @@ export function buildBunArtifact(
     kvNamespaces,
     d1Databases: worker.d1Databases,
     r2Buckets: worker.r2Buckets,
+    ...(opts.version !== undefined ? { version: opts.version } : {}),
   })
 
   const adapterSources: Record<string, string> = {}

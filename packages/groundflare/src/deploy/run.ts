@@ -218,6 +218,9 @@ export async function runDeploy(opts: RunDeployOptions): Promise<DeployResult> {
     }
     bunArtifact = buildBunArtifact(manifest, {
       listenAddress: LISTEN_ADDRESS,
+      ...(opts.groundflareVersion !== undefined
+        ? { version: opts.groundflareVersion }
+        : {}),
     })
   } else {
     // R2 bindings need (a) the bundled adapter Worker source and (b)
