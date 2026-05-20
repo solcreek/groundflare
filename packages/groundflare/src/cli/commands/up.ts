@@ -22,7 +22,7 @@ import {
 } from '../../bootstrap/index.js'
 import { DeployError, runDeploy } from '../../deploy/index.js'
 import { resolveConfig } from '../../config/index.js'
-import type { ProviderName } from '../../provider/index.js'
+import type { ProviderName } from 'capstan'
 import { workspaceWorkerFromConfig } from '../../runtime/workspace/index.js'
 import { log } from '../log.js'
 import { buildUpPlan, confirmPlan } from '../plan.js'

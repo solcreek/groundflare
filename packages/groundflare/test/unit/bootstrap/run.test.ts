@@ -15,7 +15,7 @@ import {
   type Stage,
 } from '../../../src/bootstrap/index.js'
 import { MemorySecretStore } from '../../../src/secret/index.js'
-import type { Provider } from '../../../src/provider/index.js'
+import type { Provider } from 'capstan'
 
 let tmp: string
 

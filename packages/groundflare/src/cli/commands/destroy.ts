@@ -37,7 +37,7 @@ import {
   createProvider,
   type Provider,
   type ProviderName,
-} from '../../provider/index.js'
+} from 'capstan'
 import {
   workspaceWorkerFromConfig,
   type WorkspaceWorker,

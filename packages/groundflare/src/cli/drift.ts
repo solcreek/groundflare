@@ -33,7 +33,7 @@ import { promises as dns } from 'node:dns'
 import { URL } from 'node:url'
 
 import type { BootstrapState } from '../bootstrap/index.js'
-import type { Provider } from '../provider/index.js'
+import type { Provider } from 'capstan'
 import type { SshClient } from '../ssh/index.js'
 
 export type DriftSeverity = 'ok' | 'warn' | 'drift'

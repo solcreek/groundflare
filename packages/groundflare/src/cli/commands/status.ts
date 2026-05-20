@@ -18,7 +18,7 @@ import {
   createProvider,
   type Provider,
   type ProviderName,
-} from '../../provider/index.js'
+} from 'capstan'
 import { FileSecretStore } from '../../secret/index.js'
 import { OpenSshClient, type SshClient } from '../../ssh/index.js'
 import {

@@ -24,7 +24,7 @@ import type {
   SSHKeyOptions,
   Size,
   VPS,
-} from '../../../src/provider/index.js'
+} from 'capstan'
 
 import {
   DEFAULT_IMAGE_TAG,

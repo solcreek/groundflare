@@ -10,7 +10,7 @@
  * token surfaces here rather than in a downstream stage.
  */
 
-import { ProviderError } from '../../provider/index.js'
+import { ProviderError } from 'capstan'
 import { BootstrapError, type Stage } from '../types.js'
 
 const STAGE_ID = 'provider.auth'

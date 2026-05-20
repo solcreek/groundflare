@@ -63,6 +63,7 @@
     "prepublishOnly": "npm run check && npm run lint && npm run test && npm run build"
   },
   "dependencies": {
+    "capstan": "^0.1.0",
     "citty": "^0.1.6",
     "consola": "^3.2.3",
     "esbuild": "^0.28.0",

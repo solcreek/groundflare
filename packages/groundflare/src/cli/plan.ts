@@ -19,7 +19,7 @@
 
 import { consola } from 'consola'
 
-import type { ProviderName } from '../provider/index.js'
+import type { ProviderName } from 'capstan'
 import type { WorkspaceWorker } from '../runtime/workspace/index.js'
 
 export type PlanActionKind =
