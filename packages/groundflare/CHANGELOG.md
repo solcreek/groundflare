@@ -1,5 +1,90 @@
 # Changelog
 
+## v0.5.5 — Bun track `/__health` fix + provider abstraction split
+
+Two changes. One is a fix for a Bun-track regression that had been
+silently broken since the track shipped. The other is a refactor with
+no CLI-visible impact — the multi-provider VPS abstraction now lives
+in a separate package, `capstan`, which groundflare consumes as a
+library.
+
+### Fixed: Bun track `/__health` endpoint returned non-JSON
+
+The deploy probe at the end of `groundflare up` curls `/__health` on
+the workspace and waits for a JSON body of the form
+`{"status": "ok", "uptime_seconds": …, "version": …}`. On the
+**workerd track** this has always worked because the generated Router
+Worker intercepts `/__health` upstream of tenant workers.
+
+On the **Bun track**, however, `Bun.serve`'s fetch handler in the
+generated shim was forwarding *every* request — including
+`/__health` — straight to the user's `fetch()`. The deploy probe
+would then parse whatever the user's app emitted at that path
+(usually not JSON), the JSON.parse would silently throw, and the
+probe would treat the response as `ok=false` and retry up to six
+times before failing the deploy with:
+
+```
+DeployError: health probe returned status 200 ok=false after
+6 attempts — workerd is reachable but /__health is not reporting ok
+```
+
+The fix adds `/__health` interception to the emitted Bun shim
+*before* user code sees the request, with the same response shape
+the workerd Router emits:
+
+```ts
+// generated server.ts (excerpt)
+async fetch(request) {
+  const url = new URL(request.url)
+  if (url.pathname === "/__health") {
+    return new Response(JSON.stringify({
+      status: "ok",
+      uptime_seconds: Math.floor((Date.now() - BOOT_TIME_MS) / 1000),
+      version: VERSION,
+    }), { status: 200, headers: {
+      "content-type": "application/json; charset=utf-8" } })
+  }
+  // ... existing delegate to user.fetch(request, ENV, ctx)
+}
+```
+
+The `version` string is threaded through `BunShimOptions`,
+`BuildBunOptions`, and `deploy/run.ts` the same way the workerd
+track's `groundflareVersion` flows into the Router (defaults to
+`"unknown"` when not provided). 4 new unit tests assert the
+intercept exists, runs before user code, embeds the version, and
+defaults sensibly when no version is supplied.
+
+A note on what this doesn't fix: the Bun track still doesn't
+intercept `/__metrics` or `/__scheduled` the way the workerd Router
+does. Those aren't reachable as user-visible routes today, but
+when Bun-track metrics/scheduled support lands they'll need the
+same upstream-intercept treatment.
+
+### Changed: VPS provider abstraction now lives in `capstan`
+
+The four-provider VPS lifecycle code (Hetzner / DigitalOcean /
+Linode / Vultr) used to live under `src/provider/` here. It was a
+provider-agnostic, well-tested abstraction with no Worker / workerd
+dependencies, so we extracted it as a standalone npm package:
+[`capstan`](https://www.npmjs.com/package/capstan).
+
+groundflare now `import`s from `capstan` instead of carrying its
+own copy. Net diff in this repo: −3,962 LOC. Same types, same
+behavior, same 107 unit tests — they now live in capstan's repo
+and pass there.
+
+**For groundflare CLI users**: nothing to do. The CLI surface is
+identical to v0.5.4. `groundflare up` / `down` / `status` /
+`destroy` behave the same way and the same flags work.
+
+**For anyone who was deep-importing `groundflare/dist/provider/...`
+in their own code** (you probably weren't, since the package never
+shipped an `exports` map for those paths): switch to
+`import { HetznerProvider } from 'capstan'`. The types and class
+shapes are identical; only the import specifier changed.
+
 ## v0.5.4 — Drift detection hardening + destroy paper-cuts
 
 Four small improvements bundled after live-testing v0.5.2 on DO +
