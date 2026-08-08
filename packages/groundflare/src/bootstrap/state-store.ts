@@ -13,6 +13,7 @@
 
 import { mkdir, readFile, rename, writeFile, chmod, readdir } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
+import { join as posixJoin } from 'node:path/posix'
 import { homedir } from 'node:os'
 import { randomBytes } from 'node:crypto'
 
@@ -36,8 +37,8 @@ export class BootstrapStateStore {
 
   static defaultDirectory(): string {
     const xdg = process.env.XDG_CONFIG_HOME
-    if (xdg) return join(xdg, 'groundflare', 'state')
-    return join(homedir(), '.config', 'groundflare', 'state')
+    if (xdg) return posixJoin(xdg.replaceAll('\\', '/'), 'groundflare', 'state')
+    return posixJoin(homedir().replaceAll('\\', '/'), '.config', 'groundflare', 'state')
   }
 
   pathFor(workspace: string): string {

@@ -18,14 +18,10 @@ export default defineConfig({
     // Sequential: each test spins up a container bound to a host port;
     // parallelism would tangle ports and amplify flakiness.
     pool: 'forks',
-    poolOptions: {
-      forks: {
-        singleFork: true,
-        // Carry --experimental-sqlite into each worker (see main config
-        // for why). Drop when engines bumps to Node 24.
-        execArgv: ['--experimental-sqlite'],
-      },
-    },
+    singleFork: true,
+    // Carry --experimental-sqlite into each worker (see main config for why).
+    // Drop when engines bumps to Node 24.
+    execArgv: ['--experimental-sqlite'],
     sequence: { concurrent: false },
   },
 })

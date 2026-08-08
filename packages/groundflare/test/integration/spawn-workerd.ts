@@ -16,9 +16,10 @@
 import { spawn, type ChildProcess } from 'node:child_process'
 import { setTimeout as sleep } from 'node:timers/promises'
 import { mkdtemp, rm, writeFile, mkdir } from 'node:fs/promises'
+import { existsSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { createRequire } from 'node:module'
-import { join, dirname, resolve } from 'node:path'
+import { join, dirname } from 'node:path'
 import { createServer } from 'node:net'
 import { request as httpRequestRaw, type OutgoingHttpHeaders } from 'node:http'
 
@@ -28,9 +29,35 @@ import { request as httpRequestRaw, type OutgoingHttpHeaders } from 'node:http'
 // node_modules/.
 const WORKERD_BIN = (() => {
   const req = createRequire(import.meta.url)
-  const pkgPath = req.resolve('workerd/package.json')
-  return resolve(dirname(pkgPath), 'bin/workerd')
+  const platformPackage = process.platform === 'win32'
+    ? '@cloudflare/workerd-windows-64'
+    : process.platform === 'darwin'
+      ? (process.arch === 'arm64' ? '@cloudflare/workerd-darwin-arm64' : '@cloudflare/workerd-darwin-64')
+      : (process.arch === 'arm64' ? '@cloudflare/workerd-linux-arm64' : '@cloudflare/workerd-linux-64')
+  if (process.platform === 'win32') {
+    return req.resolve(`${platformPackage}/bin/workerd.exe`)
+  }
+  const wrapper = req.resolve('workerd/bin/workerd')
+  if (existsSync(wrapper)) return wrapper
+  return req.resolve(`${platformPackage}/bin/workerd`)
 })()
+// On Windows, launch the native executable directly. The npm wrapper uses
+// execFileSync(), which leaves a child process behind when the wrapper is
+// terminated and that child keeps the temporary workdir locked.
+const WORKERD_COMMAND = WORKERD_BIN
+const WORKERD_ARGS: string[] = []
+
+async function removeWorkdir(workdir: string): Promise<void> {
+  // Windows can briefly retain a file handle after workerd exits. fs.rm's
+  // retry options make cleanup deterministic without hiding a persistent
+  // failure indefinitely.
+  await rm(workdir, {
+    recursive: true,
+    force: true,
+    maxRetries: process.platform === 'win32' ? 10 : 0,
+    retryDelay: 100,
+  })
+}
 
 export interface SpawnWorkerdOptions {
   /** TCP port workerd will bind to (caller must have generated capnp pointing here). */
@@ -113,11 +140,11 @@ export async function spawnWorkerd(opts: SpawnWorkerdOptions): Promise<SpawnedWo
       await mkdir(join(workdir, dir), { recursive: true })
     }
   } catch (err) {
-    await rm(workdir, { recursive: true, force: true })
+    await removeWorkdir(workdir)
     throw err
   }
 
-  const proc: ChildProcess = spawn(WORKERD_BIN, ['serve', 'worker.capnp'], {
+  const proc: ChildProcess = spawn(WORKERD_COMMAND, [...WORKERD_ARGS, 'serve', 'worker.capnp'], {
     cwd: workdir,
     stdio: opts.verbose ? 'inherit' : ['ignore', 'pipe', 'pipe'],
   })
@@ -138,7 +165,7 @@ export async function spawnWorkerd(opts: SpawnWorkerdOptions): Promise<SpawnedWo
     await waitForWorkerd(opts.port, opts.healthTimeoutMs ?? 5000, () => exited)
   } catch (err) {
     proc.kill('SIGKILL')
-    await rm(workdir, { recursive: true, force: true })
+    await removeWorkdir(workdir)
     const reason = err instanceof Error ? err.message : String(err)
     const stderr = stderrChunks.join('').slice(-2000)
     throw new Error(
@@ -165,7 +192,7 @@ export async function spawnWorkerd(opts: SpawnWorkerdOptions): Promise<SpawnedWo
     },
     async stop() {
       if (exited) {
-        await rm(workdir, { recursive: true, force: true })
+        await removeWorkdir(workdir)
         return
       }
       proc.kill('SIGTERM')
@@ -175,7 +202,7 @@ export async function spawnWorkerd(opts: SpawnWorkerdOptions): Promise<SpawnedWo
           proc.kill('SIGKILL')
         }),
       ])
-      await rm(workdir, { recursive: true, force: true })
+      await removeWorkdir(workdir)
     },
   }
 }

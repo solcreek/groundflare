@@ -38,12 +38,8 @@ export default defineConfig({
     // Node 24 will mark node:sqlite stable and this line becomes a no-op;
     // drop it once engines is bumped to >=24.
     pool: 'forks',
-    poolOptions: {
-      forks: {
-        singleFork: false,
-        execArgv: ['--experimental-sqlite'],
-      },
-    },
+    singleFork: false,
+    execArgv: ['--experimental-sqlite'],
     coverage: {
       provider: 'v8',
       reporter: ['text', 'html', 'lcov'],
