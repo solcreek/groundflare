@@ -45,6 +45,9 @@ jobs:
       - name: Lint
         run: npm run lint -w create-groundflare-app
 
+      - name: Format check
+        run: npm run format:check -w create-groundflare-app
+
       - name: Test
         run: npm run test -w create-groundflare-app
 

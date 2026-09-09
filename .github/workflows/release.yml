@@ -117,10 +117,11 @@ jobs:
       - name: Build all published workspaces
         run: npm run build
 
-      - name: Pre-publish gate (check + lint + test)
+      - name: Pre-publish gate (check + lint + format + test)
         run: |
           npm run check -w ${{ steps.parse.outputs.package }}
           npm run lint -w ${{ steps.parse.outputs.package }}
+          npm run format:check -w ${{ steps.parse.outputs.package }}
           npm run test -w ${{ steps.parse.outputs.package }}
 
       - name: Assert tag version matches package.json

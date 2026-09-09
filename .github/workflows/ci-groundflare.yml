@@ -47,6 +47,9 @@ jobs:
       - name: Lint
         run: npm run lint -w groundflare
 
+      - name: Format check
+        run: npm run format:check -w groundflare
+
       - name: Test (unit + integration + conformance)
         run: npm run test -w groundflare
 

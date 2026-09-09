@@ -45,6 +45,9 @@ jobs:
       - name: Lint
         run: npm run lint -w groundflare-estimate
 
+      - name: Format check
+        run: npm run format:check -w groundflare-estimate
+
       - name: Test
         run: npm run test -w groundflare-estimate
 
