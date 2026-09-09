@@ -9,6 +9,9 @@ on:
       - 'packages/estimate/**'
       - 'package.json'
       - 'package-lock.json'
+      - '.oxlintrc.json'
+      - '.oxfmtrc.json'
+      - '.gitattributes'
       - '.github/workflows/ci-groundflare.yml'
   pull_request:
     branches: [main]
@@ -17,6 +20,9 @@ on:
       - 'packages/estimate/**'
       - 'package.json'
       - 'package-lock.json'
+      - '.oxlintrc.json'
+      - '.oxfmtrc.json'
+      - '.gitattributes'
       - '.github/workflows/ci-groundflare.yml'
 
 concurrency:
