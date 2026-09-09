@@ -90,7 +90,7 @@ describe('config show — real end-to-end', () => {
 
     const chunks: string[] = []
     const originalWrite = process.stdout.write.bind(process.stdout)
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    // oxlint-disable-next-line typescript/no-explicit-any
     ;(process.stdout as any).write = ((chunk: string | Uint8Array) => {
       chunks.push(typeof chunk === 'string' ? chunk : Buffer.from(chunk).toString())
       return true
