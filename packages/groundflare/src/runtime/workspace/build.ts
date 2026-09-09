@@ -32,17 +32,8 @@ import {
   generateTenantD1Shim,
 } from '../d1/adapter-module.js'
 import { TENANT_METRICS_SHIM_SOURCE } from '../metrics/tenant-shim-source.js'
-import {
-  generateRouterJs,
-  routerBindingName,
-  type InternalScrapeTarget,
-} from './router.js'
-import type {
-  R2BindingSpec,
-  VarValue,
-  WorkspaceManifest,
-  WorkspaceWorker,
-} from './types.js'
+import { generateRouterJs, routerBindingName, type InternalScrapeTarget } from './router.js'
+import type { R2BindingSpec, VarValue, WorkspaceManifest, WorkspaceWorker } from './types.js'
 
 export const ROUTER_SERVICE_NAME = 'router'
 
@@ -108,11 +99,7 @@ export function buildCapnpFromWorkspace(
   const services: CapnpService[] = [buildRouterService(manifest, opts)]
 
   for (const worker of manifest.workers) {
-    const { worker: tenant, disk: tenantDisk } = buildTenantService(
-      worker,
-      manifest,
-      stateBase,
-    )
+    const { worker: tenant, disk: tenantDisk } = buildTenantService(worker, manifest, stateBase)
     if (tenantDisk !== null) services.push(tenantDisk)
     services.push(tenant)
     // KV adapter services — one per (worker, binding) pair — are emitted
@@ -153,13 +140,7 @@ export function buildCapnpFromWorkspace(
       }
       for (const r2 of worker.r2Buckets) {
         services.push(
-          buildR2AdapterService(
-            worker,
-            r2,
-            opts.r2AdapterSource,
-            opts.defaultR2Endpoint,
-            manifest,
-          ),
+          buildR2AdapterService(worker, r2, opts.r2AdapterSource, opts.defaultR2Endpoint, manifest),
         )
       }
     }
@@ -199,10 +180,7 @@ function r2AdapterMetricsBinding(worker: string, binding: string): string {
   )
 }
 
-function buildRouterService(
-  manifest: WorkspaceManifest,
-  opts: BuildOptions,
-): CapnpService {
+function buildRouterService(manifest: WorkspaceManifest, opts: BuildOptions): CapnpService {
   // Every worker gets a service binding from the router so cron dispatch
   // can reach workers without a domain too. The same binding doubles as
   // the Router's /__metrics fan-out target for tenants with shims.
@@ -217,9 +195,7 @@ function buildRouterService(
   // per R2 adapter service.
   const scrapeTargets: InternalScrapeTarget[] = []
   for (const w of manifest.workers) {
-    const hasShim =
-      (w.kvNamespaces?.length ?? 0) > 0 ||
-      (w.d1Databases?.length ?? 0) > 0
+    const hasShim = (w.kvNamespaces?.length ?? 0) > 0 || (w.d1Databases?.length ?? 0) > 0
     if (hasShim) {
       scrapeTargets.push({
         bindingName: routerBindingName(w.name),
@@ -253,8 +229,7 @@ function buildRouterService(
         },
       },
     ],
-    compatibilityDate:
-      manifest.defaults?.compatibilityDate ?? DEFAULT_COMPATIBILITY_DATE,
+    compatibilityDate: manifest.defaults?.compatibilityDate ?? DEFAULT_COMPATIBILITY_DATE,
     compatibilityFlags: manifest.defaults?.compatibilityFlags,
     bindings: bindings.length > 0 ? bindings : undefined,
   }
@@ -334,9 +309,7 @@ function buildTenantService(
   if (worker.durableObjects) {
     for (const doBinding of worker.durableObjects) {
       const serviceName =
-        doBinding.scriptName !== undefined
-          ? tenantServiceName(doBinding.scriptName)
-          : undefined
+        doBinding.scriptName !== undefined ? tenantServiceName(doBinding.scriptName) : undefined
       bindings.push({
         name: doBinding.binding,
         kind: 'durableObjectNamespace',
@@ -387,9 +360,7 @@ function buildTenantService(
   // with "binding refers to a namespace but no such namespace is
   // defined by this Worker". Cross-script DOs (scriptName set) skip
   // this path — the class's owner worker handles it.
-  const sameScriptDOs = (worker.durableObjects ?? []).filter(
-    (d) => d.scriptName === undefined,
-  )
+  const sameScriptDOs = (worker.durableObjects ?? []).filter((d) => d.scriptName === undefined)
   const doClassNames = [...new Set(sameScriptDOs.map((d) => d.className))]
 
   let doStorage: CapnpWorker['durableObjectStorage']
@@ -423,12 +394,9 @@ function buildTenantService(
       worker.compatibilityDate ??
       manifest.defaults?.compatibilityDate ??
       DEFAULT_COMPATIBILITY_DATE,
-    compatibilityFlags:
-      worker.compatibilityFlags ?? manifest.defaults?.compatibilityFlags,
+    compatibilityFlags: worker.compatibilityFlags ?? manifest.defaults?.compatibilityFlags,
     bindings: bindings.length > 0 ? bindings : undefined,
-    ...(doNamespaces !== undefined
-      ? { durableObjectNamespaces: doNamespaces }
-      : {}),
+    ...(doNamespaces !== undefined ? { durableObjectNamespaces: doNamespaces } : {}),
     ...(doStorage !== undefined ? { durableObjectStorage: doStorage } : {}),
   }
 
@@ -668,8 +636,7 @@ function buildD1AdapterService(
         source: { kind: 'esModule', inline: D1_ADAPTER_DO_SOURCE },
       },
     ],
-    compatibilityDate:
-      manifest.defaults?.compatibilityDate ?? DEFAULT_COMPATIBILITY_DATE,
+    compatibilityDate: manifest.defaults?.compatibilityDate ?? DEFAULT_COMPATIBILITY_DATE,
     durableObjectNamespaces: [
       {
         className: D1_DO_CLASS_NAME,
@@ -719,8 +686,7 @@ function buildKvAdapterService(
         source: { kind: 'esModule', inline: KV_ADAPTER_DO_SOURCE },
       },
     ],
-    compatibilityDate:
-      manifest.defaults?.compatibilityDate ?? DEFAULT_COMPATIBILITY_DATE,
+    compatibilityDate: manifest.defaults?.compatibilityDate ?? DEFAULT_COMPATIBILITY_DATE,
     // DurableObjectNamespace requires `uniqueKey` OR `ephemeralLocal` —
     // without one of them, workerd assumes ephemeralLocal which excludes
     // `state.storage` entirely. Derive the key deterministically so redeploys
@@ -788,9 +754,7 @@ function validateManifest(manifest: WorkspaceManifest): void {
 
   for (const { from, to } of serviceBindingTargets) {
     if (!names.has(to)) {
-      throw new ManifestError(
-        `Worker "${from}" has a service binding to unknown worker "${to}".`,
-      )
+      throw new ManifestError(`Worker "${from}" has a service binding to unknown worker "${to}".`)
     }
   }
 }
@@ -868,8 +832,7 @@ function buildR2AdapterService(
         source: { kind: 'esModule', inline: adapterSource },
       },
     ],
-    compatibilityDate:
-      manifest.defaults?.compatibilityDate ?? DEFAULT_COMPATIBILITY_DATE,
+    compatibilityDate: manifest.defaults?.compatibilityDate ?? DEFAULT_COMPATIBILITY_DATE,
     compatibilityFlags: ['nodejs_compat'],
     bindings,
     globalOutbound: R2_OUTBOUND_NETWORK_NAME,

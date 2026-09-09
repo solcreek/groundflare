@@ -76,9 +76,7 @@ describe('renderCapnpConfig — single worker + socket', () => {
         name: 'main',
         kind: 'worker',
         worker: {
-          modules: [
-            { name: 'worker.js', source: { kind: 'esModule', embedPath: 'index.js' } },
-          ],
+          modules: [{ name: 'worker.js', source: { kind: 'esModule', embedPath: 'index.js' } }],
           compatibilityDate: '2026-04-01',
         },
       },
@@ -128,9 +126,7 @@ describe('renderCapnpConfig — bindings', () => {
           name: 'main',
           kind: 'worker',
           worker: {
-            modules: [
-              { name: 'worker.js', source: { kind: 'esModule', embedPath: 'index.js' } },
-            ],
+            modules: [{ name: 'worker.js', source: { kind: 'esModule', embedPath: 'index.js' } }],
             bindings,
           },
         },
@@ -180,9 +176,7 @@ describe('renderCapnpConfig — bindings', () => {
 
   it('emits data binding as 0x"<hex>"', () => {
     expect(
-      withBindings([
-        { name: 'PAYLOAD', kind: 'data', value: new Uint8Array([1, 2, 3]) },
-      ]),
+      withBindings([{ name: 'PAYLOAD', kind: 'data', value: new Uint8Array([1, 2, 3]) }]),
     ).toContain('(name = "PAYLOAD", data = 0x"010203")')
   })
 
@@ -209,16 +203,12 @@ describe('renderCapnpConfig — bindings', () => {
   })
 
   it('emits workerLoader binding without id', () => {
-    const out = withBindings([
-      { name: 'LOADER', kind: 'workerLoader' },
-    ])
+    const out = withBindings([{ name: 'LOADER', kind: 'workerLoader' }])
     expect(out).toContain('(name = "LOADER", workerLoader = ())')
   })
 
   it('emits workerLoader binding with shared cache id', () => {
-    const out = withBindings([
-      { name: 'LOADER', kind: 'workerLoader', id: 'shared' },
-    ])
+    const out = withBindings([{ name: 'LOADER', kind: 'workerLoader', id: 'shared' }])
     expect(out).toContain('name = "LOADER"')
     expect(out).toContain('workerLoader = (id = "shared")')
   })
@@ -250,9 +240,7 @@ describe('renderCapnpConfig — worker optional fields', () => {
         modules: [{ name: 'worker.js', source: { kind: 'esModule', embedPath: 'x.js' } }],
         compatibilityFlags: ['nodejs_compat', 'streams_enable_constructors'],
       }),
-    ).toContain(
-      'compatibilityFlags = ["nodejs_compat", "streams_enable_constructors"]',
-    )
+    ).toContain('compatibilityFlags = ["nodejs_compat", "streams_enable_constructors"]')
   })
 
   it('emits durableObjectNamespaces declarations', () => {
@@ -317,7 +305,9 @@ describe('renderCapnpConfig — non-worker services', () => {
       ],
       sockets: [],
     })
-    expect(out).toContain('(name = "assets", disk = (path = "/var/lib/groundflare/workers/api/assets", writable = true))')
+    expect(out).toContain(
+      '(name = "assets", disk = (path = "/var/lib/groundflare/workers/api/assets", writable = true))',
+    )
   })
 
   it('emits external service with http flag', () => {
@@ -418,9 +408,7 @@ describe('renderCapnpConfig — formatting stability', () => {
           name: 'main',
           kind: 'worker',
           worker: {
-            modules: [
-              { name: 'worker.js', source: { kind: 'esModule', embedPath: 'index.js' } },
-            ],
+            modules: [{ name: 'worker.js', source: { kind: 'esModule', embedPath: 'index.js' } }],
             compatibilityDate: '2026-04-01',
             bindings: [
               { name: 'A', kind: 'text', value: '1' },

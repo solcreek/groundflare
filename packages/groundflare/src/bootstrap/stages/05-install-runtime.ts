@@ -59,7 +59,10 @@ export function installRuntimeStage(_opts: InstallRuntimeStageOptions = {}): Sta
       //    via curl on the VPS itself.
       const check = await ctx.ssh.run(`test -x ${REMOTE_WORKERD}`, { timeoutMs: 30_000 })
       if (check.exitCode !== 0) {
-        ctx.log('warn', 'workerd not found — cloud-init may have failed; attempting recovery download')
+        ctx.log(
+          'warn',
+          'workerd not found — cloud-init may have failed; attempting recovery download',
+        )
         const version = resolveLocalWorkerdVersion()
         const downloadScript = [
           'ARCH=$(dpkg --print-architecture)',

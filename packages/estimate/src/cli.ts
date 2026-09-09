@@ -87,9 +87,7 @@ export async function run(argv: readonly string[] = process.argv.slice(2)): Prom
   const baked = loadBakedPrices()
   const age = priceAgeDays(baked)
   if (age > STALE_AFTER_DAYS) {
-    consola.warn(
-      `pricing table is ${age} days old (updated ${baked.updated}); numbers may drift`,
-    )
+    consola.warn(`pricing table is ${age} days old (updated ${baked.updated}); numbers may drift`)
   }
 
   const { prices, sources } = await refreshPrices({

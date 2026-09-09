@@ -10,11 +10,7 @@ export {
 
 export type { BuildOptions } from './build.js'
 
-export {
-  collectRouterInfo,
-  generateRouterJs,
-  routerBindingName,
-} from './router.js'
+export { collectRouterInfo, generateRouterJs, routerBindingName } from './router.js'
 
 export { detectUnsupportedBindings, workspaceWorkerFromConfig } from './from-config.js'
 export type { FromConfigOptions } from './from-config.js'

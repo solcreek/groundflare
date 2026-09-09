@@ -50,9 +50,7 @@ function memoryFixture(opts: MemoryFixtureOptions): MemoryFixture {
 
 describe('applySubstitutions', () => {
   it('replaces {{key}} tokens', () => {
-    expect(applySubstitutions('hello {{name}}', { name: 'world' })).toBe(
-      'hello world',
-    )
+    expect(applySubstitutions('hello {{name}}', { name: 'world' })).toBe('hello world')
   })
 
   it('leaves unknown tokens untouched', () => {
@@ -143,9 +141,7 @@ describe('scaffoldProject — happy path', () => {
       fs: fx.fs,
     })
     expect(result.files[0]?.relPath).toBe('.gitignore')
-    expect(fx.writes.get('/tmp/demo/.gitignore')?.toString()).toBe(
-      'node_modules/\n',
-    )
+    expect(fx.writes.get('/tmp/demo/.gitignore')?.toString()).toBe('node_modules/\n')
   })
 })
 

@@ -87,11 +87,7 @@ function extractRawEd25519PublicKey(publicKey: KeyObject): Buffer {
  *      string <comment>
  *      padding 1,2,3...N to cipher blocksize (8 for "none")
  */
-function encodeOpenSshPrivateKey(
-  rawPriv: Buffer,
-  rawPub: Buffer,
-  comment: string,
-): string {
+function encodeOpenSshPrivateKey(rawPriv: Buffer, rawPub: Buffer, comment: string): string {
   const sanitizedComment = comment.replace(/[\r\n]+/g, ' ').trim()
   const algo = Buffer.from('ssh-ed25519', 'ascii')
 
@@ -158,16 +154,11 @@ export function encodeOpenSshPublicKey(publicKey: KeyObject, comment: string): s
   const der = publicKey.export({ type: 'spki', format: 'der' })
   // SPKI for ed25519 is exactly 44 bytes: 12-byte ASN.1 prefix + 32-byte key.
   if (!Buffer.isBuffer(der) || der.length !== 44) {
-    throw new TypeError(
-      `expected 44-byte ed25519 SPKI export, got ${der.length} bytes`,
-    )
+    throw new TypeError(`expected 44-byte ed25519 SPKI export, got ${der.length} bytes`)
   }
   const rawKey = der.subarray(12)
   const algorithmName = Buffer.from('ssh-ed25519', 'ascii')
-  const wire = Buffer.concat([
-    lengthPrefix(algorithmName),
-    lengthPrefix(rawKey),
-  ])
+  const wire = Buffer.concat([lengthPrefix(algorithmName), lengthPrefix(rawKey)])
   const sanitizedComment = comment.replace(/[\r\n]+/g, ' ').trim()
   return `ssh-ed25519 ${wire.toString('base64')} ${sanitizedComment}`.trimEnd()
 }

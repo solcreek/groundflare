@@ -8,36 +8,16 @@
 
 import { defineCommand } from 'citty'
 
-import {
-  BootstrapStateStore,
-  type BootstrapState,
-} from '../../bootstrap/index.js'
+import { BootstrapStateStore, type BootstrapState } from '../../bootstrap/index.js'
 import { resolveConfig } from '../../config/index.js'
-import {
-  UnknownProviderError,
-  createProvider,
-  type Provider,
-  type ProviderName,
-} from 'capstan'
+import { UnknownProviderError, createProvider, type Provider, type ProviderName } from 'capstan'
 import { FileSecretStore } from '../../secret/index.js'
 import { OpenSshClient, type SshClient } from '../../ssh/index.js'
-import {
-  collectDrift,
-  hasDrift,
-  renderDriftChecks,
-  summarizeDrift,
-} from '../drift.js'
+import { collectDrift, hasDrift, renderDriftChecks, summarizeDrift } from '../drift.js'
 import { log } from '../log.js'
-import {
-  aggregateByWorker,
-  parsePromText,
-  renderMetricsTable,
-} from '../metrics.js'
+import { aggregateByWorker, parsePromText, renderMetricsTable } from '../metrics.js'
 
-const SYSTEMD_UNITS = [
-  'groundflare-worker.service',
-  'caddy.service',
-] as const
+const SYSTEMD_UNITS = ['groundflare-worker.service', 'caddy.service'] as const
 
 const LISTEN_ADDRESS = '127.0.0.1:8080'
 
@@ -156,9 +136,7 @@ async function printWorkspaceDetail(
       process.stdout.write(`  HTTP ${parsed.status} in ${elapsed}ms\n`)
     } else {
       const payload = parsed.body
-      const uptime = payload
-        ? formatUptime(payload.uptime_seconds)
-        : '(unknown)'
+      const uptime = payload ? formatUptime(payload.uptime_seconds) : '(unknown)'
       const version = payload?.version ?? '(unknown)'
       process.stdout.write(
         `  HTTP ${parsed.status} in ${elapsed}ms — uptime ${uptime}, version ${version}\n`,
@@ -171,10 +149,9 @@ async function printWorkspaceDetail(
   // it. Failures are non-fatal — status stays useful even if metrics
   // happen to be unavailable (e.g. workerd restart in progress).
   process.stdout.write(`\nmetrics (cumulative since worker boot):\n`)
-  const metricsProbe = await ssh.run(
-    `curl -fsS --max-time 10 http://${LISTEN_ADDRESS}/__metrics`,
-    { timeoutMs: 15_000 },
-  )
+  const metricsProbe = await ssh.run(`curl -fsS --max-time 10 http://${LISTEN_ADDRESS}/__metrics`, {
+    timeoutMs: 15_000,
+  })
   if (metricsProbe.exitCode !== 0) {
     process.stdout.write(
       `  unavailable (curl exit ${metricsProbe.exitCode}: ${metricsProbe.stderr.trim()})\n`,
@@ -200,9 +177,7 @@ interface HealthPayload {
  * Body is parsed as JSON; unparseable bodies return a non-null parse
  * with a null body so the caller can still print the status code.
  */
-function parseHealth(
-  stdout: string,
-): { status: number; body: HealthPayload | null } | null {
+function parseHealth(stdout: string): { status: number; body: HealthPayload | null } | null {
   const trimmed = stdout.trimEnd()
   const nl = trimmed.lastIndexOf('\n')
   if (nl < 0) return null
@@ -235,10 +210,7 @@ function formatUptime(seconds: number): string {
   return `${days}d${hrs % 24}h`
 }
 
-async function runDriftSection(
-  state: BootstrapState,
-  ssh: SshClient,
-): Promise<boolean> {
+async function runDriftSection(state: BootstrapState, ssh: SshClient): Promise<boolean> {
   process.stdout.write(`\ndrift:\n`)
 
   // domain comes from wrangler.toml in cwd — best-effort, non-fatal if
@@ -269,9 +241,7 @@ async function runDriftSection(
     // minority that doesn't heal this way (IP rotated externally,
     // DNS pointing elsewhere) still needs operator attention, but
     // pointing them at `up` first is the right default hint.
-    process.stdout.write(
-      `  → run \`groundflare up --workspace ${state.workspace}\` to reconcile\n`,
-    )
+    process.stdout.write(`  → run \`groundflare up --workspace ${state.workspace}\` to reconcile\n`)
   }
   return drift
 }

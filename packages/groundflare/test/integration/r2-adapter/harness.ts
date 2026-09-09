@@ -39,9 +39,7 @@ export interface MockResponse {
   body?: string | Buffer
 }
 
-export type MockHandler = (
-  req: CapturedRequest,
-) => MockResponse | Promise<MockResponse>
+export type MockHandler = (req: CapturedRequest) => MockResponse | Promise<MockResponse>
 
 export interface MockS3 {
   readonly port: number
@@ -123,9 +121,7 @@ export async function startMockS3(): Promise<MockS3> {
   }
 }
 
-function normalizeHeaders(
-  raw: NodeJS.Dict<string | string[]>,
-): Record<string, string> {
+function normalizeHeaders(raw: NodeJS.Dict<string | string[]>): Record<string, string> {
   const out: Record<string, string> = {}
   for (const [k, v] of Object.entries(raw)) {
     if (v === undefined) continue
@@ -314,9 +310,7 @@ export interface SetupOptions {
   readonly bucket?: string
 }
 
-export async function setupAdapterStack(
-  opts: SetupOptions = {},
-): Promise<AdapterStack> {
+export async function setupAdapterStack(opts: SetupOptions = {}): Promise<AdapterStack> {
   const mock = await startMockS3()
   const workerdPort = await pickFreePort()
   const adapter = await bundleR2Adapter()
@@ -357,7 +351,9 @@ export async function setupAdapterStack(
       try {
         return JSON.parse(res.body)
       } catch {
-        throw new Error(`non-JSON response from user worker (status=${res.status}): ${res.body.slice(0, 400)}`)
+        throw new Error(
+          `non-JSON response from user worker (status=${res.status}): ${res.body.slice(0, 400)}`,
+        )
       }
     },
     async stop() {

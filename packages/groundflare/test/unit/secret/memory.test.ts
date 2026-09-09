@@ -39,9 +39,9 @@ describe('MemorySecretStore', () => {
   })
 
   it('initial values pass through key validation', () => {
-    expect(
-      () => new MemorySecretStore({ 'invalid key with spaces': 'x' }),
-    ).toThrow(SecretStoreError)
+    expect(() => new MemorySecretStore({ 'invalid key with spaces': 'x' })).toThrow(
+      SecretStoreError,
+    )
   })
 
   it('rejects invalid key on set', async () => {

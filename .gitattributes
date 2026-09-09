@@ -1,0 +1,4 @@
+# Check out with LF everywhere. The formatter enforces endOfLine: lf, and
+# Windows checkouts with core.autocrlf=true would otherwise turn every
+# file into CRLF and fail `format:check` on all of them.
+* text=auto eol=lf

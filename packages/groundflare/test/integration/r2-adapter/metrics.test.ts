@@ -11,11 +11,7 @@
  */
 
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
-import {
-  s3ObjectHeaders,
-  setupAdapterStack,
-  type AdapterStack,
-} from './harness.js'
+import { s3ObjectHeaders, setupAdapterStack, type AdapterStack } from './harness.js'
 
 describe('R2 adapter /__gf_metrics', () => {
   let stack: AdapterStack

@@ -61,9 +61,27 @@ describe('BootstrapOrchestrator: happy path', () => {
     const dir = await mkdtemp(join(tmpdir(), 'gf-orch-'))
     const order: string[] = []
     const stages: Stage[] = [
-      { id: 'a', description: 'A', run: async () => { order.push('a') } },
-      { id: 'b', description: 'B', run: async () => { order.push('b') } },
-      { id: 'c', description: 'C', run: async () => { order.push('c') } },
+      {
+        id: 'a',
+        description: 'A',
+        run: async () => {
+          order.push('a')
+        },
+      },
+      {
+        id: 'b',
+        description: 'B',
+        run: async () => {
+          order.push('b')
+        },
+      },
+      {
+        id: 'c',
+        description: 'C',
+        run: async () => {
+          order.push('c')
+        },
+      },
     ]
     const orch = new BootstrapOrchestrator(stages, {
       stateStore: new BootstrapStateStore({ directory: dir }),
@@ -95,8 +113,20 @@ describe('BootstrapOrchestrator: idempotent resume', () => {
     const dir = await mkdtemp(join(tmpdir(), 'gf-orch-'))
     const ran: string[] = []
     const stages: Stage[] = [
-      { id: 'a', description: 'A', run: async () => { ran.push('a') } },
-      { id: 'b', description: 'B', run: async () => { ran.push('b') } },
+      {
+        id: 'a',
+        description: 'A',
+        run: async () => {
+          ran.push('a')
+        },
+      },
+      {
+        id: 'b',
+        description: 'B',
+        run: async () => {
+          ran.push('b')
+        },
+      },
     ]
     const orch = new BootstrapOrchestrator(stages, {
       stateStore: new BootstrapStateStore({ directory: dir }),
@@ -116,7 +146,9 @@ describe('BootstrapOrchestrator: idempotent resume', () => {
         id: 'check',
         description: 'C',
         isComplete: async () => true,
-        run: async () => { ran.push('check') },
+        run: async () => {
+          ran.push('check')
+        },
       },
     ]
     const orch = new BootstrapOrchestrator(stages, {

@@ -101,9 +101,7 @@ export function generateBunSystemdUnit(opts: BunUnitOptions): string {
   const description = opts.description ?? DEFAULTS.description
   const bunBinary = opts.bunBinary ?? DEFAULTS.bunBinary
   const envFile =
-    opts.environmentFile === null
-      ? null
-      : (opts.environmentFile ?? DEFAULTS.environmentFile)
+    opts.environmentFile === null ? null : (opts.environmentFile ?? DEFAULTS.environmentFile)
   const workingDirectory = opts.workingDirectory ?? DEFAULTS.workingDirectory
   const user = opts.user ?? DEFAULTS.user
   const group = opts.group ?? DEFAULTS.group

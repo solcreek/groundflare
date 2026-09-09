@@ -57,9 +57,9 @@
     "stress:bun": "tsx src/poc/bench-bun-burst.ts",
     "stress:workerd": "tsx src/poc/bench-bindings.ts",
     "coverage": "vitest run --coverage",
-    "lint": "eslint --no-error-on-unmatched-pattern \"src/**/*.ts\" \"test/**/*.ts\"",
-    "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
-    "format:check": "prettier --check \"src/**/*.ts\" \"test/**/*.ts\"",
+    "lint": "oxlint src test",
+    "format": "oxfmt src test",
+    "format:check": "oxfmt --check src test",
     "prepublishOnly": "npm run check && npm run lint && npm run test && npm run build"
   },
   "dependencies": {
@@ -76,7 +76,7 @@
   },
   "devDependencies": {
     "@types/update-notifier": "^6.0.8",
-    "@vitest/coverage-v8": "^4.1.10",
+    "@vitest/coverage-v8": "^5.0.0",
     "autocannon": "^8.0.0",
     "hono": "^4.12.12",
     "tsx": "^4.19.0"

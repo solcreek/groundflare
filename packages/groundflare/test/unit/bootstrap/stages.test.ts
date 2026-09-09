@@ -191,23 +191,19 @@ describe('Stage: provider.ssh-key', () => {
     const ctx2 = makeContext({ provider })
     // Patch the fingerprint mapping so listSSHKeys returns a match for
     // whatever the local key is. We compute it from the in-memory list.
-    ;(provider.listSSHKeys as ReturnType<typeof vi.fn>).mockImplementation(
-      async () => {
-        // Recompute the fingerprint based on the file we just wrote.
-        const fs = await import('node:fs/promises')
-        const pubLine = (
-          await fs.readFile(join(tmpDir, 'demo_ed25519.pub'), 'utf-8')
-        ).trim()
-        const { sha256Fingerprint } = await import('../../../src/bootstrap/index.js')
-        return [
-          {
-            id: 'sshk-1',
-            name: 'groundflare-demo',
-            fingerprint: sha256Fingerprint(pubLine),
-          },
-        ]
-      },
-    )
+    ;(provider.listSSHKeys as ReturnType<typeof vi.fn>).mockImplementation(async () => {
+      // Recompute the fingerprint based on the file we just wrote.
+      const fs = await import('node:fs/promises')
+      const pubLine = (await fs.readFile(join(tmpDir, 'demo_ed25519.pub'), 'utf-8')).trim()
+      const { sha256Fingerprint } = await import('../../../src/bootstrap/index.js')
+      return [
+        {
+          id: 'sshk-1',
+          name: 'groundflare-demo',
+          fingerprint: sha256Fingerprint(pubLine),
+        },
+      ]
+    })
     await sshKeyStage({ directory: tmpDir }).run(ctx2)
     // upload should NOT be called again
     expect(provider.uploadSSHKey).toHaveBeenCalledTimes(1)
@@ -250,9 +246,9 @@ describe('Stage: provider.provision', () => {
 
   it('throws prerequisite when no SSH key is recorded', async () => {
     const ctx = makeContext({})
-    await expect(
-      provisionStage({ size: 'cx22', region: 'hel1' }).run(ctx),
-    ).rejects.toMatchObject({ code: 'prerequisite' })
+    await expect(provisionStage({ size: 'cx22', region: 'hel1' }).run(ctx)).rejects.toMatchObject({
+      code: 'prerequisite',
+    })
   })
 
   it('calls createVPS with cloud-init user-data and the provider key id', async () => {
@@ -365,9 +361,7 @@ describe('Stage: provider.provision', () => {
       },
     }
     const ctx = makeContext({ state, provider })
-    expect(
-      await provisionStage({ size: 'cx22', region: 'hel1' }).isComplete!(ctx),
-    ).toBe(false)
+    expect(await provisionStage({ size: 'cx22', region: 'hel1' }).isComplete!(ctx)).toBe(false)
   })
 })
 

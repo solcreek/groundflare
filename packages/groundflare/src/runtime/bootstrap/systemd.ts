@@ -93,9 +93,7 @@ export function generateWorkerSystemdUnit(opts: WorkerUnitOptions): string {
   const description = opts.description ?? DEFAULTS.description
   const workerdBinary = opts.workerdBinary ?? DEFAULTS.workerdBinary
   const envFile =
-    opts.environmentFile === null
-      ? null
-      : (opts.environmentFile ?? DEFAULTS.environmentFile)
+    opts.environmentFile === null ? null : (opts.environmentFile ?? DEFAULTS.environmentFile)
   const workingDirectory = opts.workingDirectory ?? DEFAULTS.workingDirectory
   const user = opts.user ?? DEFAULTS.user
   const group = opts.group ?? DEFAULTS.group
@@ -223,9 +221,7 @@ const SEAWEEDFS_DEFAULTS = {
  * runaway weed cannot starve the workerd that depends on it. Weed in
  * its single-server mode happily lives in 100–200 MB on a 1 GB VPS.
  */
-export function generateSeaweedfsSystemdUnit(
-  opts: SeaweedfsUnitOptions = {},
-): string {
+export function generateSeaweedfsSystemdUnit(opts: SeaweedfsUnitOptions = {}): string {
   const weedBinary = opts.weedBinary ?? SEAWEEDFS_DEFAULTS.weedBinary
   const dataDir = opts.dataDir ?? SEAWEEDFS_DEFAULTS.dataDir
   const s3Port = opts.s3Port ?? SEAWEEDFS_DEFAULTS.s3Port

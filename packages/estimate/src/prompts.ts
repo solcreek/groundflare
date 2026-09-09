@@ -43,30 +43,18 @@ export async function promptUsage(): Promise<Usage> {
     'Average CPU time per request (ms)',
     DEFAULTS.cpuMsPerRequest,
   )
-  const avgResponseKB = await promptNumber(
-    'Average response size (KB)',
-    DEFAULTS.avgResponseKB,
-  )
+  const avgResponseKB = await promptNumber('Average response size (KB)', DEFAULTS.avgResponseKB)
 
   const d1StorageGB = await promptNumber('D1 storage (GB)', DEFAULTS.d1StorageGB)
-  const d1ReadsPerMonth = await promptNumber(
-    'D1 rows read per month',
-    DEFAULTS.d1ReadsPerMonth,
-  )
+  const d1ReadsPerMonth = await promptNumber('D1 rows read per month', DEFAULTS.d1ReadsPerMonth)
   const d1WritesPerMonth = await promptNumber(
     'D1 rows written per month',
     DEFAULTS.d1WritesPerMonth,
   )
 
   const kvStorageGB = await promptNumber('KV storage (GB)', DEFAULTS.kvStorageGB)
-  const kvReadsPerMonth = await promptNumber(
-    'KV reads per month',
-    DEFAULTS.kvReadsPerMonth,
-  )
-  const kvWritesPerMonth = await promptNumber(
-    'KV writes per month',
-    DEFAULTS.kvWritesPerMonth,
-  )
+  const kvReadsPerMonth = await promptNumber('KV reads per month', DEFAULTS.kvReadsPerMonth)
+  const kvWritesPerMonth = await promptNumber('KV writes per month', DEFAULTS.kvWritesPerMonth)
 
   const r2StorageGB = await promptNumber('R2 storage (GB)', DEFAULTS.r2StorageGB)
   const r2ClassAOpsPerMonth = await promptNumber(

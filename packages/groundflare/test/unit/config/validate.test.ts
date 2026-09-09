@@ -1,9 +1,6 @@
 import { describe, it, expect } from 'vitest'
 
-import {
-  ConfigValidationError,
-  validateGroundflareSection,
-} from '../../../src/config/index.js'
+import { ConfigValidationError, validateGroundflareSection } from '../../../src/config/index.js'
 
 const FILE = '/tmp/wrangler.toml'
 
@@ -28,10 +25,7 @@ describe('validateGroundflareSection — happy path', () => {
   })
 
   it('accepts a Bun-track config', () => {
-    const result = validateGroundflareSection(
-      { runtime: 'bun' },
-      FILE,
-    )
+    const result = validateGroundflareSection({ runtime: 'bun' }, FILE)
     expect(result.runtime).toBe('bun')
   })
 
@@ -82,9 +76,9 @@ describe('validateGroundflareSection — happy path', () => {
 
 describe('validateGroundflareSection — unknown keys', () => {
   it('rejects a typo at the top level', () => {
-    expect(() =>
-      validateGroundflareSection({ provder: 'hetzner' }, FILE),
-    ).toThrow(ConfigValidationError)
+    expect(() => validateGroundflareSection({ provder: 'hetzner' }, FILE)).toThrow(
+      ConfigValidationError,
+    )
     try {
       validateGroundflareSection({ provder: 'hetzner' }, FILE)
     } catch (err) {
@@ -96,10 +90,7 @@ describe('validateGroundflareSection — unknown keys', () => {
 
   it('rejects a typo inside observability', () => {
     try {
-      validateGroundflareSection(
-        { observability: { alrts: { email: 'x@y.com' } } },
-        FILE,
-      )
+      validateGroundflareSection({ observability: { alrts: { email: 'x@y.com' } } }, FILE)
       throw new Error('should have thrown')
     } catch (err) {
       expect(err).toBeInstanceOf(ConfigValidationError)
@@ -110,19 +101,13 @@ describe('validateGroundflareSection — unknown keys', () => {
 
   it('rejects a typo inside bindings.<name>', () => {
     expect(() =>
-      validateGroundflareSection(
-        { bindings: { CACHE: { adaptr: 'sqlite' } } },
-        FILE,
-      ),
+      validateGroundflareSection({ bindings: { CACHE: { adaptr: 'sqlite' } } }, FILE),
     ).toThrow(/adaptr/)
   })
 
   it('rejects `env` inside an env child', () => {
     expect(() =>
-      validateGroundflareSection(
-        { env: { production: { env: { nested: {} } } } },
-        FILE,
-      ),
+      validateGroundflareSection({ env: { production: { env: { nested: {} } } } }, FILE),
     ).toThrow(ConfigValidationError)
   })
 })
@@ -141,26 +126,18 @@ describe('validateGroundflareSection — enum values', () => {
   })
 
   it('rejects an unknown runtime', () => {
-    expect(() => validateGroundflareSection({ runtime: 'node' }, FILE)).toThrow(
-      /node/,
-    )
+    expect(() => validateGroundflareSection({ runtime: 'node' }, FILE)).toThrow(/node/)
   })
 
   it('rejects an unknown adapter in a binding', () => {
     expect(() =>
-      validateGroundflareSection(
-        { bindings: { DB: { adapter: 'mongo' } } },
-        FILE,
-      ),
+      validateGroundflareSection({ bindings: { DB: { adapter: 'mongo' } } }, FILE),
     ).toThrow(/mongo/)
   })
 
   it('rejects an unknown observability.metrics value', () => {
     expect(() =>
-      validateGroundflareSection(
-        { observability: { metrics: 'datadog' } },
-        FILE,
-      ),
+      validateGroundflareSection({ observability: { metrics: 'datadog' } }, FILE),
     ).toThrow(/datadog/)
   })
 })
@@ -172,10 +149,7 @@ describe('validateGroundflareSection — [groundflare.bun] deferred', () => {
   // surprising than silently accepting then ignoring.
   it('rejects a `bun` block at the top level as an unknown key', () => {
     expect(() =>
-      validateGroundflareSection(
-        { runtime: 'bun', bun: { main: 's.ts' } },
-        FILE,
-      ),
+      validateGroundflareSection({ runtime: 'bun', bun: { main: 's.ts' } }, FILE),
     ).toThrow(/unknown key.*bun/)
   })
 
@@ -194,20 +168,16 @@ describe('validateGroundflareSection — [groundflare.bun] deferred', () => {
 
 describe('validateGroundflareSection — type mismatches', () => {
   it('rejects a non-string domain', () => {
-    expect(() => validateGroundflareSection({ domain: 42 }, FILE)).toThrow(
-      ConfigValidationError,
-    )
+    expect(() => validateGroundflareSection({ domain: 42 }, FILE)).toThrow(ConfigValidationError)
   })
 
   it('rejects a negative memory_mb', () => {
-    expect(() =>
-      validateGroundflareSection({ limits: { memory_mb: -1 } }, FILE),
-    ).toThrow(ConfigValidationError)
+    expect(() => validateGroundflareSection({ limits: { memory_mb: -1 } }, FILE)).toThrow(
+      ConfigValidationError,
+    )
   })
 
   it('rejects a non-object groundflare section', () => {
-    expect(() => validateGroundflareSection('oops', FILE)).toThrow(
-      ConfigValidationError,
-    )
+    expect(() => validateGroundflareSection('oops', FILE)).toThrow(ConfigValidationError)
   })
 })

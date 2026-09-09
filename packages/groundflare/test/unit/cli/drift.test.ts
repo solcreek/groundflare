@@ -22,9 +22,7 @@ import type { RunResult, SshClient } from '../../../src/ssh/index.js'
 
 // ─── Fixtures ───────────────────────────────────────────────────────
 
-function baseState(
-  overrides: Partial<BootstrapState> = {},
-): BootstrapState {
+function baseState(overrides: Partial<BootstrapState> = {}): BootstrapState {
   return {
     workspace: 'demo',
     provider: 'digitalocean',
@@ -88,8 +86,7 @@ function fakeSsh(
     stream: vi.fn(),
     run: vi.fn(async (cmd: string) => {
       for (const h of handlers) {
-        const matched =
-          typeof h.match === 'string' ? cmd.includes(h.match) : h.match.test(cmd)
+        const matched = typeof h.match === 'string' ? cmd.includes(h.match) : h.match.test(cmd)
         if (matched) {
           return {
             exitCode: 0,
@@ -258,9 +255,7 @@ describe('collectDrift — dns category', () => {
 
 describe('collectDrift — systemd category', () => {
   it('ok when every required unit reports active', async () => {
-    const ssh = fakeSsh([
-      { match: /is-active/, result: { exitCode: 0, stdout: 'active\n' } },
-    ])
+    const ssh = fakeSsh([{ match: /is-active/, result: { exitCode: 0, stdout: 'active\n' } }])
     const checks = await collectDrift({
       state: baseState(),
       provider: null,
@@ -328,9 +323,7 @@ describe('collectDrift — systemd category', () => {
 
 describe('collectDrift — files category', () => {
   it('ok when every artefact stats to a non-zero size', async () => {
-    const ssh = fakeSsh([
-      { match: /stat -c/, result: { exitCode: 0, stdout: 'root 2048\n' } },
-    ])
+    const ssh = fakeSsh([{ match: /stat -c/, result: { exitCode: 0, stdout: 'root 2048\n' } }])
     const checks = await collectDrift({
       state: baseState(),
       provider: null,
@@ -511,9 +504,7 @@ describe('renderDriftChecks', () => {
 
 describe('summarizeDrift', () => {
   it('reports "No drift detected." when every check is ok', () => {
-    const checks: DriftCheck[] = [
-      { id: 'x', category: 'provider', severity: 'ok', detail: '' },
-    ]
+    const checks: DriftCheck[] = [{ id: 'x', category: 'provider', severity: 'ok', detail: '' }]
     expect(summarizeDrift(checks)).toBe('No drift detected.')
   })
 
@@ -535,8 +526,6 @@ describe('hasDrift', () => {
         { id: 'b', category: 'dns', severity: 'drift', detail: '' },
       ]),
     ).toBe(true)
-    expect(
-      hasDrift([{ id: 'a', category: 'dns', severity: 'warn', detail: '' }]),
-    ).toBe(false)
+    expect(hasDrift([{ id: 'a', category: 'dns', severity: 'warn', detail: '' }])).toBe(false)
   })
 })

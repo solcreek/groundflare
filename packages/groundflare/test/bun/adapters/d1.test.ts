@@ -11,14 +11,8 @@
  */
 
 import { describe, test, expect, beforeEach, afterEach } from 'bun:test'
-import {
-  BunD1Adapter,
-  countStatements,
-} from '../../../src/runtime/bun/adapters/d1.ts'
-import {
-  runD1ConformanceSuite,
-  type D1Fixture,
-} from '../../conformance/shared/d1-spec.ts'
+import { BunD1Adapter, countStatements } from '../../../src/runtime/bun/adapters/d1.ts'
+import { runD1ConformanceSuite, type D1Fixture } from '../../conformance/shared/d1-spec.ts'
 
 const bunFixture: D1Fixture = {
   name: 'sqlite (bun:sqlite)',
@@ -33,10 +27,7 @@ const bunFixture: D1Fixture = {
   },
 }
 
-runD1ConformanceSuite(
-  { describe, test, expect, beforeEach, afterEach } as never,
-  bunFixture,
-)
+runD1ConformanceSuite({ describe, test, expect, beforeEach, afterEach } as never, bunFixture)
 
 describe('BunD1Adapter — countStatements helper', () => {
   test('trailing semicolons are not counted as extra statements', () => {

@@ -76,8 +76,6 @@ export interface D1PreparedStatement {
 
 export interface D1Adapter {
   prepare(sql: string): D1PreparedStatement
-  batch<T = Record<string, unknown>>(
-    statements: D1PreparedStatement[],
-  ): Promise<D1Result<T>[]>
+  batch<T = Record<string, unknown>>(statements: D1PreparedStatement[]): Promise<D1Result<T>[]>
   exec(sql: string): Promise<D1ExecResult>
 }

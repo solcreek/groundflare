@@ -67,9 +67,7 @@ function parseLine(line: string): PromSeries | null {
  * with `\\`, `\"`, `\n` escapes — matches what `escapeLabel` in
  * router.ts emits. Returns null on any shape violation.
  */
-function parseLabels(
-  block: string,
-): Readonly<Record<string, string>> | null {
+function parseLabels(block: string): Readonly<Record<string, string>> | null {
   const labels: Record<string, string> = {}
   let i = 0
   while (i < block.length) {
@@ -114,11 +112,9 @@ function parseLabels(
 
 /** Metric-name constants — kept in one place so both emit + consume stay aligned. */
 const METRIC_REQUESTS_TOTAL = 'groundflare_worker_requests_total'
-const METRIC_DURATION_BUCKET =
-  'groundflare_worker_request_duration_seconds_bucket'
+const METRIC_DURATION_BUCKET = 'groundflare_worker_request_duration_seconds_bucket'
 const METRIC_DURATION_SUM = 'groundflare_worker_request_duration_seconds_sum'
-const METRIC_DURATION_COUNT =
-  'groundflare_worker_request_duration_seconds_count'
+const METRIC_DURATION_COUNT = 'groundflare_worker_request_duration_seconds_count'
 const METRIC_ERRORS_TOTAL = 'groundflare_worker_errors_total'
 
 const METRIC_KV_OPS_TOTAL = 'groundflare_binding_kv_ops_total'
@@ -340,16 +336,7 @@ export function renderMetricsTable(workers: readonly WorkerMetrics[]): string {
     return '  no tenant activity recorded yet\n'
   }
   const rows: string[][] = [
-    [
-      'worker',
-      'reqs',
-      'err',
-      '2xx/3xx/4xx/5xx',
-      'p50 ms',
-      'p95 ms',
-      'p99 ms',
-      'bindings',
-    ],
+    ['worker', 'reqs', 'err', '2xx/3xx/4xx/5xx', 'p50 ms', 'p95 ms', 'p99 ms', 'bindings'],
   ]
   for (const w of workers) {
     const classes = ['2xx', '3xx', '4xx', '5xx']
@@ -380,16 +367,12 @@ export function renderMetricsTable(workers: readonly WorkerMetrics[]): string {
       bindings,
     ])
   }
-  const widths = rows[0]!.map((_, col) =>
-    Math.max(...rows.map((r) => r[col]!.length)),
-  )
+  const widths = rows[0]!.map((_, col) => Math.max(...rows.map((r) => r[col]!.length)))
   const out: string[] = []
   for (const r of rows) {
     const padded = r
       .map((cell, i) =>
-        i === 0 || i === r.length - 1
-          ? cell.padEnd(widths[i]!)
-          : cell.padStart(widths[i]!),
+        i === 0 || i === r.length - 1 ? cell.padEnd(widths[i]!) : cell.padStart(widths[i]!),
       )
       .join('  ')
     out.push('  ' + padded)

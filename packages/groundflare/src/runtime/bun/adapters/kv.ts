@@ -106,10 +106,7 @@ export class BunKVAdapter {
   private readonly stmtDelete: Statement
   private readonly stmtCleanup: Statement
 
-  constructor(
-    db: Database,
-    opts: { now?: () => number; ownsConnection?: boolean } = {},
-  ) {
+  constructor(db: Database, opts: { now?: () => number; ownsConnection?: boolean } = {}) {
     this.db = db
     this.now = opts.now ?? Date.now
     this.ownsConnection = opts.ownsConnection ?? false
@@ -117,18 +114,14 @@ export class BunKVAdapter {
     for (const stmt of PRAGMA_PRELUDE) db.exec(stmt)
     db.exec(SCHEMA)
 
-    this.stmtGet = db.query(
-      'SELECT value, metadata, expires_at FROM kv WHERE key = ?',
-    )
+    this.stmtGet = db.query('SELECT value, metadata, expires_at FROM kv WHERE key = ?')
     this.stmtPut = db.query(
       'INSERT INTO kv(key, value, metadata, expires_at) VALUES (?, ?, ?, ?) ' +
         'ON CONFLICT(key) DO UPDATE SET value=excluded.value, ' +
         'metadata=excluded.metadata, expires_at=excluded.expires_at',
     )
     this.stmtDelete = db.query('DELETE FROM kv WHERE key = ?')
-    this.stmtCleanup = db.query(
-      'DELETE FROM kv WHERE expires_at IS NOT NULL AND expires_at <= ?',
-    )
+    this.stmtCleanup = db.query('DELETE FROM kv WHERE expires_at IS NOT NULL AND expires_at <= ?')
   }
 
   /**
@@ -165,23 +158,13 @@ export class BunKVAdapter {
     }
   }
 
-  async put(
-    key: string,
-    value: KVValue,
-    options: KVPutOptions = {},
-  ): Promise<void> {
-    if (
-      options.expirationTtl !== undefined &&
-      options.expiration !== undefined
-    ) {
-      throw new TypeError(
-        'KV put: provide either expirationTtl or expiration, not both',
-      )
+  async put(key: string, value: KVValue, options: KVPutOptions = {}): Promise<void> {
+    if (options.expirationTtl !== undefined && options.expiration !== undefined) {
+      throw new TypeError('KV put: provide either expirationTtl or expiration, not both')
     }
     const expiresAt = computeExpiresAt(options, this.now)
     const bytes = toBytes(value)
-    const metadata =
-      options.metadata === undefined ? null : JSON.stringify(options.metadata)
+    const metadata = options.metadata === undefined ? null : JSON.stringify(options.metadata)
     this.stmtPut.run(key, bytes, metadata, expiresAt)
   }
 
@@ -189,9 +172,7 @@ export class BunKVAdapter {
     this.stmtDelete.run(key)
   }
 
-  async list<M = unknown>(
-    options: KVListOptions = {},
-  ): Promise<KVListResult<M>> {
+  async list<M = unknown>(options: KVListOptions = {}): Promise<KVListResult<M>> {
     const prefix = options.prefix ?? ''
     const limit = clampLimit(options.limit ?? DEFAULT_LIST_LIMIT)
     const cursor = options.cursor
@@ -254,12 +235,14 @@ export class BunKVAdapter {
     return Number(info.changes)
   }
 
-  private readRow(key: string):
-    | { value: Uint8Array; metadata: string | null; expires_at: number | null }
-    | null {
-    const row = this.stmtGet.get(key) as
-      | { value: Uint8Array; metadata: string | null; expires_at: number | null }
-      | null
+  private readRow(
+    key: string,
+  ): { value: Uint8Array; metadata: string | null; expires_at: number | null } | null {
+    const row = this.stmtGet.get(key) as {
+      value: Uint8Array
+      metadata: string | null
+      expires_at: number | null
+    } | null
     if (!row) return null
     if (row.expires_at !== null && row.expires_at <= this.now()) return null
     return row
@@ -274,10 +257,7 @@ function normalizeType(options?: KVGetType | KVGetOptions): KVGetType {
   return options.type ?? 'text'
 }
 
-function computeExpiresAt(
-  options: KVPutOptions,
-  now: () => number,
-): number | null {
+function computeExpiresAt(options: KVPutOptions, now: () => number): number | null {
   if (options.expirationTtl !== undefined) {
     if (options.expirationTtl <= 0) {
       throw new RangeError('KV put: expirationTtl must be > 0 seconds')
@@ -286,9 +266,7 @@ function computeExpiresAt(
   }
   if (options.expiration !== undefined) {
     if (options.expiration <= 0) {
-      throw new RangeError(
-        'KV put: expiration must be a positive unix seconds value',
-      )
+      throw new RangeError('KV put: expiration must be a positive unix seconds value')
     }
     return options.expiration * 1000
   }
@@ -304,10 +282,7 @@ function toBytes(value: KVValue): Uint8Array {
   throw new TypeError('KV put: unsupported value type')
 }
 
-function decode(
-  bytes: Uint8Array,
-  type: KVGetType,
-): string | ArrayBuffer | unknown {
+function decode(bytes: Uint8Array, type: KVGetType): string | ArrayBuffer | unknown {
   switch (type) {
     case 'arrayBuffer': {
       const copy = new Uint8Array(bytes.byteLength)

@@ -12,12 +12,7 @@ import { posix } from 'node:path'
 import type { WranglerConfig } from '../../../config/schema.js'
 import { classifyBindings } from './classify.js'
 import { scanFile, type RawEnvAccess } from './scan-file.js'
-import type {
-  AnalysisReport,
-  AnalysisSummary,
-  Finding,
-  Severity,
-} from './types.js'
+import type { AnalysisReport, AnalysisSummary, Finding, Severity } from './types.js'
 
 export type { AnalysisReport, AnalysisSummary, Finding, Severity, FindingKind } from './types.js'
 export type { RawEnvAccess } from './scan-file.js'
@@ -43,9 +38,7 @@ export interface AnalyzeOptions {
   fs: AnalyzeFs
 }
 
-export async function analyzeWorkspace(
-  opts: AnalyzeOptions,
-): Promise<AnalysisReport> {
+export async function analyzeWorkspace(opts: AnalyzeOptions): Promise<AnalysisReport> {
   const files = await opts.fs.listSourceFiles(opts.sourceRoot)
   const sourceFindings: Finding[] = []
   const allEnvAccesses: RawEnvAccess[] = []
@@ -75,11 +68,7 @@ export async function analyzeWorkspace(
 
   const summary = summarize(findings)
   const verdict =
-    summary.blockers > 0
-      ? 'blocked'
-      : summary.reviewNeeded > 0
-        ? 'needs-changes'
-        : 'ready'
+    summary.blockers > 0 ? 'blocked' : summary.reviewNeeded > 0 ? 'needs-changes' : 'ready'
 
   return {
     workerName: opts.wrangler.name,
@@ -109,8 +98,7 @@ function compareFindings(a: Finding, b: Finding): number {
   if (a.location && b.location) {
     const f = a.location.file.localeCompare(b.location.file)
     if (f !== 0) return f
-    if (a.location.line !== b.location.line)
-      return a.location.line - b.location.line
+    if (a.location.line !== b.location.line) return a.location.line - b.location.line
     return a.location.column - b.location.column
   }
   if (a.location && !b.location) return 1 // bindings first within a severity bucket

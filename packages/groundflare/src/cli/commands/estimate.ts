@@ -46,17 +46,13 @@ export default defineCommand({
   },
   async run({ args }) {
     if (args.bill !== undefined || args['cf-token'] !== undefined) {
-      log.warn(
-        'bill + cf-token inputs land in v0.2/v0.3 — falling back to interactive mode',
-      )
+      log.warn('bill + cf-token inputs land in v0.2/v0.3 — falling back to interactive mode')
     }
 
     const baked = loadBakedPrices()
     const age = priceAgeDays(baked)
     if (age > STALE_AFTER_DAYS) {
-      log.warn(
-        `pricing table is ${age} days old (updated ${baked.updated}); numbers may drift`,
-      )
+      log.warn(`pricing table is ${age} days old (updated ${baked.updated}); numbers may drift`)
     }
 
     const { prices, sources } = await refreshPrices({

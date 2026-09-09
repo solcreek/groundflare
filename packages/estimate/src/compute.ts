@@ -11,14 +11,7 @@ import {
   costTarget,
   sumLines,
 } from './cost.js'
-import type {
-  Confidence,
-  Estimate,
-  PriceSource,
-  Prices,
-  TargetProvider,
-  Usage,
-} from './types.js'
+import type { Confidence, Estimate, PriceSource, Prices, TargetProvider, Usage } from './types.js'
 
 export interface ComputeOptions {
   readonly confidence: Confidence
@@ -27,11 +20,7 @@ export interface ComputeOptions {
   readonly targetProvider?: TargetProvider
 }
 
-export function computeEstimate(
-  usage: Usage,
-  prices: Prices,
-  opts: ComputeOptions,
-): Estimate {
+export function computeEstimate(usage: Usage, prices: Prices, opts: ComputeOptions): Estimate {
   const provider: TargetProvider = opts.targetProvider ?? 'hetzner'
   const profile = classifyProfile(usage)
   const demand = computeSizingDemand(usage)

@@ -164,9 +164,7 @@ export function generateCloudInit(opts: CloudInitOptions): string {
   lines.push('  - ufw allow OpenSSH')
   lines.push('  - ufw allow 80/tcp')
   lines.push('  - ufw allow 443/tcp')
-  lines.push(
-    '  - sed -i "s/^#*PermitRootLogin.*/PermitRootLogin no/" /etc/ssh/sshd_config',
-  )
+  lines.push('  - sed -i "s/^#*PermitRootLogin.*/PermitRootLogin no/" /etc/ssh/sshd_config')
   lines.push(
     '  - sed -i "s/^#*PasswordAuthentication.*/PasswordAuthentication no/" /etc/ssh/sshd_config',
   )
@@ -174,8 +172,12 @@ export function generateCloudInit(opts: CloudInitOptions): string {
 
   // Create state directory layout
   lines.push(`  - install -d -m 0755 -o ${systemUser} -g ${systemUser} /var/lib/groundflare`)
-  lines.push(`  - install -d -m 0755 -o ${systemUser} -g ${systemUser} /var/lib/groundflare/workers`)
-  lines.push(`  - install -d -m 0755 -o ${systemUser} -g ${systemUser} /var/lib/groundflare/do-state`)
+  lines.push(
+    `  - install -d -m 0755 -o ${systemUser} -g ${systemUser} /var/lib/groundflare/workers`,
+  )
+  lines.push(
+    `  - install -d -m 0755 -o ${systemUser} -g ${systemUser} /var/lib/groundflare/do-state`,
+  )
   lines.push('  - install -d -m 0755 /etc/groundflare')
 
   if (opts.installWorkerd !== false) {
@@ -190,7 +192,9 @@ export function generateCloudInit(opts: CloudInitOptions): string {
     lines.push('      arm64) WPKG=workerd-linux-arm64 ;;')
     lines.push('      *)     echo "unsupported arch $ARCH"; exit 1 ;;')
     lines.push('    esac')
-    lines.push(`    curl -fsSL "https://registry.npmjs.org/@cloudflare/$WPKG/-/$WPKG-${version}.tgz" \\`)
+    lines.push(
+      `    curl -fsSL "https://registry.npmjs.org/@cloudflare/$WPKG/-/$WPKG-${version}.tgz" \\`,
+    )
     lines.push('      -o /tmp/workerd.tgz')
     lines.push('    tar -xzf /tmp/workerd.tgz -C /tmp')
     lines.push('    install -m 0755 /tmp/package/bin/workerd /usr/local/bin/workerd')
@@ -203,17 +207,13 @@ export function generateCloudInit(opts: CloudInitOptions): string {
     // then symlink the binary into /usr/local/bin so any user can execute it.
     // Binary permissions default to 0755, so the groundflare systemd user can
     // run it via the symlink without touching root-owned dirs.
-    lines.push(
-      '  - HOME=/root bash -c "curl -fsSL https://bun.sh/install | bash"',
-    )
+    lines.push('  - HOME=/root bash -c "curl -fsSL https://bun.sh/install | bash"')
     lines.push('  - ln -sf /root/.bun/bin/bun /usr/local/bin/bun')
   }
 
   if (opts.installSeaweedfs === true) {
     if (opts.seaweedfsVersion === undefined || opts.seaweedfsVersion === '') {
-      throw new TypeError(
-        'cloud-init: seaweedfsVersion is required when installSeaweedfs is true',
-      )
+      throw new TypeError('cloud-init: seaweedfsVersion is required when installSeaweedfs is true')
     }
     const seaweedVersion = opts.seaweedfsVersion
     // SeaweedFS publishes prebuilt linux_amd64.tar.gz / linux_arm64.tar.gz

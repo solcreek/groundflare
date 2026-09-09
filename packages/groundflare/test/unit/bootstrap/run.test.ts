@@ -9,11 +9,7 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import {
-  BootstrapStateStore,
-  runBootstrap,
-  type Stage,
-} from '../../../src/bootstrap/index.js'
+import { BootstrapStateStore, runBootstrap, type Stage } from '../../../src/bootstrap/index.js'
 import { MemorySecretStore } from '../../../src/secret/index.js'
 import type { Provider } from 'capstan'
 
@@ -68,8 +64,20 @@ describe('runBootstrap', () => {
   it('runs the supplied stages in order and persists state on success', async () => {
     const ran: string[] = []
     const stages: Stage[] = [
-      { id: 'one', description: '1', run: async () => { ran.push('one') } },
-      { id: 'two', description: '2', run: async () => { ran.push('two') } },
+      {
+        id: 'one',
+        description: '1',
+        run: async () => {
+          ran.push('one')
+        },
+      },
+      {
+        id: 'two',
+        description: '2',
+        run: async () => {
+          ran.push('two')
+        },
+      },
     ]
     const stateStore = new BootstrapStateStore({ directory: tmp })
     const result = await runBootstrap({

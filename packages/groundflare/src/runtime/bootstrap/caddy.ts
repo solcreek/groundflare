@@ -113,8 +113,7 @@ export function generateCaddyfile(opts: CaddyfileOptions): string {
   const globalLines: string[] = [`email ${opts.email}`]
   if (opts.acmeCa !== undefined) globalLines.push(`acme_ca ${opts.acmeCa}`)
   if (opts.adminAddress === null) globalLines.push('admin off')
-  else if (opts.adminAddress !== undefined)
-    globalLines.push(`admin ${opts.adminAddress}`)
+  else if (opts.adminAddress !== undefined) globalLines.push(`admin ${opts.adminAddress}`)
   if (opts.persistConfig === false) globalLines.push('persist_config off')
 
   const siteBlocks = opts.sites.map(renderSite).join('\n\n')
@@ -175,11 +174,7 @@ function renderSite(site: CaddySite): string {
   lines.push('}')
   if (site.extra && site.extra.length > 0) lines.push(...site.extra)
 
-  return (
-    `${site.hostname} {\n` +
-    lines.map((l) => `  ${l}`).join('\n') +
-    '\n}'
-  )
+  return `${site.hostname} {\n` + lines.map((l) => `  ${l}`).join('\n') + '\n}'
 }
 
 function validatePublicRoute(route: CaddyR2PublicRoute): void {

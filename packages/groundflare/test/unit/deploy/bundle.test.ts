@@ -70,9 +70,9 @@ describe('bundleWorker', () => {
   })
 
   it('throws DeployError(bundle_failed) on missing entry', async () => {
-    await expect(
-      bundleWorker({ entry: join(tmp, 'does-not-exist.mjs') }),
-    ).rejects.toBeInstanceOf(DeployError)
+    await expect(bundleWorker({ entry: join(tmp, 'does-not-exist.mjs') })).rejects.toBeInstanceOf(
+      DeployError,
+    )
   })
 
   it('minify option shrinks the bundle', async () => {
@@ -96,9 +96,7 @@ describe('bundleWorker', () => {
         `export default { async fetch() { return new Response(P) } }`,
       'utf-8',
     )
-    await expect(
-      bundleWorker({ entry, maxBytes: 1024 }),
-    ).rejects.toMatchObject({
+    await expect(bundleWorker({ entry, maxBytes: 1024 })).rejects.toMatchObject({
       name: 'DeployError',
       code: 'bundle_too_large',
     })
@@ -128,9 +126,7 @@ describe('bundleWorker', () => {
       `export default { async fetch() { return new Response('ok') } }`,
       'utf-8',
     )
-    await expect(
-      bundleWorker({ entry, maxBytes: 0 }),
-    ).resolves.toBeDefined()
+    await expect(bundleWorker({ entry, maxBytes: 0 })).resolves.toBeDefined()
   })
 
   it('warnBytes: 0 suppresses the advisory', async () => {

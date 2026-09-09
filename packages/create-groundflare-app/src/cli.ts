@@ -14,11 +14,7 @@ import { readdir, readFile, stat, mkdir, writeFile } from 'node:fs/promises'
 import { dirname, relative, resolve as resolvePath } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import {
-  ScaffoldError,
-  scaffoldProject,
-  type ScaffoldFs,
-} from './scaffold.js'
+import { ScaffoldError, scaffoldProject, type ScaffoldFs } from './scaffold.js'
 
 const log = consola.withTag('create-groundflare-app')
 
@@ -84,8 +80,7 @@ function toPosix(p: string): string {
 const main = defineCommand({
   meta: {
     name: 'create-groundflare-app',
-    description:
-      'Scaffold a new groundflare-ready Cloudflare Worker project.',
+    description: 'Scaffold a new groundflare-ready Cloudflare Worker project.',
   },
   args: {
     name: {

@@ -9,6 +9,9 @@ on:
       - 'packages/estimate/**'
       - 'package.json'
       - 'package-lock.json'
+      - '.oxlintrc.json'
+      - '.oxfmtrc.json'
+      - '.gitattributes'
       - '.github/workflows/ci-groundflare.yml'
   pull_request:
     branches: [main]
@@ -17,6 +20,9 @@ on:
       - 'packages/estimate/**'
       - 'package.json'
       - 'package-lock.json'
+      - '.oxlintrc.json'
+      - '.oxfmtrc.json'
+      - '.gitattributes'
       - '.github/workflows/ci-groundflare.yml'
 
 concurrency:
@@ -46,6 +52,9 @@ jobs:
 
       - name: Lint
         run: npm run lint -w groundflare
+
+      - name: Format check
+        run: npm run format:check -w groundflare
 
       - name: Test (unit + integration + conformance)
         run: npm run test -w groundflare

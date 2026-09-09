@@ -12,7 +12,7 @@ describe('generateCaddyfile — global block', () => {
     expect(out).toContain('email ops@example.com')
   })
 
-  it('uses Let\'s Encrypt by default (no acme_ca line unless overridden)', () => {
+  it("uses Let's Encrypt by default (no acme_ca line unless overridden)", () => {
     const out = generateCaddyfile({ email: 'ops@example.com', sites: [] })
     expect(out).not.toContain('acme_ca')
   })
@@ -89,9 +89,7 @@ describe('generateCaddyfile — site blocks', () => {
   it('omits encode when the site opts out', () => {
     const out = generateCaddyfile({
       email: 'ops@example.com',
-      sites: [
-        { hostname: 'raw.example.com', upstream: '127.0.0.1:8080', encode: false },
-      ],
+      sites: [{ hostname: 'raw.example.com', upstream: '127.0.0.1:8080', encode: false }],
     })
     // Still have a block, just no encode line
     expect(out).toContain('raw.example.com {')
@@ -149,9 +147,7 @@ describe('generateCaddyfile — site blocks', () => {
   it('omits file_server when assetsPath is not set', () => {
     const out = generateCaddyfile({
       email: 'ops@example.com',
-      sites: [
-        { hostname: 'api.example.com', upstream: '127.0.0.1:8080' },
-      ],
+      sites: [{ hostname: 'api.example.com', upstream: '127.0.0.1:8080' }],
     })
     expect(out).not.toContain('file_server')
     expect(out).not.toContain('@static')
@@ -242,9 +238,7 @@ describe('generateCaddyfile — R2 public routes', () => {
         {
           hostname: 'api.example.com',
           upstream: '127.0.0.1:8080',
-          r2PublicRoutes: [
-            { path: '/media', bucketName: 'b', upstream: '127.0.0.1:9999' },
-          ],
+          r2PublicRoutes: [{ path: '/media', bucketName: 'b', upstream: '127.0.0.1:9999' }],
         },
       ],
     })

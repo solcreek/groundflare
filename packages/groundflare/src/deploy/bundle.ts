@@ -14,10 +14,7 @@ import { resolve } from 'node:path'
 import { DeployError } from './types.js'
 
 /** Node built-ins, both bare ("path") and prefixed ("node:path"). */
-const NODE_BUILTINS = [
-  ...builtinModules,
-  ...builtinModules.map((m) => `node:${m}`),
-]
+const NODE_BUILTINS = [...builtinModules, ...builtinModules.map((m) => `node:${m}`)]
 
 export interface BundleOptions {
   /** Absolute path to the Worker's entry file (TS/JS). */
@@ -111,10 +108,7 @@ export async function bundleWorker(opts: BundleOptions): Promise<BundleResult> {
 
   const outputFile = result.outputFiles?.[0]
   if (!outputFile) {
-    throw new DeployError(
-      `esbuild produced no output file for ${entry}`,
-      'bundle_failed',
-    )
+    throw new DeployError(`esbuild produced no output file for ${entry}`, 'bundle_failed')
   }
 
   const bytes = Buffer.byteLength(outputFile.text, 'utf-8')

@@ -96,9 +96,7 @@ describe('encodeOpenSshPublicKey', () => {
 
 describe('sha256Fingerprint', () => {
   it('rejects non-ed25519 lines', () => {
-    expect(() => sha256Fingerprint('ssh-rsa AAAAB3 user@host')).toThrow(
-      /not an OpenSSH ed25519/,
-    )
+    expect(() => sha256Fingerprint('ssh-rsa AAAAB3 user@host')).toThrow(/not an OpenSSH ed25519/)
   })
 
   it('produces the same fingerprint as the keypair generator', async () => {

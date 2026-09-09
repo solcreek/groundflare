@@ -25,12 +25,7 @@ import { workspaceWorkerFromConfig } from '../../runtime/workspace/index.js'
 import { log } from '../log.js'
 import { buildUpPlan, renderPlan } from '../plan.js'
 
-const SUPPORTED_PROVIDERS: readonly ProviderName[] = [
-  'hetzner',
-  'digitalocean',
-  'linode',
-  'vultr',
-]
+const SUPPORTED_PROVIDERS: readonly ProviderName[] = ['hetzner', 'digitalocean', 'linode', 'vultr']
 
 export default defineCommand({
   meta: {
@@ -58,9 +53,7 @@ export default defineCommand({
     const region = groundflare.region
     const size = groundflare.size
     if (provider === undefined || region === undefined || size === undefined) {
-      log.error(
-        'plan needs provider + region + size in [groundflare]. Fill them in and re-run.',
-      )
+      log.error('plan needs provider + region + size in [groundflare]. Fill them in and re-run.')
       process.exit(1)
     }
     if (!SUPPORTED_PROVIDERS.includes(provider as ProviderName)) {

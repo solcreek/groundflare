@@ -127,25 +127,14 @@ function parseHeaderForm(req: Request, jwt: string | null): ParsedR2Request {
   return { op, payload: null, jwt }
 }
 
-async function parsePutForm(
-  req: Request,
-  jwt: string | null,
-): Promise<ParsedR2Request> {
+async function parsePutForm(req: Request, jwt: string | null): Promise<ParsedR2Request> {
   const sizeStr = req.headers.get(R2_HEADERS.metadataSize)
   if (sizeStr === null) {
-    throw new R2WireProtocolError(
-      400,
-      10004,
-      `Missing ${R2_HEADERS.metadataSize} header on PUT`,
-    )
+    throw new R2WireProtocolError(400, 10004, `Missing ${R2_HEADERS.metadataSize} header on PUT`)
   }
   const metadataSize = parseInt(sizeStr, 10)
   if (!Number.isFinite(metadataSize) || metadataSize < 0) {
-    throw new R2WireProtocolError(
-      400,
-      10004,
-      `Invalid ${R2_HEADERS.metadataSize}: ${sizeStr}`,
-    )
+    throw new R2WireProtocolError(400, 10004, `Invalid ${R2_HEADERS.metadataSize}: ${sizeStr}`)
   }
   if (metadataSize > MAX_METADATA_SIZE) {
     // R2's own limit is ~256 KiB; cap at 1 MiB to be tolerant but bounded.
@@ -193,22 +182,14 @@ function parseOpJson(json: string): R2Op {
   try {
     parsed = JSON.parse(json)
   } catch (e) {
-    throw new R2WireProtocolError(
-      400,
-      10004,
-      `R2 op JSON parse error: ${(e as Error).message}`,
-    )
+    throw new R2WireProtocolError(400, 10004, `R2 op JSON parse error: ${(e as Error).message}`)
   }
   if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
     throw new R2WireProtocolError(400, 10004, `R2 op must be a JSON object`)
   }
   const obj = parsed as Record<string, unknown>
   if (typeof obj.method !== 'string' || obj.method === '') {
-    throw new R2WireProtocolError(
-      400,
-      10004,
-      `R2 op missing required "method" field`,
-    )
+    throw new R2WireProtocolError(400, 10004, `R2 op missing required "method" field`)
   }
   return obj as R2Op
 }
@@ -256,8 +237,7 @@ async function readPrefix(
     }
   }
 
-  const prefix =
-    prefixOffset === prefixLen ? prefixBuf : prefixBuf.subarray(0, prefixOffset)
+  const prefix = prefixOffset === prefixLen ? prefixBuf : prefixBuf.subarray(0, prefixOffset)
 
   // Phase 2: build a stream that emits leftover (if any) + remaining chunks.
   const payload = new ReadableStream<Uint8Array>({

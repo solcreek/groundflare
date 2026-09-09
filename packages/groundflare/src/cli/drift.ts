@@ -76,9 +76,7 @@ export interface CollectDriftOptions {
  * current state. Order is stable so the rendered output is
  * deterministic.
  */
-export async function collectDrift(
-  opts: CollectDriftOptions,
-): Promise<DriftCheck[]> {
+export async function collectDrift(opts: CollectDriftOptions): Promise<DriftCheck[]> {
   const checks: DriftCheck[] = []
 
   // ─── provider ──────────────────────────────────────────────────
@@ -374,8 +372,7 @@ async function checkDeployedMarker(ssh: SshClient): Promise<DriftCheck | null> {
       id,
       category: 'hash',
       severity: 'warn',
-      detail:
-        `${DEPLOYED_MARKER_PATH} missing — pre-v0.5.4 deploy, or marker was deleted. Re-run \`up\` to populate.`,
+      detail: `${DEPLOYED_MARKER_PATH} missing — pre-v0.5.4 deploy, or marker was deleted. Re-run \`up\` to populate.`,
     }
   }
 

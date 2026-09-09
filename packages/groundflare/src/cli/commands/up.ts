@@ -15,11 +15,7 @@
 import { defineCommand } from 'citty'
 import { resolve as resolvePath } from 'node:path'
 
-import {
-  BootstrapError,
-  BootstrapStateStore,
-  runBootstrap,
-} from '../../bootstrap/index.js'
+import { BootstrapError, BootstrapStateStore, runBootstrap } from '../../bootstrap/index.js'
 import { DeployError, runDeploy } from '../../deploy/index.js'
 import { resolveConfig } from '../../config/index.js'
 import type { ProviderName } from 'capstan'
@@ -28,12 +24,7 @@ import { log } from '../log.js'
 import { buildUpPlan, confirmPlan } from '../plan.js'
 import { resolveCliVersion } from '../version.js'
 
-const SUPPORTED_PROVIDERS: readonly ProviderName[] = [
-  'hetzner',
-  'digitalocean',
-  'linode',
-  'vultr',
-]
+const SUPPORTED_PROVIDERS: readonly ProviderName[] = ['hetzner', 'digitalocean', 'linode', 'vultr']
 
 export default defineCommand({
   meta: {
@@ -155,9 +146,7 @@ export default defineCommand({
     if (args['skip-bootstrap'] === true) {
       state = await stateStore.load(workspace)
       if (state === null) {
-        log.error(
-          `--skip-bootstrap set but no state found for ${JSON.stringify(workspace)}`,
-        )
+        log.error(`--skip-bootstrap set but no state found for ${JSON.stringify(workspace)}`)
         process.exit(1)
       }
       log.info(`skipping bootstrap (state: ${state.vps?.ipv4 ?? 'no vps'})`)

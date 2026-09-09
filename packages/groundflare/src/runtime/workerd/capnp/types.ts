@@ -171,9 +171,7 @@ export interface CapnpWorker {
    * a direct filesystem path — workerd's kj::Path rejects absolute paths
    * in disk services anyway).
    */
-  readonly durableObjectStorage?:
-    | { readonly inMemory: true }
-    | { readonly localDiskPath: string }
+  readonly durableObjectStorage?: { readonly inMemory: true } | { readonly localDiskPath: string }
   readonly globalOutbound?: string
 }
 

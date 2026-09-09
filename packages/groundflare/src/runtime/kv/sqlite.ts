@@ -16,11 +16,7 @@
 import type { BetterSqlite3Database, Statement } from '../sqlite/node.js'
 import { openSqlite } from '../sqlite/node.js'
 import type { SqlitePreludeOptions } from '../sqlite/prelude.js'
-import {
-  WriteCoalescer,
-  type CoalescerOptions,
-  type PendingOp,
-} from './coalescer.js'
+import { WriteCoalescer, type CoalescerOptions, type PendingOp } from './coalescer.js'
 import {
   normalizeGetOptions,
   type KVAdapter,
@@ -84,24 +80,23 @@ export class SqliteKVAdapter implements KVAdapter {
    */
   private readonly applyBatch: (batch: readonly PendingOp[]) => void
 
-  constructor(db: BetterSqlite3Database, opts: { now?: () => number; ownsConnection?: boolean; coalescer?: CoalescerOptions } = {}) {
+  constructor(
+    db: BetterSqlite3Database,
+    opts: { now?: () => number; ownsConnection?: boolean; coalescer?: CoalescerOptions } = {},
+  ) {
     this.db = db
     this.now = opts.now ?? Date.now
     this.ownsConnection = opts.ownsConnection ?? false
     db.exec(SCHEMA)
 
-    this.stmtGet = db.prepare(
-      'SELECT value, metadata, expires_at FROM kv WHERE key = ?',
-    )
+    this.stmtGet = db.prepare('SELECT value, metadata, expires_at FROM kv WHERE key = ?')
     this.stmtPut = db.prepare(
       'INSERT INTO kv(key, value, metadata, expires_at) VALUES (?, ?, ?, ?) ' +
         'ON CONFLICT(key) DO UPDATE SET value=excluded.value, ' +
         'metadata=excluded.metadata, expires_at=excluded.expires_at',
     )
     this.stmtDelete = db.prepare('DELETE FROM kv WHERE key = ?')
-    this.stmtCleanup = db.prepare(
-      'DELETE FROM kv WHERE expires_at IS NOT NULL AND expires_at <= ?',
-    )
+    this.stmtCleanup = db.prepare('DELETE FROM kv WHERE expires_at IS NOT NULL AND expires_at <= ?')
 
     const applyBatchRaw = (batch: readonly PendingOp[]): void => {
       for (const op of batch) {
@@ -113,10 +108,7 @@ export class SqliteKVAdapter implements KVAdapter {
       }
     }
     this.applyBatch = db.transaction(applyBatchRaw) as (batch: readonly PendingOp[]) => void
-    this.coalescer = new WriteCoalescer(
-      (batch) => this.applyBatch(batch),
-      opts.coalescer,
-    )
+    this.coalescer = new WriteCoalescer((batch) => this.applyBatch(batch), opts.coalescer)
   }
 
   /**
@@ -146,9 +138,7 @@ export class SqliteKVAdapter implements KVAdapter {
   async get(key: string, options?: KVGetType | KVGetOptions): Promise<unknown> {
     const pending = this.readPending(key)
     if (pending !== undefined) {
-      return pending === null
-        ? null
-        : decode(pending.value, normalizeGetOptions(options).type)
+      return pending === null ? null : decode(pending.value, normalizeGetOptions(options).type)
     }
     const row = this.readRow(key)
     if (!row) return null
@@ -164,10 +154,7 @@ export class SqliteKVAdapter implements KVAdapter {
       if (pending === null) return { value: null, metadata: null }
       return {
         value: decode(pending.value, normalizeGetOptions(options).type),
-        metadata:
-          pending.metadata === null
-            ? null
-            : (JSON.parse(pending.metadata) as M),
+        metadata: pending.metadata === null ? null : (JSON.parse(pending.metadata) as M),
       }
     }
     const row = this.readRow(key)
@@ -180,15 +167,12 @@ export class SqliteKVAdapter implements KVAdapter {
 
   async put(key: string, value: KVValue, options: KVPutOptions = {}): Promise<void> {
     if (options.expirationTtl !== undefined && options.expiration !== undefined) {
-      throw new TypeError(
-        'KV put: provide either expirationTtl or expiration, not both',
-      )
+      throw new TypeError('KV put: provide either expirationTtl or expiration, not both')
     }
 
     const expiresAt = computeExpiresAt(options, this.now)
     const bytes = toBytes(value)
-    const metadata =
-      options.metadata === undefined ? null : JSON.stringify(options.metadata)
+    const metadata = options.metadata === undefined ? null : JSON.stringify(options.metadata)
 
     return this.coalescer.enqueue({
       kind: 'put',
@@ -276,10 +260,9 @@ export class SqliteKVAdapter implements KVAdapter {
    *   null       → pending delete; the key is effectively absent
    *   { value, metadata } → pending put with the live value
    */
-  private readPending(key: string):
-    | { value: Uint8Array; metadata: string | null; expiresAt: number | null }
-    | null
-    | undefined {
+  private readPending(
+    key: string,
+  ): { value: Uint8Array; metadata: string | null; expiresAt: number | null } | null | undefined {
     const op = this.coalescer.latestFor(key)
     if (!op) return undefined
     if (op.kind === 'delete') return null
@@ -289,9 +272,9 @@ export class SqliteKVAdapter implements KVAdapter {
     return { value: op.value, metadata: op.metadata, expiresAt: op.expiresAt }
   }
 
-  private readRow(key: string):
-    | { value: Buffer | Uint8Array; metadata: string | null; expires_at: number | null }
-    | null {
+  private readRow(
+    key: string,
+  ): { value: Buffer | Uint8Array; metadata: string | null; expires_at: number | null } | null {
     const row = this.stmtGet.get(key) as
       | { value: Buffer | Uint8Array; metadata: string | null; expires_at: number | null }
       | undefined
@@ -328,10 +311,7 @@ function toBytes(value: KVValue): Uint8Array {
   throw new TypeError('KV put: unsupported value type')
 }
 
-function decode(
-  bytes: Buffer | Uint8Array,
-  type: KVGetType,
-): string | ArrayBuffer | unknown {
+function decode(bytes: Buffer | Uint8Array, type: KVGetType): string | ArrayBuffer | unknown {
   switch (type) {
     case 'arrayBuffer':
       return copyToArrayBuffer(bytes)

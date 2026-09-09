@@ -2,11 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { mkdtemp, rm, writeFile, readFile, chmod, stat } from 'node:fs/promises'
 import { tmpdir, platform, homedir } from 'node:os'
 import { join, dirname } from 'node:path'
-import {
-  FileSecretStore,
-  SecretStoreError,
-  inspectFileMode,
-} from '../../../src/secret/index.js'
+import { FileSecretStore, SecretStoreError, inspectFileMode } from '../../../src/secret/index.js'
 
 const isPosix = platform() !== 'win32'
 
@@ -176,11 +172,7 @@ describe('FileSecretStore: file integrity', () => {
 
   it('throws SecretStoreError(corrupt) when secret values are not strings', async () => {
     const path = join(tmp, 'wrong-types.json')
-    await writeFile(
-      path,
-      JSON.stringify({ version: 1, secrets: { ok: 'fine', bad: 42 } }),
-      'utf-8',
-    )
+    await writeFile(path, JSON.stringify({ version: 1, secrets: { ok: 'fine', bad: 42 } }), 'utf-8')
     const store = new FileSecretStore({ path })
     await expect(store.get('ok')).rejects.toMatchObject({ code: 'corrupt' })
   })
@@ -213,9 +205,7 @@ describe('FileSecretStore.defaultPath', () => {
     const original = process.env.XDG_CONFIG_HOME
     process.env.XDG_CONFIG_HOME = '/custom/xdg'
     try {
-      expect(FileSecretStore.defaultPath()).toBe(
-        join('/custom/xdg', 'groundflare', 'secrets.json'),
-      )
+      expect(FileSecretStore.defaultPath()).toBe(join('/custom/xdg', 'groundflare', 'secrets.json'))
     } finally {
       if (original === undefined) delete process.env.XDG_CONFIG_HOME
       else process.env.XDG_CONFIG_HOME = original
@@ -246,23 +236,23 @@ describe('FileSecretStore: chmod hardening', () => {
     expect(mode).toBe(0o600)
   })
 
-  it.skipIf(!isPosix)('replays chmod 0600 even if the file existed under a wider umask', async () => {
-    const path = join(tmp, 'wide.json')
-    await writeFile(path, JSON.stringify({ version: 1, secrets: {} }), { mode: 0o644 })
-    const store = new FileSecretStore({ path })
-    await store.set('k', 'v')
-    const mode = await inspectFileMode(path)
-    expect(mode).toBe(0o600)
-  })
-
   it.skipIf(!isPosix)(
-    'after chmod-tightening, future opens still work for the owner',
+    'replays chmod 0600 even if the file existed under a wider umask',
     async () => {
-      const store = makeStore()
+      const path = join(tmp, 'wide.json')
+      await writeFile(path, JSON.stringify({ version: 1, secrets: {} }), { mode: 0o644 })
+      const store = new FileSecretStore({ path })
       await store.set('k', 'v')
-      await chmod(store.path, 0o600)
-      // sanity — owner can still read
-      expect(await store.get('k')).toBe('v')
+      const mode = await inspectFileMode(path)
+      expect(mode).toBe(0o600)
     },
   )
+
+  it.skipIf(!isPosix)('after chmod-tightening, future opens still work for the owner', async () => {
+    const store = makeStore()
+    await store.set('k', 'v')
+    await chmod(store.path, 0o600)
+    // sanity — owner can still read
+    expect(await store.get('k')).toBe('v')
+  })
 })

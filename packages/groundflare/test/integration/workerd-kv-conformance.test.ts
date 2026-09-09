@@ -23,11 +23,7 @@ import {
   type WorkspaceManifest,
 } from '../../src/runtime/workspace/index.js'
 import { renderCapnpConfig } from '../../src/runtime/workerd/capnp/index.js'
-import {
-  pickFreePort,
-  spawnWorkerd,
-  type SpawnedWorkerd,
-} from './spawn-workerd.js'
+import { pickFreePort, spawnWorkerd, type SpawnedWorkerd } from './spawn-workerd.js'
 import type { KvAdapterInSpec } from '../conformance/shared/kv-spec.js'
 
 const KV_WORKER_SOURCE = `
@@ -130,13 +126,11 @@ class WorkerdKvProxy implements KvAdapterInSpec {
               (value as ArrayBufferView).byteLength,
             )
       let binary = ''
-      for (let i = 0; i < bytes.length; i++)
-        binary += String.fromCharCode(bytes[i]!)
+      for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]!)
       body.valueBase64 = btoa(binary)
     }
     if (options?.metadata !== undefined) body.metadata = options.metadata
-    if (options?.expirationTtl !== undefined)
-      body.expirationTtl = options.expirationTtl
+    if (options?.expirationTtl !== undefined) body.expirationTtl = options.expirationTtl
     if (options?.expiration !== undefined) body.expiration = options.expiration
 
     const res = await this.wd.sendRequest({
@@ -157,8 +151,7 @@ class WorkerdKvProxy implements KvAdapterInSpec {
       host: this.host,
       path: `/kv/get?key=${encodeURIComponent(key)}&type=${t}`,
     })
-    if (res.status !== 200)
-      throw new Error(`workerd GET failed: ${res.status} ${res.body}`)
+    if (res.status !== 200) throw new Error(`workerd GET failed: ${res.status} ${res.body}`)
     const parsed = JSON.parse(res.body) as {
       value: unknown
       encoding?: string
@@ -173,17 +166,13 @@ class WorkerdKvProxy implements KvAdapterInSpec {
     return parsed.value
   }
 
-  async getWithMetadata<M = unknown>(
-    key: string,
-  ): Promise<{ value: unknown; metadata: M | null }> {
+  async getWithMetadata<M = unknown>(key: string): Promise<{ value: unknown; metadata: M | null }> {
     const res = await this.wd.sendRequest({
       host: this.host,
       path: `/kv/getWithMetadata?key=${encodeURIComponent(key)}`,
     })
     if (res.status !== 200)
-      throw new Error(
-        `workerd getWithMetadata failed: ${res.status} ${res.body}`,
-      )
+      throw new Error(`workerd getWithMetadata failed: ${res.status} ${res.body}`)
     return JSON.parse(res.body) as { value: unknown; metadata: M | null }
   }
 
@@ -195,8 +184,7 @@ class WorkerdKvProxy implements KvAdapterInSpec {
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ key }),
     })
-    if (res.status !== 200)
-      throw new Error(`workerd DELETE failed: ${res.status} ${res.body}`)
+    if (res.status !== 200) throw new Error(`workerd DELETE failed: ${res.status} ${res.body}`)
   }
 
   async list<M = unknown>(options?: {
@@ -210,16 +198,14 @@ class WorkerdKvProxy implements KvAdapterInSpec {
   }> {
     const params = new URLSearchParams()
     if (options?.prefix !== undefined) params.set('prefix', options.prefix)
-    if (options?.limit !== undefined)
-      params.set('limit', String(options.limit))
+    if (options?.limit !== undefined) params.set('limit', String(options.limit))
     if (options?.cursor !== undefined) params.set('cursor', options.cursor)
     const qs = params.toString()
     const res = await this.wd.sendRequest({
       host: this.host,
       path: `/kv/list${qs ? `?${qs}` : ''}`,
     })
-    if (res.status !== 200)
-      throw new Error(`workerd LIST failed: ${res.status} ${res.body}`)
+    if (res.status !== 200) throw new Error(`workerd LIST failed: ${res.status} ${res.body}`)
     return JSON.parse(res.body) as {
       keys: Array<{ name: string; expiration?: number; metadata?: M }>
       list_complete: boolean
@@ -259,194 +245,178 @@ let proxy: WorkerdKvProxy | null = null
 // Instead of the parameterised suite, we run the SAME test bodies
 // inline, skipping the groups that don't apply.
 
-describe(
-  'KV conformance [workerd (DO-backed)]',
-  () => {
-    beforeAll(async () => {
-      const port = await pickFreePort()
-      const config = buildCapnpFromWorkspace(MANIFEST, {
-        listenAddress: `127.0.0.1:${port}`,
-        stateBaseDir: 'in-memory',
-      })
-      const capnp = renderCapnpConfig(config)
-      wd = await spawnWorkerd({
-        port,
-        capnp,
-        modules: { 'user.js': KV_WORKER_SOURCE },
-        healthTimeoutMs: 15_000,
-      })
-      proxy = new WorkerdKvProxy(wd, 'api.test')
-    }, 30_000)
+describe('KV conformance [workerd (DO-backed)]', () => {
+  beforeAll(async () => {
+    const port = await pickFreePort()
+    const config = buildCapnpFromWorkspace(MANIFEST, {
+      listenAddress: `127.0.0.1:${port}`,
+      stateBaseDir: 'in-memory',
+    })
+    const capnp = renderCapnpConfig(config)
+    wd = await spawnWorkerd({
+      port,
+      capnp,
+      modules: { 'user.js': KV_WORKER_SOURCE },
+      healthTimeoutMs: 15_000,
+    })
+    proxy = new WorkerdKvProxy(wd, 'api.test')
+  }, 30_000)
 
-    afterAll(async () => {
-      if (wd) await wd.stop()
+  afterAll(async () => {
+    if (wd) await wd.stop()
+  })
+
+  // Use unique key prefixes per test to avoid state bleed across the
+  // shared workerd process.
+  let testIdx = 0
+  function k(name: string): string {
+    return `t${testIdx++}:${name}`
+  }
+
+  describe('get / put / delete', () => {
+    it('put then get returns the text value', async () => {
+      const key = k('hello')
+      await proxy!.put(key, 'hello')
+      expect(await proxy!.get(key)).toBe('hello')
     })
 
-    // Use unique key prefixes per test to avoid state bleed across the
-    // shared workerd process.
-    let testIdx = 0
-    function k(name: string): string {
-      return `t${testIdx++}:${name}`
-    }
-
-    describe('get / put / delete', () => {
-      it('put then get returns the text value', async () => {
-        const key = k('hello')
-        await proxy!.put(key, 'hello')
-        expect(await proxy!.get(key)).toBe('hello')
-      })
-
-      it('get returns null for a missing key', async () => {
-        expect(await proxy!.get(k('nope'))).toBe(null)
-      })
-
-      it('put with string, get with type=arrayBuffer yields matching bytes', async () => {
-        const key = k('bin')
-        await proxy!.put(key, 'hello')
-        const buf = (await proxy!.get(key, 'arrayBuffer')) as ArrayBuffer
-        expect(new TextDecoder().decode(buf)).toBe('hello')
-      })
-
-      it('put with ArrayBuffer, get as arrayBuffer round-trips exactly', async () => {
-        const key = k('ab')
-        const payload = new Uint8Array([1, 2, 3, 4, 5]).buffer
-        await proxy!.put(key, payload)
-        const got = (await proxy!.get(key, 'arrayBuffer')) as ArrayBuffer
-        expect([...new Uint8Array(got)]).toEqual([
-          ...new Uint8Array(payload),
-        ])
-      })
-
-      it('get with type=json parses stored JSON', async () => {
-        const key = k('json')
-        await proxy!.put(key, JSON.stringify({ a: 1, b: [2, 3] }))
-        expect(await proxy!.get(key, 'json')).toEqual({ a: 1, b: [2, 3] })
-      })
-
-      it('put overwrites the previous value', async () => {
-        const key = k('overwrite')
-        await proxy!.put(key, 'v1')
-        await proxy!.put(key, 'v2')
-        expect(await proxy!.get(key)).toBe('v2')
-      })
-
-      it('delete removes the key', async () => {
-        const key = k('del')
-        await proxy!.put(key, 'v')
-        await proxy!.delete(key)
-        expect(await proxy!.get(key)).toBe(null)
-      })
-
-      it('delete on missing key is a no-op', async () => {
-        await proxy!.delete(k('never-existed'))
-      })
+    it('get returns null for a missing key', async () => {
+      expect(await proxy!.get(k('nope'))).toBe(null)
     })
 
-    describe('metadata', () => {
-      it('metadata is available via getWithMetadata', async () => {
-        const key = k('meta')
-        await proxy!.put(key, 'v', { metadata: { owner: 'alice' } })
-        const got = await proxy!.getWithMetadata<{ owner: string }>(key)
-        expect(got.value).toBe('v')
-        expect(got.metadata).toEqual({ owner: 'alice' })
-      })
-
-      it('absent metadata yields null', async () => {
-        const key = k('nometa')
-        await proxy!.put(key, 'v')
-        const got = await proxy!.getWithMetadata(key)
-        expect(got.metadata).toBe(null)
-      })
-
-      it('nested JSON metadata round-trips', async () => {
-        const key = k('deepmeta')
-        const meta = { tags: ['a', 'b'], count: 3, nested: { deep: true } }
-        await proxy!.put(key, 'v', { metadata: meta })
-        const got = await proxy!.getWithMetadata<typeof meta>(key)
-        expect(got.metadata).toEqual(meta)
-      })
-
-      it('getWithMetadata on missing key returns {value: null, metadata: null}', async () => {
-        const got = await proxy!.getWithMetadata(k('miss'))
-        expect(got).toEqual({ value: null, metadata: null })
-      })
+    it('put with string, get with type=arrayBuffer yields matching bytes', async () => {
+      const key = k('bin')
+      await proxy!.put(key, 'hello')
+      const buf = (await proxy!.get(key, 'arrayBuffer')) as ArrayBuffer
+      expect(new TextDecoder().decode(buf)).toBe('hello')
     })
 
-    describe('list', () => {
-      it('prefix filter returns only matching keys', async () => {
-        const pfx = k('pfx')
-        await proxy!.put(`${pfx}:user:alice`, 'a')
-        await proxy!.put(`${pfx}:user:bob`, 'b')
-        await proxy!.put(`${pfx}:post:1`, 'p')
-        const { keys } = await proxy!.list({ prefix: `${pfx}:user:` })
-        expect(keys.map((k) => k.name)).toEqual([
-          `${pfx}:user:alice`,
-          `${pfx}:user:bob`,
-        ])
-      })
-
-      it('limit paginates results with a cursor', async () => {
-        const pfx = k('page')
-        for (let i = 0; i < 5; i++)
-          await proxy!.put(`${pfx}:${i}`, String(i))
-        const first = await proxy!.list({ prefix: `${pfx}:`, limit: 2 })
-        expect(first.keys.map((k) => k.name)).toEqual([
-          `${pfx}:0`,
-          `${pfx}:1`,
-        ])
-        expect(first.list_complete).toBe(false)
-        expect(typeof first.cursor).toBe('string')
-
-        const second = await proxy!.list({
-          prefix: `${pfx}:`,
-          limit: 2,
-          cursor: first.cursor,
-        })
-        expect(second.keys.map((k) => k.name)).toEqual([
-          `${pfx}:2`,
-          `${pfx}:3`,
-        ])
-
-        const third = await proxy!.list({
-          prefix: `${pfx}:`,
-          limit: 2,
-          cursor: second.cursor,
-        })
-        expect(third.keys.map((k) => k.name)).toEqual([`${pfx}:4`])
-        expect(third.list_complete).toBe(true)
-      })
-
-      it('list returns metadata alongside keys', async () => {
-        const key = k('lm')
-        await proxy!.put(key, 'v', { metadata: { x: 1 } })
-        const { keys } = await proxy!.list<{ x: number }>({
-          prefix: key,
-        })
-        expect(keys[0]?.metadata).toEqual({ x: 1 })
-      })
+    it('put with ArrayBuffer, get as arrayBuffer round-trips exactly', async () => {
+      const key = k('ab')
+      const payload = new Uint8Array([1, 2, 3, 4, 5]).buffer
+      await proxy!.put(key, payload)
+      const got = (await proxy!.get(key, 'arrayBuffer')) as ArrayBuffer
+      expect([...new Uint8Array(got)]).toEqual([...new Uint8Array(payload)])
     })
 
-    describe('value sizes', () => {
-      it('handles empty string values', async () => {
-        const key = k('empty')
-        await proxy!.put(key, '')
-        expect(await proxy!.get(key)).toBe('')
-      })
-
-      it('handles binary values with embedded nulls', async () => {
-        const key = k('nulls')
-        const bytes = new Uint8Array([0, 1, 0, 2, 0, 3])
-        await proxy!.put(key, bytes)
-        const got = (await proxy!.get(key, 'arrayBuffer')) as ArrayBuffer
-        expect([...new Uint8Array(got)]).toEqual([...bytes])
-      })
+    it('get with type=json parses stored JSON', async () => {
+      const key = k('json')
+      await proxy!.put(key, JSON.stringify({ a: 1, b: [2, 3] }))
+      expect(await proxy!.get(key, 'json')).toEqual({ a: 1, b: [2, 3] })
     })
 
-    // TTL tests skipped — workerd uses real time and we can't inject a
-    // clock. The shared conformance spec covers TTL semantics against
-    // node:sqlite + bun:sqlite; workerd's KV implementation inherits from
-    // the same SQLite schema, so TTL correctness is architecturally
-    // covered even without an explicit workerd-side TTL test.
-  },
-  120_000,
-)
+    it('put overwrites the previous value', async () => {
+      const key = k('overwrite')
+      await proxy!.put(key, 'v1')
+      await proxy!.put(key, 'v2')
+      expect(await proxy!.get(key)).toBe('v2')
+    })
+
+    it('delete removes the key', async () => {
+      const key = k('del')
+      await proxy!.put(key, 'v')
+      await proxy!.delete(key)
+      expect(await proxy!.get(key)).toBe(null)
+    })
+
+    it('delete on missing key is a no-op', async () => {
+      await proxy!.delete(k('never-existed'))
+    })
+  })
+
+  describe('metadata', () => {
+    it('metadata is available via getWithMetadata', async () => {
+      const key = k('meta')
+      await proxy!.put(key, 'v', { metadata: { owner: 'alice' } })
+      const got = await proxy!.getWithMetadata<{ owner: string }>(key)
+      expect(got.value).toBe('v')
+      expect(got.metadata).toEqual({ owner: 'alice' })
+    })
+
+    it('absent metadata yields null', async () => {
+      const key = k('nometa')
+      await proxy!.put(key, 'v')
+      const got = await proxy!.getWithMetadata(key)
+      expect(got.metadata).toBe(null)
+    })
+
+    it('nested JSON metadata round-trips', async () => {
+      const key = k('deepmeta')
+      const meta = { tags: ['a', 'b'], count: 3, nested: { deep: true } }
+      await proxy!.put(key, 'v', { metadata: meta })
+      const got = await proxy!.getWithMetadata<typeof meta>(key)
+      expect(got.metadata).toEqual(meta)
+    })
+
+    it('getWithMetadata on missing key returns {value: null, metadata: null}', async () => {
+      const got = await proxy!.getWithMetadata(k('miss'))
+      expect(got).toEqual({ value: null, metadata: null })
+    })
+  })
+
+  describe('list', () => {
+    it('prefix filter returns only matching keys', async () => {
+      const pfx = k('pfx')
+      await proxy!.put(`${pfx}:user:alice`, 'a')
+      await proxy!.put(`${pfx}:user:bob`, 'b')
+      await proxy!.put(`${pfx}:post:1`, 'p')
+      const { keys } = await proxy!.list({ prefix: `${pfx}:user:` })
+      expect(keys.map((k) => k.name)).toEqual([`${pfx}:user:alice`, `${pfx}:user:bob`])
+    })
+
+    it('limit paginates results with a cursor', async () => {
+      const pfx = k('page')
+      for (let i = 0; i < 5; i++) await proxy!.put(`${pfx}:${i}`, String(i))
+      const first = await proxy!.list({ prefix: `${pfx}:`, limit: 2 })
+      expect(first.keys.map((k) => k.name)).toEqual([`${pfx}:0`, `${pfx}:1`])
+      expect(first.list_complete).toBe(false)
+      expect(typeof first.cursor).toBe('string')
+
+      const second = await proxy!.list({
+        prefix: `${pfx}:`,
+        limit: 2,
+        cursor: first.cursor,
+      })
+      expect(second.keys.map((k) => k.name)).toEqual([`${pfx}:2`, `${pfx}:3`])
+
+      const third = await proxy!.list({
+        prefix: `${pfx}:`,
+        limit: 2,
+        cursor: second.cursor,
+      })
+      expect(third.keys.map((k) => k.name)).toEqual([`${pfx}:4`])
+      expect(third.list_complete).toBe(true)
+    })
+
+    it('list returns metadata alongside keys', async () => {
+      const key = k('lm')
+      await proxy!.put(key, 'v', { metadata: { x: 1 } })
+      const { keys } = await proxy!.list<{ x: number }>({
+        prefix: key,
+      })
+      expect(keys[0]?.metadata).toEqual({ x: 1 })
+    })
+  })
+
+  describe('value sizes', () => {
+    it('handles empty string values', async () => {
+      const key = k('empty')
+      await proxy!.put(key, '')
+      expect(await proxy!.get(key)).toBe('')
+    })
+
+    it('handles binary values with embedded nulls', async () => {
+      const key = k('nulls')
+      const bytes = new Uint8Array([0, 1, 0, 2, 0, 3])
+      await proxy!.put(key, bytes)
+      const got = (await proxy!.get(key, 'arrayBuffer')) as ArrayBuffer
+      expect([...new Uint8Array(got)]).toEqual([...bytes])
+    })
+  })
+
+  // TTL tests skipped — workerd uses real time and we can't inject a
+  // clock. The shared conformance spec covers TTL semantics against
+  // node:sqlite + bun:sqlite; workerd's KV implementation inherits from
+  // the same SQLite schema, so TTL correctness is architecturally
+  // covered even without an explicit workerd-side TTL test.
+}, 120_000)

@@ -10,12 +10,7 @@
  */
 
 export { generateBunShim } from './shim.js'
-export type {
-  BunShimOptions,
-  BunKvBinding,
-  BunD1Binding,
-  BunR2Binding,
-} from './shim.js'
+export type { BunShimOptions, BunKvBinding, BunD1Binding, BunR2Binding } from './shim.js'
 
 export { generateBunSystemdUnit } from './systemd.js'
 export type { BunUnitOptions } from './systemd.js'

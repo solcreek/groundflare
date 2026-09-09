@@ -109,9 +109,7 @@ export function buildBunArtifact(
   opts: BuildBunOptions = {},
 ): BunArtifact {
   if (!manifest.workers || manifest.workers.length === 0) {
-    throw new Error(
-      'buildBunArtifact: manifest has no workers — at least one worker is required',
-    )
+    throw new Error('buildBunArtifact: manifest has no workers — at least one worker is required')
   }
   if (manifest.workers.length > 1) {
     throw new Error(
@@ -129,13 +127,12 @@ export function buildBunArtifact(
   // Translate the worker's vars to the shim's vars signature (string-only
   // values are typed on the manifest as string|number|boolean; the shim
   // JSON-encodes them, so we pass them through as-is).
-  const vars = worker.vars
-    ? (worker.vars as Record<string, string | number | boolean>)
-    : undefined
+  const vars = worker.vars ? (worker.vars as Record<string, string | number | boolean>) : undefined
 
-  const kvNamespaces: readonly BunKvBinding[] = (worker.kvNamespaces ?? []).map(
-    (b) => ({ binding: b.binding, shards: b.shards ?? 1 }),
-  )
+  const kvNamespaces: readonly BunKvBinding[] = (worker.kvNamespaces ?? []).map((b) => ({
+    binding: b.binding,
+    shards: b.shards ?? 1,
+  }))
 
   const serverSource = generateBunShim({
     entryModule: `./${userEntryRelativePath}`,

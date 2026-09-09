@@ -33,11 +33,7 @@ export function renderHuman(report: AnalysisReport): string {
   )
   lines.push('')
 
-  for (const severity of [
-    'compatible',
-    'review-needed',
-    'blocker',
-  ] as Severity[]) {
+  for (const severity of ['compatible', 'review-needed', 'blocker'] as Severity[]) {
     const items = report.findings.filter((f) => f.severity === severity)
     if (items.length === 0) continue
     lines.push(`${SEVERITY_LABEL[severity]} ${SEVERITY_HEADER[severity]}:`)

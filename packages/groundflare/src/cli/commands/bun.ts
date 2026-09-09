@@ -17,17 +17,9 @@
 import { defineCommand } from 'citty'
 import { readFile, readdir, stat, writeFile } from 'node:fs/promises'
 import { dirname, isAbsolute, posix, relative, resolve } from 'node:path'
-import {
-  ConfigNotFoundError,
-  ConfigParseError,
-  resolveConfig,
-} from '../../config/index.js'
+import { ConfigNotFoundError, ConfigParseError, resolveConfig } from '../../config/index.js'
 import type { ResolvedConfig } from '../../config/index.js'
-import {
-  renderHuman,
-  renderJson,
-  type AnalyzeFs,
-} from '../../runtime/bun/analyze/index.js'
+import { renderHuman, renderJson, type AnalyzeFs } from '../../runtime/bun/analyze/index.js'
 import {
   prepareWorkspace,
   type PrepareAction,
@@ -62,8 +54,7 @@ const analyzeCmd = defineCommand({
     },
     src: {
       type: 'string',
-      description:
-        'Source root to scan (default: directory of wrangler `main`, else `src/`)',
+      description: 'Source root to scan (default: directory of wrangler `main`, else `src/`)',
     },
     json: {
       type: 'boolean',
@@ -77,9 +68,7 @@ const analyzeCmd = defineCommand({
       sourceRoot: ctx.sourceRootRel,
       fs: ctx.analyzeFs,
     })
-    process.stdout.write(
-      args.json ? `${renderJson(report)}\n` : `${renderHuman(report)}\n`,
-    )
+    process.stdout.write(args.json ? `${renderJson(report)}\n` : `${renderHuman(report)}\n`)
     if (report.summary.blockers > 0) process.exit(1)
   },
 })
@@ -87,8 +76,7 @@ const analyzeCmd = defineCommand({
 const prepareCmd = defineCommand({
   meta: {
     name: 'prepare',
-    description:
-      'Flip `[groundflare] runtime = "bun"` in wrangler.toml after a clean analyze',
+    description: 'Flip `[groundflare] runtime = "bun"` in wrangler.toml after a clean analyze',
   },
   args: {
     cwd: {
@@ -97,8 +85,7 @@ const prepareCmd = defineCommand({
     },
     src: {
       type: 'string',
-      description:
-        'Source root to scan (default: directory of wrangler `main`, else `src/`)',
+      description: 'Source root to scan (default: directory of wrangler `main`, else `src/`)',
     },
     'dry-run': {
       type: 'boolean',
@@ -170,9 +157,7 @@ async function loadContext(opts: {
     async listSourceFiles(root) {
       const absRoot = resolveAgainst(projectRoot, root)
       const absFiles = await walkSources(absRoot)
-      return absFiles
-        .map((abs) => toPosix(relative(projectRoot, abs)))
-        .sort()
+      return absFiles.map((abs) => toPosix(relative(projectRoot, abs))).sort()
     },
     async readSource(rel) {
       return readFile(resolve(projectRoot, rel), 'utf-8')

@@ -18,15 +18,14 @@ type MockCall = {
   body: Uint8Array | undefined
 }
 
-function mockFetch(
-  responses: (req: MockCall) => Response | Promise<Response>,
-): {
+function mockFetch(responses: (req: MockCall) => Response | Promise<Response>): {
   fetch: typeof fetch
   calls: MockCall[]
 } {
   const calls: MockCall[] = []
   const fn = async (input: string | URL | Request, init?: RequestInit): Promise<Response> => {
-    const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url
+    const url =
+      typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url
     const method = (init?.method ?? 'GET').toUpperCase()
     const headers: Record<string, string> = {}
     const h = init?.headers
@@ -42,10 +41,8 @@ function mockFetch(
     let body: Uint8Array | undefined
     if (init?.body) {
       if (init.body instanceof Uint8Array) body = init.body
-      else if (init.body instanceof ArrayBuffer)
-        body = new Uint8Array(init.body)
-      else if (typeof init.body === 'string')
-        body = new TextEncoder().encode(init.body)
+      else if (init.body instanceof ArrayBuffer) body = new Uint8Array(init.body)
+      else if (typeof init.body === 'string') body = new TextEncoder().encode(init.body)
     }
     const call: MockCall = { url, method, headers, body }
     calls.push(call)
@@ -63,18 +60,16 @@ const BASE = {
 
 describe('BunR2Adapter — constructor', () => {
   test('rejects missing bucket', () => {
-    expect(
-      () => new BunR2Adapter({ ...BASE, bucket: '' }),
-    ).toThrow(/bucket/)
+    expect(() => new BunR2Adapter({ ...BASE, bucket: '' })).toThrow(/bucket/)
   })
 
   test('rejects half-set credentials (paired or neither)', () => {
-    expect(
-      () => new BunR2Adapter({ ...BASE, accessKeyId: '', secretAccessKey: 'x' }),
-    ).toThrow(/together/)
-    expect(
-      () => new BunR2Adapter({ ...BASE, accessKeyId: 'x', secretAccessKey: '' }),
-    ).toThrow(/together/)
+    expect(() => new BunR2Adapter({ ...BASE, accessKeyId: '', secretAccessKey: 'x' })).toThrow(
+      /together/,
+    )
+    expect(() => new BunR2Adapter({ ...BASE, accessKeyId: 'x', secretAccessKey: '' })).toThrow(
+      /together/,
+    )
   })
 
   test('rejects endpoint + accountId simultaneously', () => {
@@ -89,9 +84,7 @@ describe('BunR2Adapter — constructor', () => {
   })
 
   test('defaults to the local SeaweedFS sidecar when neither endpoint nor accountId is set', async () => {
-    const { fetch, calls } = mockFetch(
-      () => new Response(null, { status: 200 }),
-    )
+    const { fetch, calls } = mockFetch(() => new Response(null, { status: 200 }))
     const r2 = new BunR2Adapter({ bucket: 'my-bucket', fetch })
     await r2.delete('k')
     expect(calls[0]!.url).toBe('http://127.0.0.1:8333/my-bucket/k')
@@ -136,14 +129,11 @@ describe('BunR2Adapter — constructor', () => {
 describe('BunR2Adapter — request URL composition', () => {
   test('put targets <accountId>.r2.cloudflarestorage.com/<bucket>/<key>', async () => {
     const { fetch, calls } = mockFetch(
-      () =>
-        new Response(null, { status: 200, headers: { etag: '"abc"' } }),
+      () => new Response(null, { status: 200, headers: { etag: '"abc"' } }),
     )
     const r2 = new BunR2Adapter({ ...BASE, fetch })
     await r2.put('logos/banner.png', 'hi')
-    expect(calls[0]!.url).toBe(
-      'https://acc12345.r2.cloudflarestorage.com/assets/logos/banner.png',
-    )
+    expect(calls[0]!.url).toBe('https://acc12345.r2.cloudflarestorage.com/assets/logos/banner.png')
     expect(calls[0]!.method).toBe('PUT')
   })
 
@@ -171,8 +161,7 @@ describe('BunR2Adapter — request URL composition', () => {
 describe('BunR2Adapter — SigV4 request signing', () => {
   test('signed requests carry Authorization + x-amz-date + payload hash', async () => {
     const { fetch, calls } = mockFetch(
-      () =>
-        new Response(null, { status: 200, headers: { etag: '"h"' } }),
+      () => new Response(null, { status: 200, headers: { etag: '"h"' } }),
     )
     const r2 = new BunR2Adapter({ ...BASE, fetch, now: () => Date.UTC(2026, 3, 15, 10, 0, 0) })
     await r2.put('k', 'hello')
@@ -193,7 +182,7 @@ describe('BunR2Adapter — SigV4 request signing', () => {
     )
     const r2 = new BunR2Adapter({ ...BASE, fetch })
     await r2.put('k', 'v', {
-      customMetadata: { 'Owner': 'alice', 'region': 'us-east-1' },
+      customMetadata: { Owner: 'alice', region: 'us-east-1' },
     })
     const h = calls[0]!.headers
     expect(h['x-amz-meta-owner']).toBe('alice')

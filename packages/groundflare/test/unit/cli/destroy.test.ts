@@ -16,10 +16,7 @@ import { join } from 'node:path'
 import { existsSync } from 'node:fs'
 
 import { cleanUpSshKey } from '../../../src/cli/commands/destroy.js'
-import {
-  BootstrapStateStore,
-  type BootstrapState,
-} from '../../../src/bootstrap/index.js'
+import { BootstrapStateStore, type BootstrapState } from '../../../src/bootstrap/index.js'
 import type { Provider, ProviderName } from 'capstan'
 
 let tmp: string
@@ -34,9 +31,11 @@ afterEach(async () => {
 
 // Minimal Provider stub — we only exercise deleteSSHKey. Everything
 // else throws if the system-under-test accidentally reaches for it.
-function stubProvider(opts: {
-  deleteSSHKey?: (id: string) => Promise<void>
-} = {}): Provider {
+function stubProvider(
+  opts: {
+    deleteSSHKey?: (id: string) => Promise<void>
+  } = {},
+): Provider {
   const guard = () => {
     throw new Error('stub: unexpected provider call in SSH-cleanup test')
   }
@@ -48,8 +47,7 @@ function stubProvider(opts: {
     listRegions: guard,
     uploadSSHKey: guard,
     listSSHKeys: guard,
-    deleteSSHKey:
-      opts.deleteSSHKey ?? vi.fn(async () => {}) as Provider['deleteSSHKey'],
+    deleteSSHKey: opts.deleteSSHKey ?? (vi.fn(async () => {}) as Provider['deleteSSHKey']),
     createVPS: guard,
     getVPS: guard,
     listVPS: guard,
@@ -284,11 +282,7 @@ describe('destroy → cleanUpSshKey', () => {
     })
     await writeWorkspaceState(store, alpha)
     // Plant a malformed sibling.
-    await writeFile(
-      store.pathFor('broken'),
-      '{not-json: true',
-      'utf-8',
-    )
+    await writeFile(store.pathFor('broken'), '{not-json: true', 'utf-8')
 
     const deleteSSHKey = vi.fn(async () => {})
     const provider = stubProvider({ deleteSSHKey })

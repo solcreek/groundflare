@@ -15,12 +15,13 @@
 
 import { setTimeout as sleep } from 'node:timers/promises'
 import autocannon from 'autocannon'
-import {
-  buildCapnpFromWorkspace,
-  type WorkspaceManifest,
-} from '../runtime/workspace/index.js'
+import { buildCapnpFromWorkspace, type WorkspaceManifest } from '../runtime/workspace/index.js'
 import { renderCapnpConfig } from '../runtime/workerd/capnp/index.js'
-import { pickFreePort, spawnWorkerd, type SpawnedWorkerd } from '../../test/integration/spawn-workerd.js'
+import {
+  pickFreePort,
+  spawnWorkerd,
+  type SpawnedWorkerd,
+} from '../../test/integration/spawn-workerd.js'
 
 const STATE_BASE = 'state'
 
@@ -239,10 +240,7 @@ const wd = await spawnWorkerd({
   port,
   capnp,
   modules: { 'user.js': FULL_WORKER_JS },
-  extraDirs: [
-    `${STATE_BASE}/${workerName}/CACHE`,
-    `${STATE_BASE}/${workerName}/d1/${dbName}`,
-  ],
+  extraDirs: [`${STATE_BASE}/${workerName}/CACHE`, `${STATE_BASE}/${workerName}/d1/${dbName}`],
   healthTimeoutMs: 10_000,
 })
 
@@ -256,13 +254,9 @@ try {
 
   for (const s of scenarios) {
     const duration = s.path === '/hn-burst' ? DURATION_BURST : DURATION
-    console.log(
-      `🏁 ${s.label} → ${s.path}  [${s.connections} conn, ${duration}s]`,
-    )
+    console.log(`🏁 ${s.label} → ${s.path}  [${s.connections} conn, ${duration}s]`)
     if (s.prep) await s.prep(wd, host)
-    results.push(
-      await hammer(baseUrl, s.path, host, s.label, s.connections, duration),
-    )
+    results.push(await hammer(baseUrl, s.path, host, s.label, s.connections, duration))
   }
 } finally {
   await wd.stop()
@@ -289,6 +283,8 @@ if (baseline) {
     if (r.label === 'noop (baseline)') continue
     const pct = ((r.mean / baseline.mean - 1) * 100).toFixed(1)
     const rpsRatio = ((r.rps / baseline.rps) * 100).toFixed(1)
-    console.log(`    ${pad(r.label, 24)}  +${pad(pct, 6)}% mean latency  /  ${pad(rpsRatio, 5)}% of baseline rps`)
+    console.log(
+      `    ${pad(r.label, 24)}  +${pad(pct, 6)}% mean latency  /  ${pad(rpsRatio, 5)}% of baseline rps`,
+    )
   }
 }

@@ -30,24 +30,18 @@ describe('classifyProfile', () => {
 
   it('classifies high-egress as B', () => {
     // 50M requests × 500 KB ≈ 25 TB egress → B
-    expect(
-      classifyProfile(u({ requestsPerMonth: 50_000_000, avgResponseKB: 500 })),
-    ).toBe('B')
+    expect(classifyProfile(u({ requestsPerMonth: 50_000_000, avgResponseKB: 500 }))).toBe('B')
   })
 
   it('classifies high CPU total as C', () => {
     // 10M requests × 20 ms = 200M ms → C
     expect(
-      classifyProfile(
-        u({ requestsPerMonth: 10_000_000, cpuMsPerRequest: 20, avgResponseKB: 5 }),
-      ),
+      classifyProfile(u({ requestsPerMonth: 10_000_000, cpuMsPerRequest: 20, avgResponseKB: 5 })),
     ).toBe('C')
   })
 
   it('classifies heavy D1 reads as D', () => {
-    expect(
-      classifyProfile(u({ d1ReadsPerMonth: 50_000_000 })),
-    ).toBe('D')
+    expect(classifyProfile(u({ d1ReadsPerMonth: 50_000_000 }))).toBe('D')
   })
 
   it('classifies large D1 storage as D', () => {
@@ -57,9 +51,7 @@ describe('classifyProfile', () => {
 
 describe('estimateEgressTB', () => {
   it('10M requests × 100 KB ≈ 1 TB', () => {
-    const tb = estimateEgressTB(
-      u({ requestsPerMonth: 10_000_000, avgResponseKB: 100 }),
-    )
+    const tb = estimateEgressTB(u({ requestsPerMonth: 10_000_000, avgResponseKB: 100 }))
     expect(tb).toBeCloseTo(1, 1)
   })
 })
@@ -72,9 +64,7 @@ describe('computeSizingDemand', () => {
 
   it('scales cores with peak RPS × CPU ms', () => {
     // 100M rpm ≈ 38.5 avg rps, peak 10× ≈ 385 rps, × 10 ms / 1000 × 1.5 = ~6 cores
-    const d = computeSizingDemand(
-      u({ requestsPerMonth: 100_000_000, cpuMsPerRequest: 10 }),
-    )
+    const d = computeSizingDemand(u({ requestsPerMonth: 100_000_000, cpuMsPerRequest: 10 }))
     expect(d.coresNeeded).toBeGreaterThan(4)
   })
 
@@ -203,9 +193,7 @@ describe('collectWarnings', () => {
 
   it('flags unfit sizing as not-recommended', () => {
     const ws = collectWarnings(u(), false)
-    expect(ws.find((x) => x.code === 'single-node-too-small')?.impact).toBe(
-      'not-recommended',
-    )
+    expect(ws.find((x) => x.code === 'single-node-too-small')?.impact).toBe('not-recommended')
   })
 
   it('returns empty list for clean workload', () => {
@@ -240,9 +228,12 @@ describe('sumLines', () => {
   })
 
   it('sums amounts', () => {
-    expect(sumLines([{ label: 'a', amount: 1.5 }, { label: 'b', amount: 2.25 }])).toBe(
-      3.75,
-    )
+    expect(
+      sumLines([
+        { label: 'a', amount: 1.5 },
+        { label: 'b', amount: 2.25 },
+      ]),
+    ).toBe(3.75)
   })
 })
 
@@ -299,18 +290,14 @@ describe('Linode provider routing', () => {
       BAKED_PRICES,
       { confidence: 'low', targetProvider: 'linode' },
     )
-    const overage = e.target.breakdown.find((l) =>
-      l.label.includes('egress overage'),
-    )
+    const overage = e.target.breakdown.find((l) => l.label.includes('egress overage'))
     expect(overage).toBeDefined()
     // Rate: $5/TB for Linode; reasonably higher than Hetzner ($1/TB)
     // but far below DO ($10.24/TB). Sanity check the magnitude only
     // (we don't pin exact TB since computeSizingDemand may choose a
     // bigger tier with more included traffic).
     expect(overage!.amount).toBeGreaterThan(0)
-    expect(overage!.amount).toBeLessThan(
-      BAKED_PRICES.extras.do_egress_overage_per_tb * 50,
-    )
+    expect(overage!.amount).toBeLessThan(BAKED_PRICES.extras.do_egress_overage_per_tb * 50)
   })
 
   it('label uses "Linode" (not "hetzner" or "DigitalOcean")', () => {
@@ -319,9 +306,7 @@ describe('Linode provider routing', () => {
       BAKED_PRICES,
       { confidence: 'low', targetProvider: 'linode' },
     )
-    const overage = e.target.breakdown.find((l) =>
-      l.label.includes('egress overage'),
-    )
+    const overage = e.target.breakdown.find((l) => l.label.includes('egress overage'))
     expect(overage?.label).toContain('Linode')
   })
 

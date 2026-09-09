@@ -57,8 +57,7 @@ const KIND_BY_BINDING_TYPE: Record<
   do: {
     kind: 'durable-object-binding',
     severity: 'blocker',
-    describe: (n) =>
-      `Durable Object binding ${n} — no Bun equivalent; stay on the Mirror track`,
+    describe: (n) => `Durable Object binding ${n} — no Bun equivalent; stay on the Mirror track`,
   },
 }
 
@@ -72,20 +71,12 @@ export function classifyBindings(input: ClassifierInput): Finding[] {
   const findings: Finding[] = []
 
   // Build lookup table: binding name → ('kv' | 'd1' | 'r2' | ...).
-  const bindingKind = new Map<
-    string,
-    'kv' | 'd1' | 'r2' | 'do' | 'service' | 'vars'
-  >()
-  for (const b of wrangler.kv_namespaces ?? [])
-    bindingKind.set(b.binding, 'kv')
-  for (const b of wrangler.d1_databases ?? [])
-    bindingKind.set(b.binding, 'd1')
-  for (const b of wrangler.r2_buckets ?? [])
-    bindingKind.set(b.binding, 'r2')
-  for (const b of wrangler.durable_objects?.bindings ?? [])
-    bindingKind.set(b.name, 'do')
-  for (const name of Object.keys(wrangler.vars ?? {}))
-    bindingKind.set(name, 'vars')
+  const bindingKind = new Map<string, 'kv' | 'd1' | 'r2' | 'do' | 'service' | 'vars'>()
+  for (const b of wrangler.kv_namespaces ?? []) bindingKind.set(b.binding, 'kv')
+  for (const b of wrangler.d1_databases ?? []) bindingKind.set(b.binding, 'd1')
+  for (const b of wrangler.r2_buckets ?? []) bindingKind.set(b.binding, 'r2')
+  for (const b of wrangler.durable_objects?.bindings ?? []) bindingKind.set(b.name, 'do')
+  for (const name of Object.keys(wrangler.vars ?? {})) bindingKind.set(name, 'vars')
 
   // ── inventory: every declared binding gets one finding ───────────
   // KV / D1 / R2 / DO with deterministic ordering for stable diffs.
@@ -123,10 +114,7 @@ export function classifyBindings(input: ClassifierInput): Finding[] {
   return findings
 }
 
-function makeBindingFinding(
-  type: keyof typeof KIND_BY_BINDING_TYPE,
-  name: string,
-): Finding {
+function makeBindingFinding(type: keyof typeof KIND_BY_BINDING_TYPE, name: string): Finding {
   const spec = KIND_BY_BINDING_TYPE[type]
   return {
     kind: spec.kind,
@@ -136,9 +124,9 @@ function makeBindingFinding(
   }
 }
 
-function sortByBinding<
-  T extends WranglerKVNamespace | WranglerD1Database | WranglerR2Bucket,
->(items: readonly T[]): T[] {
+function sortByBinding<T extends WranglerKVNamespace | WranglerD1Database | WranglerR2Bucket>(
+  items: readonly T[],
+): T[] {
   return [...items].sort((a, b) => a.binding.localeCompare(b.binding))
 }
 

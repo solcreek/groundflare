@@ -57,7 +57,7 @@ export default defineCommand({
 
     const acmeEmail = args['acme-email']
     if (acmeEmail === undefined || acmeEmail === '') {
-      log.error('--acme-email is required (used by Caddy for Let\'s Encrypt registration)')
+      log.error("--acme-email is required (used by Caddy for Let's Encrypt registration)")
       process.exit(1)
     }
 

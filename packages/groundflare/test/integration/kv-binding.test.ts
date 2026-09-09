@@ -58,24 +58,22 @@ async function withKvWorkspace<T>(
 }
 
 describe('integration: KV binding round-trip through real workerd', () => {
-  it(
-    'put then get returns the same value',
-    async () => {
-      await withKvWorkspace(
-        {
-          manifest: {
-            name: 'e2e',
-            workers: [
-              {
-                name: 'api',
-                domain: 'api.test',
-                entryPath: 'user.js',
-                kvNamespaces: [{ binding: 'CACHE' }],
-              },
-            ],
-          },
-          modules: {
-            'user.js': `
+  it('put then get returns the same value', async () => {
+    await withKvWorkspace(
+      {
+        manifest: {
+          name: 'e2e',
+          workers: [
+            {
+              name: 'api',
+              domain: 'api.test',
+              entryPath: 'user.js',
+              kvNamespaces: [{ binding: 'CACHE' }],
+            },
+          ],
+        },
+        modules: {
+          'user.js': `
               export default {
                 async fetch(request, env) {
                   const url = new URL(request.url)
@@ -94,54 +92,50 @@ describe('integration: KV binding round-trip through real workerd', () => {
                 }
               }
             `,
-          },
         },
-        async (wd) => {
-          const put = await wd.sendRequest({
-            host: 'api.test',
-            method: 'POST',
-            path: '/put?k=greeting&v=hello',
-          })
-          expect(put.status).toBe(200)
-          expect(put.body).toBe('stored')
+      },
+      async (wd) => {
+        const put = await wd.sendRequest({
+          host: 'api.test',
+          method: 'POST',
+          path: '/put?k=greeting&v=hello',
+        })
+        expect(put.status).toBe(200)
+        expect(put.body).toBe('stored')
 
-          const get = await wd.sendRequest({
-            host: 'api.test',
-            path: '/get?k=greeting',
-          })
-          expect(get.status).toBe(200)
-          expect(get.body).toBe('hello')
+        const get = await wd.sendRequest({
+          host: 'api.test',
+          path: '/get?k=greeting',
+        })
+        expect(get.status).toBe(200)
+        expect(get.body).toBe('hello')
 
-          const miss = await wd.sendRequest({
-            host: 'api.test',
-            path: '/get?k=absent',
-          })
-          expect(miss.status).toBe(200)
-          expect(miss.body).toBe('MISS')
+        const miss = await wd.sendRequest({
+          host: 'api.test',
+          path: '/get?k=absent',
+        })
+        expect(miss.status).toBe(200)
+        expect(miss.body).toBe('MISS')
+      },
+    )
+  }, 60_000)
+
+  it('list returns only matching prefix keys in lexicographic order', async () => {
+    await withKvWorkspace(
+      {
+        manifest: {
+          name: 'e2e',
+          workers: [
+            {
+              name: 'api',
+              domain: 'api.test',
+              entryPath: 'user.js',
+              kvNamespaces: [{ binding: 'CACHE' }],
+            },
+          ],
         },
-      )
-    },
-    60_000,
-  )
-
-  it(
-    'list returns only matching prefix keys in lexicographic order',
-    async () => {
-      await withKvWorkspace(
-        {
-          manifest: {
-            name: 'e2e',
-            workers: [
-              {
-                name: 'api',
-                domain: 'api.test',
-                entryPath: 'user.js',
-                kvNamespaces: [{ binding: 'CACHE' }],
-              },
-            ],
-          },
-          modules: {
-            'user.js': `
+        modules: {
+          'user.js': `
               export default {
                 async fetch(request, env) {
                   const url = new URL(request.url)
@@ -160,56 +154,48 @@ describe('integration: KV binding round-trip through real workerd', () => {
                 }
               }
             `,
-          },
         },
-        async (wd) => {
-          await wd.sendRequest({ host: 'api.test', path: '/seed' })
+      },
+      async (wd) => {
+        await wd.sendRequest({ host: 'api.test', path: '/seed' })
 
-          const userList = await wd.sendRequest({
-            host: 'api.test',
-            path: '/list?prefix=user%3A',
-          })
-          expect(JSON.parse(userList.body)).toEqual(['user:alice', 'user:bob'])
+        const userList = await wd.sendRequest({
+          host: 'api.test',
+          path: '/list?prefix=user%3A',
+        })
+        expect(JSON.parse(userList.body)).toEqual(['user:alice', 'user:bob'])
 
-          const postList = await wd.sendRequest({
-            host: 'api.test',
-            path: '/list?prefix=post%3A',
-          })
-          expect(JSON.parse(postList.body)).toEqual(['post:1'])
+        const postList = await wd.sendRequest({
+          host: 'api.test',
+          path: '/list?prefix=post%3A',
+        })
+        expect(JSON.parse(postList.body)).toEqual(['post:1'])
 
-          const everything = await wd.sendRequest({
-            host: 'api.test',
-            path: '/list?prefix=',
-          })
-          expect(JSON.parse(everything.body)).toEqual([
-            'post:1',
-            'user:alice',
-            'user:bob',
-          ])
+        const everything = await wd.sendRequest({
+          host: 'api.test',
+          path: '/list?prefix=',
+        })
+        expect(JSON.parse(everything.body)).toEqual(['post:1', 'user:alice', 'user:bob'])
+      },
+    )
+  }, 60_000)
+
+  it('delete removes the key, subsequent get returns null', async () => {
+    await withKvWorkspace(
+      {
+        manifest: {
+          name: 'e2e',
+          workers: [
+            {
+              name: 'api',
+              domain: 'api.test',
+              entryPath: 'user.js',
+              kvNamespaces: [{ binding: 'CACHE' }],
+            },
+          ],
         },
-      )
-    },
-    60_000,
-  )
-
-  it(
-    'delete removes the key, subsequent get returns null',
-    async () => {
-      await withKvWorkspace(
-        {
-          manifest: {
-            name: 'e2e',
-            workers: [
-              {
-                name: 'api',
-                domain: 'api.test',
-                entryPath: 'user.js',
-                kvNamespaces: [{ binding: 'CACHE' }],
-              },
-            ],
-          },
-          modules: {
-            'user.js': `
+        modules: {
+          'user.js': `
               export default {
                 async fetch(request, env) {
                   const url = new URL(request.url)
@@ -229,40 +215,36 @@ describe('integration: KV binding round-trip through real workerd', () => {
                 }
               }
             `,
-          },
         },
-        async (wd) => {
-          await wd.sendRequest({ host: 'api.test', path: '/put' })
-          const has = await wd.sendRequest({ host: 'api.test', path: '/has' })
-          expect(has.body).toBe('present:v')
+      },
+      async (wd) => {
+        await wd.sendRequest({ host: 'api.test', path: '/put' })
+        const has = await wd.sendRequest({ host: 'api.test', path: '/has' })
+        expect(has.body).toBe('present:v')
 
-          await wd.sendRequest({ host: 'api.test', path: '/del' })
-          const miss = await wd.sendRequest({ host: 'api.test', path: '/has' })
-          expect(miss.body).toBe('missing')
+        await wd.sendRequest({ host: 'api.test', path: '/del' })
+        const miss = await wd.sendRequest({ host: 'api.test', path: '/has' })
+        expect(miss.body).toBe('missing')
+      },
+    )
+  }, 60_000)
+
+  it('metadata round-trips via getWithMetadata', async () => {
+    await withKvWorkspace(
+      {
+        manifest: {
+          name: 'e2e',
+          workers: [
+            {
+              name: 'api',
+              domain: 'api.test',
+              entryPath: 'user.js',
+              kvNamespaces: [{ binding: 'CACHE' }],
+            },
+          ],
         },
-      )
-    },
-    60_000,
-  )
-
-  it(
-    'metadata round-trips via getWithMetadata',
-    async () => {
-      await withKvWorkspace(
-        {
-          manifest: {
-            name: 'e2e',
-            workers: [
-              {
-                name: 'api',
-                domain: 'api.test',
-                entryPath: 'user.js',
-                kvNamespaces: [{ binding: 'CACHE' }],
-              },
-            ],
-          },
-          modules: {
-            'user.js': `
+        modules: {
+          'user.js': `
               export default {
                 async fetch(request, env) {
                   const url = new URL(request.url)
@@ -280,18 +262,16 @@ describe('integration: KV binding round-trip through real workerd', () => {
                 }
               }
             `,
-          },
         },
-        async (wd) => {
-          await wd.sendRequest({ host: 'api.test', path: '/put' })
-          const meta = await wd.sendRequest({ host: 'api.test', path: '/meta' })
-          expect(JSON.parse(meta.body)).toEqual({
-            value: 'v',
-            metadata: { owner: 'alice', tags: [1, 2] },
-          })
-        },
-      )
-    },
-    60_000,
-  )
+      },
+      async (wd) => {
+        await wd.sendRequest({ host: 'api.test', path: '/put' })
+        const meta = await wd.sendRequest({ host: 'api.test', path: '/meta' })
+        expect(JSON.parse(meta.body)).toEqual({
+          value: 'v',
+          metadata: { owner: 'alice', tags: [1, 2] },
+        })
+      },
+    )
+  }, 60_000)
 })

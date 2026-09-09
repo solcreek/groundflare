@@ -84,9 +84,7 @@ export async function resolveWeedBinary(): Promise<string> {
   await chmod(binPath, 0o755)
 
   if (!(await exists(binPath))) {
-    throw new Error(
-      `SeaweedFS extract failed: ${binPath} missing after extracting ${tarballPath}`,
-    )
+    throw new Error(`SeaweedFS extract failed: ${binPath} missing after extracting ${tarballPath}`)
   }
   return binPath
 }
@@ -96,10 +94,7 @@ async function downloadFile(url: string, destPath: string): Promise<void> {
   if (!res.ok || res.body === null) {
     throw new Error(`Download failed (${res.status}) for ${url}`)
   }
-  await pipeline(
-    Readable.fromWeb(res.body as WebReadableStream),
-    createWriteStream(destPath),
-  )
+  await pipeline(Readable.fromWeb(res.body as WebReadableStream), createWriteStream(destPath))
 }
 
 async function extractTarball(tarballPath: string, destDir: string): Promise<void> {
@@ -177,9 +172,7 @@ export async function startWeed(opts: StartWeedOptions = {}): Promise<StartedWee
   const deadline = Date.now() + 20_000
   while (Date.now() < deadline) {
     if (exited) {
-      throw new Error(
-        `weed exited early. stderr (last 2KB):\n${stderr.join('').slice(-2000)}`,
-      )
+      throw new Error(`weed exited early. stderr (last 2KB):\n${stderr.join('').slice(-2000)}`)
     }
     try {
       const r = await fetch(endpoint + '/', { signal: AbortSignal.timeout(500) })
@@ -230,4 +223,3 @@ export function sha256Hex(input: string | Uint8Array): string {
   h.update(input)
   return h.digest('hex')
 }
-

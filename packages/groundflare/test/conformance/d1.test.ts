@@ -16,10 +16,7 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { SqliteD1Adapter } from '../../src/runtime/d1/index.js'
-import {
-  runD1ConformanceSuite,
-  type D1Fixture,
-} from './shared/d1-spec.js'
+import { runD1ConformanceSuite, type D1Fixture } from './shared/d1-spec.js'
 
 const sqliteFixture: D1Fixture = {
   name: 'sqlite (better-sqlite3)',
@@ -36,10 +33,7 @@ const sqliteFixture: D1Fixture = {
   },
 }
 
-runD1ConformanceSuite(
-  { describe, test, expect, beforeEach, afterEach } as never,
-  sqliteFixture,
-)
+runD1ConformanceSuite({ describe, test, expect, beforeEach, afterEach } as never, sqliteFixture)
 
 describe('SqliteD1Adapter internals', () => {
   test('countStatements handles empty / whitespace / trailing semicolons', async () => {
@@ -74,9 +68,7 @@ describe('SqliteD1Adapter internals', () => {
       for (let i = 0; i < 50; i++) {
         await adapter.prepare('INSERT INTO t VALUES (?)').bind(i).run()
       }
-      const count = await adapter
-        .prepare('SELECT COUNT(*) AS n FROM t')
-        .first<{ n: number }>('n')
+      const count = await adapter.prepare('SELECT COUNT(*) AS n FROM t').first<{ n: number }>('n')
       expect(count).toBe(50)
       adapter.close()
     } finally {

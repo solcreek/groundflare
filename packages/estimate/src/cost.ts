@@ -54,8 +54,7 @@ export function classifyProfile(usage: Usage): Profile {
   const egressTB = estimateEgressTB(usage)
   if (egressTB > 10 || usage.avgResponseKB > 1000) return 'B'
 
-  const totalCpuMsMillions =
-    (usage.requestsPerMonth * usage.cpuMsPerRequest) / 1_000_000
+  const totalCpuMsMillions = (usage.requestsPerMonth * usage.cpuMsPerRequest) / 1_000_000
   if (totalCpuMsMillions > 100) return 'C'
 
   if (usage.d1ReadsPerMonth > 10_000_000 || usage.d1StorageGB > 5) return 'D'
@@ -78,14 +77,10 @@ export interface SizingDemand {
 export function computeSizingDemand(usage: Usage): SizingDemand {
   const avgRps = usage.requestsPerMonth / (30 * 24 * 3600)
   const peakRps = avgRps * 10
-  const coresNeeded = Math.max(
-    1,
-    Math.ceil((peakRps * usage.cpuMsPerRequest) / 1000 * 1.5),
-  )
+  const coresNeeded = Math.max(1, Math.ceil(((peakRps * usage.cpuMsPerRequest) / 1000) * 1.5))
   const ramGBNeeded =
     1 + 0.5 * Math.min(usage.doInstanceCount, 200) + Math.min(usage.kvStorageGB, 4)
-  const diskGBNeeded =
-    2 * (usage.d1StorageGB + usage.kvStorageGB + usage.r2StorageGB)
+  const diskGBNeeded = 2 * (usage.d1StorageGB + usage.kvStorageGB + usage.r2StorageGB)
   return { coresNeeded, ramGBNeeded, diskGBNeeded }
 }
 
@@ -122,10 +117,7 @@ function tierTable(provider: TargetProvider, prices: Prices): Record<string, VPS
 }
 
 /** @deprecated Use chooseTier with explicit provider. */
-export function chooseHetznerTier(
-  demand: SizingDemand,
-  prices: Prices,
-): TierChoice {
+export function chooseHetznerTier(demand: SizingDemand, prices: Prices): TierChoice {
   return chooseTier(demand, 'hetzner', prices)
 }
 
@@ -172,10 +164,7 @@ export function costCloudflare(usage: Usage, prices: Prices): CostLine[] {
   }
 
   const cpuMsMillions = (usage.requestsPerMonth * usage.cpuMsPerRequest) / 1_000_000
-  const cpuMsOverageMillions = Math.max(
-    0,
-    cpuMsMillions - cf.workers_cpu_ms_included_million,
-  )
+  const cpuMsOverageMillions = Math.max(0, cpuMsMillions - cf.workers_cpu_ms_included_million)
   if (cpuMsOverageMillions > 0) {
     lines.push({
       label: 'Workers CPU-ms overage',
@@ -293,7 +282,8 @@ export function collectWarnings(usage: Usage, tierFits: boolean): Warning[] {
   if (usage.usesVectorize) {
     warnings.push({
       code: 'vectorize',
-      message: 'Vectorize isn\'t supported yet — keep this binding on CF or self-host Qdrant/Weaviate.',
+      message:
+        "Vectorize isn't supported yet — keep this binding on CF or self-host Qdrant/Weaviate.",
       impact: 'keep-on-cf',
     })
   }
@@ -307,7 +297,8 @@ export function collectWarnings(usage: Usage, tierFits: boolean): Warning[] {
   if (!tierFits) {
     warnings.push({
       code: 'single-node-too-small',
-      message: 'Workload exceeds the largest available tier — single-node self-host is not recommended.',
+      message:
+        'Workload exceeds the largest available tier — single-node self-host is not recommended.',
       impact: 'not-recommended',
     })
   }

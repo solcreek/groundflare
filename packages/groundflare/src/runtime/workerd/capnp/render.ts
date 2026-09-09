@@ -42,8 +42,7 @@ const scalar = (text: string): Scalar => new Scalar(text)
 const str = (value: string): Scalar => new Scalar(quote(value))
 const embed = (path: string): Scalar => new Scalar(`embed ${quote(path)}`)
 const list = (items: readonly CapnpNode[]): List => new List(items)
-const struct = (fields: ReadonlyArray<readonly [string, CapnpNode]>): Struct =>
-  new Struct(fields)
+const struct = (fields: ReadonlyArray<readonly [string, CapnpNode]>): Struct => new Struct(fields)
 
 // ─── Scalar escaping ───────────────────────────────────────────────
 
@@ -93,25 +92,18 @@ function write(node: CapnpNode, depth: number): string {
     if (!inline.includes('\n') && inline.length <= INLINE_THRESHOLD) return inline
     const childPad = INDENT.repeat(depth + 1)
     const closePad = INDENT.repeat(depth)
-    const inner = node.items
-      .map((item) => childPad + write(item, depth + 1))
-      .join(',\n')
+    const inner = node.items.map((item) => childPad + write(item, depth + 1)).join(',\n')
     return `[\n${inner}\n${closePad}]`
   }
 
   // Struct
   if (node.fields.length === 0) return '()'
-  const inline =
-    '(' +
-    node.fields.map(([k, v]) => `${k} = ${write(v, depth)}`).join(', ') +
-    ')'
+  const inline = '(' + node.fields.map(([k, v]) => `${k} = ${write(v, depth)}`).join(', ') + ')'
   if (!inline.includes('\n') && inline.length <= INLINE_THRESHOLD) return inline
 
   const childPad = INDENT.repeat(depth + 1)
   const closePad = INDENT.repeat(depth)
-  const inner = node.fields
-    .map(([k, v]) => `${childPad}${k} = ${write(v, depth + 1)}`)
-    .join(',\n')
+  const inner = node.fields.map(([k, v]) => `${childPad}${k} = ${write(v, depth + 1)}`).join(',\n')
   return `(\n${inner}\n${closePad})`
 }
 
@@ -213,10 +205,7 @@ function nodeForWorker(w: CapnpWorker): CapnpNode {
     if ('inMemory' in storage) {
       fields.push(['durableObjectStorage', struct([['inMemory', scalar('void')]])])
     } else {
-      fields.push([
-        'durableObjectStorage',
-        struct([['localDisk', str(storage.localDiskPath)]]),
-      ])
+      fields.push(['durableObjectStorage', struct([['localDisk', str(storage.localDiskPath)]])])
     }
   }
 

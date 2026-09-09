@@ -7,15 +7,15 @@ describe('generateBunShim', () => {
   })
 
   it('rejects listenAddress without a port', () => {
-    expect(() =>
-      generateBunShim({ entryModule: './user.js', listenAddress: '0.0.0.0' }),
-    ).toThrow(/port/)
+    expect(() => generateBunShim({ entryModule: './user.js', listenAddress: '0.0.0.0' })).toThrow(
+      /port/,
+    )
   })
 
   it('rejects invalid port values', () => {
-    expect(() =>
-      generateBunShim({ entryModule: './user.js', listenAddress: '0.0.0.0:0' }),
-    ).toThrow(/port/)
+    expect(() => generateBunShim({ entryModule: './user.js', listenAddress: '0.0.0.0:0' })).toThrow(
+      /port/,
+    )
     expect(() =>
       generateBunShim({
         entryModule: './user.js',
@@ -76,9 +76,7 @@ describe('generateBunShim', () => {
       entryModule: './user.js',
       kvNamespaces: [{ binding: 'Z_CACHE' }, { binding: 'A_CACHE', shards: 4 }],
     })
-    expect(src).toContain(
-      'const KV_BINDINGS = {"A_CACHE":{"shards":4},"Z_CACHE":{"shards":1}}',
-    )
+    expect(src).toContain('const KV_BINDINGS = {"A_CACHE":{"shards":4},"Z_CACHE":{"shards":1}}')
   })
 
   it('serialises D1 bindings with database names', () => {
@@ -86,9 +84,7 @@ describe('generateBunShim', () => {
       entryModule: './user.js',
       d1Databases: [{ binding: 'DB', databaseName: 'prod' }],
     })
-    expect(src).toContain(
-      'const D1_BINDINGS = {"DB":{"databaseName":"prod"}}',
-    )
+    expect(src).toContain('const D1_BINDINGS = {"DB":{"databaseName":"prod"}}')
   })
 
   it('serialises R2 bindings with bucketName fallback to binding name', () => {
@@ -109,25 +105,17 @@ describe('generateBunShim', () => {
     // Imports the adapter from the file shipped alongside server.ts
     expect(src).toContain('import { BunKVAdapter } from "./adapters/kv.ts"')
     // makeKvFacade opens a per-binding SQLite file rooted in stateBaseDir
-    expect(src).toContain(
-      'return BunKVAdapter.open(`${STATE_BASE_DIR}/kv/${binding}.sqlite`)',
-    )
+    expect(src).toContain('return BunKVAdapter.open(`${STATE_BASE_DIR}/kv/${binding}.sqlite`)')
     // No more Phase 1 stub error for KV — D1 and R2 still throw until
     // Phase 2c/2d wires them.
-    expect(src).not.toContain(
-      'KV.${op}() — groundflare Bun adapter not yet implemented',
-    )
+    expect(src).not.toContain('KV.${op}() — groundflare Bun adapter not yet implemented')
   })
 
   it('wires D1 facade to the real BunD1Adapter (Phase 2c+)', () => {
     const src = generateBunShim({ entryModule: './user.js' })
     expect(src).toContain('import { BunD1Adapter } from "./adapters/d1.ts"')
-    expect(src).toContain(
-      'return BunD1Adapter.open(`${STATE_BASE_DIR}/d1/${databaseName}.sqlite`)',
-    )
-    expect(src).not.toContain(
-      'D1.${op}() — groundflare Bun adapter not yet implemented',
-    )
+    expect(src).toContain('return BunD1Adapter.open(`${STATE_BASE_DIR}/d1/${databaseName}.sqlite`)')
+    expect(src).not.toContain('D1.${op}() — groundflare Bun adapter not yet implemented')
   })
 
   it('wires R2 facade to the real BunR2Adapter (Phase 2d+)', () => {
@@ -197,9 +185,7 @@ describe('generateBunShim', () => {
 
   it('emits a startup log line so journald shows clear boot confirmation', () => {
     const src = generateBunShim({ entryModule: './user.js' })
-    expect(src).toContain(
-      'groundflare Bun runtime listening on ${server.hostname}:${server.port}',
-    )
+    expect(src).toContain('groundflare Bun runtime listening on ${server.hostname}:${server.port}')
   })
 
   it('is deterministic — same input produces byte-identical output', () => {

@@ -180,15 +180,11 @@ describe('cronUnitName', () => {
   })
 
   it('differs when the worker name differs', () => {
-    expect(cronUnitName('api', '*/5 * * * *')).not.toBe(
-      cronUnitName('admin', '*/5 * * * *'),
-    )
+    expect(cronUnitName('api', '*/5 * * * *')).not.toBe(cronUnitName('admin', '*/5 * * * *'))
   })
 
   it('differs when the cron expression differs', () => {
-    expect(cronUnitName('api', '*/5 * * * *')).not.toBe(
-      cronUnitName('api', '*/10 * * * *'),
-    )
+    expect(cronUnitName('api', '*/5 * * * *')).not.toBe(cronUnitName('api', '*/10 * * * *'))
   })
 })
 
@@ -301,8 +297,8 @@ describe('generateCronUnitPair — validation', () => {
   })
 
   it('propagates UnsupportedCronError from cronToSystemdCalendar', () => {
-    expect(() =>
-      generateCronUnitPair({ workerName: 'api', cronExpression: 'nope' }),
-    ).toThrow(/Unsupported cron/)
+    expect(() => generateCronUnitPair({ workerName: 'api', cronExpression: 'nope' })).toThrow(
+      /Unsupported cron/,
+    )
   })
 })

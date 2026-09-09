@@ -104,9 +104,7 @@ function costSubRow(label: string, amount: number, currency: string): string {
 function savingsLine(estimate: Estimate): string {
   const s = estimate.savings
   if (s.monthly <= 0) {
-    return row(
-      `No savings at this workload size — CF is already the cheaper path.`,
-    )
+    return row(`No savings at this workload size — CF is already the cheaper path.`)
   }
   const line =
     `Savings: ${formatMoney(s.monthly, estimate.currency)}/mo ` +

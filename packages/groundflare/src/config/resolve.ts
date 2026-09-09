@@ -1,11 +1,6 @@
 import { findWranglerConfig, readConfigFile, ConfigNotFoundError } from './reader.js'
 import { STATIC_DEFAULTS } from './defaults.js'
-import type {
-  GroundflareSection,
-  ProviderName,
-  ReadConfigResult,
-  RuntimeKind,
-} from './schema.js'
+import type { GroundflareSection, ProviderName, ReadConfigResult, RuntimeKind } from './schema.js'
 
 export interface ResolveOptions {
   /** Directory to search upward from for wrangler.{toml,jsonc,json}. Defaults to process.cwd(). */

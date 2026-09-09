@@ -105,75 +105,52 @@ const USER_MODULE = `
 `
 
 describe('integration: KV sharding (shards=4)', () => {
-  it(
-    'put + get round-trip works identically to shards=1',
-    async () => {
-      await withShardedWorkspace(
-        { shards: 4, modules: { 'user.js': USER_MODULE } },
-        async (wd) => {
-          await wd.sendRequest({
-            host: 'api.test',
-            path: '/put?k=greeting&v=hello-sharded',
-          })
-          const res = await wd.sendRequest({ host: 'api.test', path: '/get?k=greeting' })
-          expect(res.status).toBe(200)
-          expect(res.body).toBe('hello-sharded')
-        },
-      )
-    },
-    60_000,
-  )
+  it('put + get round-trip works identically to shards=1', async () => {
+    await withShardedWorkspace({ shards: 4, modules: { 'user.js': USER_MODULE } }, async (wd) => {
+      await wd.sendRequest({
+        host: 'api.test',
+        path: '/put?k=greeting&v=hello-sharded',
+      })
+      const res = await wd.sendRequest({ host: 'api.test', path: '/get?k=greeting' })
+      expect(res.status).toBe(200)
+      expect(res.body).toBe('hello-sharded')
+    })
+  }, 60_000)
 
-  it(
-    'delete removes the key from its shard only',
-    async () => {
-      await withShardedWorkspace(
-        { shards: 4, modules: { 'user.js': USER_MODULE } },
-        async (wd) => {
-          await wd.sendRequest({ host: 'api.test', path: '/put?k=a&v=1' })
-          await wd.sendRequest({ host: 'api.test', path: '/put?k=b&v=2' })
-          await wd.sendRequest({ host: 'api.test', path: '/del?k=a' })
+  it('delete removes the key from its shard only', async () => {
+    await withShardedWorkspace({ shards: 4, modules: { 'user.js': USER_MODULE } }, async (wd) => {
+      await wd.sendRequest({ host: 'api.test', path: '/put?k=a&v=1' })
+      await wd.sendRequest({ host: 'api.test', path: '/put?k=b&v=2' })
+      await wd.sendRequest({ host: 'api.test', path: '/del?k=a' })
 
-          const a = await wd.sendRequest({ host: 'api.test', path: '/get?k=a' })
-          expect(a.body).toBe('MISS')
-          const b = await wd.sendRequest({ host: 'api.test', path: '/get?k=b' })
-          expect(b.body).toBe('2')
-        },
-      )
-    },
-    60_000,
-  )
+      const a = await wd.sendRequest({ host: 'api.test', path: '/get?k=a' })
+      expect(a.body).toBe('MISS')
+      const b = await wd.sendRequest({ host: 'api.test', path: '/get?k=b' })
+      expect(b.body).toBe('2')
+    })
+  }, 60_000)
 
-  it(
-    'list() merges results across shards in sorted order',
-    async () => {
-      await withShardedWorkspace(
-        { shards: 4, modules: { 'user.js': USER_MODULE } },
-        async (wd) => {
-          await wd.sendRequest({ host: 'api.test', path: '/put-many?n=30' })
+  it('list() merges results across shards in sorted order', async () => {
+    await withShardedWorkspace({ shards: 4, modules: { 'user.js': USER_MODULE } }, async (wd) => {
+      await wd.sendRequest({ host: 'api.test', path: '/put-many?n=30' })
 
-          const res = await wd.sendRequest({ host: 'api.test', path: '/list?prefix=item-' })
-          expect(res.status).toBe(200)
-          const keys = JSON.parse(res.body) as string[]
-          expect(keys.length).toBe(30)
+      const res = await wd.sendRequest({ host: 'api.test', path: '/list?prefix=item-' })
+      expect(res.status).toBe(200)
+      const keys = JSON.parse(res.body) as string[]
+      expect(keys.length).toBe(30)
 
-          // Keys must be globally sorted, not grouped by shard.
-          const sorted = [...keys].sort()
-          expect(keys).toEqual(sorted)
+      // Keys must be globally sorted, not grouped by shard.
+      const sorted = [...keys].sort()
+      expect(keys).toEqual(sorted)
 
-          // And include every expected key.
-          const expected = Array.from({ length: 30 }, (_, i) => 'item-' + i).sort()
-          expect(keys).toEqual(expected)
-        },
-      )
-    },
-    60_000,
-  )
+      // And include every expected key.
+      const expected = Array.from({ length: 30 }, (_, i) => 'item-' + i).sort()
+      expect(keys).toEqual(expected)
+    })
+  }, 60_000)
 
-  it(
-    'rejects cursor-based pagination (Phase 2)',
-    async () => {
-      const cursorSource = `
+  it('rejects cursor-based pagination (Phase 2)', async () => {
+    const cursorSource = `
         export default {
           async fetch(request, env) {
             try {
@@ -185,15 +162,10 @@ describe('integration: KV sharding (shards=4)', () => {
           }
         }
       `
-      await withShardedWorkspace(
-        { shards: 4, modules: { 'user.js': cursorSource } },
-        async (wd) => {
-          const res = await wd.sendRequest({ host: 'api.test', path: '/' })
-          expect(res.status).toBe(200)
-          expect(res.body).toContain('pagination across shards')
-        },
-      )
-    },
-    60_000,
-  )
+    await withShardedWorkspace({ shards: 4, modules: { 'user.js': cursorSource } }, async (wd) => {
+      const res = await wd.sendRequest({ host: 'api.test', path: '/' })
+      expect(res.status).toBe(200)
+      expect(res.body).toContain('pagination across shards')
+    })
+  }, 60_000)
 })

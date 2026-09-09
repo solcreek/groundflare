@@ -35,9 +35,7 @@ describe('Counter', () => {
 
     const series = c.collect()
     expect(series).toHaveLength(3)
-    const api2xx = series.find(
-      (s) => s.labels.worker === 'api' && s.labels.status_class === '2xx',
-    )
+    const api2xx = series.find((s) => s.labels.worker === 'api' && s.labels.status_class === '2xx')
     expect(api2xx?.value).toBe(3)
   })
 
@@ -60,9 +58,7 @@ describe('Counter', () => {
   })
 
   it('rejects invalid metric + label names at construction', () => {
-    expect(() => new Counter({ name: 'bad name', help: 'x' })).toThrow(
-      /invalid metric name/,
-    )
+    expect(() => new Counter({ name: 'bad name', help: 'x' })).toThrow(/invalid metric name/)
     expect(
       () =>
         new Counter({
@@ -144,9 +140,7 @@ describe('Histogram', () => {
   })
 
   it('rejects empty bucket set', () => {
-    expect(() => new Histogram({ name: 'x', help: 'x', buckets: [] })).toThrow(
-      /non-empty/,
-    )
+    expect(() => new Histogram({ name: 'x', help: 'x', buckets: [] })).toThrow(/non-empty/)
   })
 
   it('separate series per label combo', () => {
@@ -187,9 +181,7 @@ describe('MetricRegistry', () => {
   it('rejects duplicate registration of the same metric name', () => {
     const reg = new MetricRegistry()
     reg.counter({ name: 'x', help: 'x' })
-    expect(() => reg.counter({ name: 'x', help: 'x' })).toThrow(
-      /already registered/,
-    )
+    expect(() => reg.counter({ name: 'x', help: 'x' })).toThrow(/already registered/)
   })
 
   it('size + get expose the inner map for tests', () => {
@@ -203,9 +195,7 @@ describe('MetricRegistry', () => {
   })
 
   it('PROMETHEUS_CONTENT_TYPE is the exposition-format header', () => {
-    expect(PROMETHEUS_CONTENT_TYPE).toBe(
-      'text/plain; version=0.0.4; charset=utf-8',
-    )
+    expect(PROMETHEUS_CONTENT_TYPE).toBe('text/plain; version=0.0.4; charset=utf-8')
   })
 })
 

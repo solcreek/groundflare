@@ -76,11 +76,7 @@ export async function removeKnownHostsEntries(
   return { removed, errors }
 }
 
-function runSshKeygenRemove(
-  spawnImpl: SpawnFn,
-  binary: string,
-  host: string,
-): Promise<void> {
+function runSshKeygenRemove(spawnImpl: SpawnFn, binary: string, host: string): Promise<void> {
   return new Promise((resolveFn, rejectFn) => {
     const child = spawnImpl(binary, ['-R', host], {
       stdio: ['ignore', 'ignore', 'pipe'],

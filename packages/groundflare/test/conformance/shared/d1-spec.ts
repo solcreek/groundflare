@@ -30,9 +30,7 @@ export interface D1PreparedLike {
 
 export interface D1AdapterLike {
   prepare(sql: string): D1PreparedLike
-  batch<T = Record<string, unknown>>(
-    statements: D1PreparedLike[],
-  ): Promise<D1ResultLike<T>[]>
+  batch<T = Record<string, unknown>>(statements: D1PreparedLike[]): Promise<D1ResultLike<T>[]>
   exec(sql: string): Promise<{ count: number; duration: number }>
 }
 
@@ -77,10 +75,7 @@ const SCHEMA = `CREATE TABLE IF NOT EXISTS users (
   bio BLOB
 )`
 
-export function runD1ConformanceSuite(
-  deps: D1TestDeps,
-  fixture: D1Fixture,
-): void {
+export function runD1ConformanceSuite(deps: D1TestDeps, fixture: D1Fixture): void {
   const { describe, test, expect, beforeEach, afterEach } = deps
 
   describe(`D1 conformance [${fixture.name}]`, () => {
@@ -118,9 +113,7 @@ export function runD1ConformanceSuite(
           .prepare('INSERT INTO users(name, email) VALUES (?, ?), (?, ?)')
           .bind('a', 'a@e.com', 'b', 'b@e.com')
           .run()
-        const res = await adapter
-          .prepare('SELECT name, email FROM users ORDER BY name')
-          .all()
+        const res = await adapter.prepare('SELECT name, email FROM users ORDER BY name').all()
         expect(res.success).toBe(true)
         expect(res.results).toEqual([
           { name: 'a', email: 'a@e.com' },
@@ -141,17 +134,12 @@ export function runD1ConformanceSuite(
           .prepare('INSERT INTO users(name) VALUES (?), (?), (?)')
           .bind('x', 'y', 'z')
           .run()
-        const row = await adapter
-          .prepare('SELECT name FROM users ORDER BY name')
-          .first()
+        const row = await adapter.prepare('SELECT name FROM users ORDER BY name').first()
         expect(row).toEqual({ name: 'x' })
       })
 
       test('first() with column name returns only that column value', async () => {
-        await adapter
-          .prepare('INSERT INTO users(name) VALUES (?)')
-          .bind('alice')
-          .run()
+        await adapter.prepare('INSERT INTO users(name) VALUES (?)').bind('alice').run()
         const name = await adapter
           .prepare('SELECT name FROM users WHERE name = ?')
           .bind('alice')
@@ -164,20 +152,14 @@ export function runD1ConformanceSuite(
       })
 
       test('first() with column returns null for no rows', async () => {
-        expect(
-          await adapter
-            .prepare('SELECT name FROM users')
-            .first<string>('name'),
-        ).toBe(null)
+        expect(await adapter.prepare('SELECT name FROM users').first<string>('name')).toBe(null)
       })
 
       test('bind() creates a fresh statement (original unchanged)', async () => {
         const ps = adapter.prepare('INSERT INTO users(name) VALUES (?)')
         await ps.bind('alice').run()
         await ps.bind('bob').run()
-        const res = await adapter
-          .prepare('SELECT name FROM users ORDER BY name')
-          .all()
+        const res = await adapter.prepare('SELECT name FROM users ORDER BY name').all()
         expect(res.results.map((r: unknown) => (r as { name: string }).name)).toEqual([
           'alice',
           'bob',
@@ -199,35 +181,20 @@ export function runD1ConformanceSuite(
 
     describe('data types', () => {
       test('NULL is preserved', async () => {
-        await adapter
-          .prepare('INSERT INTO users(name, age) VALUES (?, ?)')
-          .bind('x', null)
-          .run()
-        const row = await adapter
-          .prepare('SELECT age FROM users')
-          .first<{ age: number | null }>()
+        await adapter.prepare('INSERT INTO users(name, age) VALUES (?, ?)').bind('x', null).run()
+        const row = await adapter.prepare('SELECT age FROM users').first<{ age: number | null }>()
         expect(row?.age).toBe(null)
       })
 
       test('INTEGER round-trips', async () => {
-        await adapter
-          .prepare('INSERT INTO users(name, age) VALUES (?, ?)')
-          .bind('x', 42)
-          .run()
-        const row = await adapter
-          .prepare('SELECT age FROM users')
-          .first<{ age: number }>()
+        await adapter.prepare('INSERT INTO users(name, age) VALUES (?, ?)').bind('x', 42).run()
+        const row = await adapter.prepare('SELECT age FROM users').first<{ age: number }>()
         expect(row?.age).toBe(42)
       })
 
       test('TEXT with unicode round-trips', async () => {
-        await adapter
-          .prepare('INSERT INTO users(name) VALUES (?)')
-          .bind('小明')
-          .run()
-        const row = await adapter
-          .prepare('SELECT name FROM users')
-          .first<{ name: string }>()
+        await adapter.prepare('INSERT INTO users(name) VALUES (?)').bind('小明').run()
+        const row = await adapter.prepare('SELECT name FROM users').first<{ name: string }>()
         expect(row?.name).toBe('小明')
       })
 
@@ -237,10 +204,7 @@ export function runD1ConformanceSuite(
         // both return a Buffer-or-Uint8Array on read (both honour
         // Array.from).
         const bytes = new Uint8Array([0, 1, 2, 3, 255])
-        await adapter
-          .prepare('INSERT INTO users(name, bio) VALUES (?, ?)')
-          .bind('x', bytes)
-          .run()
+        await adapter.prepare('INSERT INTO users(name, bio) VALUES (?, ?)').bind('x', bytes).run()
         const row = await adapter
           .prepare('SELECT bio FROM users')
           .first<{ bio: Uint8Array | Buffer }>()
@@ -278,10 +242,7 @@ export function runD1ConformanceSuite(
       })
 
       test('rolls back all statements if one fails', async () => {
-        await adapter
-          .prepare('INSERT INTO users(name) VALUES (?)')
-          .bind('pre')
-          .run()
+        await adapter.prepare('INSERT INTO users(name) VALUES (?)').bind('pre').run()
         await expect(
           adapter.batch([
             adapter.prepare('INSERT INTO users(name) VALUES (?)').bind('a'),
@@ -302,13 +263,10 @@ export function runD1ConformanceSuite(
       })
 
       test('rejects statements from a different adapter instance', async () => {
-        const { adapter: other, teardown: otherTeardown } =
-          await fixture.create()
+        const { adapter: other, teardown: otherTeardown } = await fixture.create()
         try {
           const ps = other.prepare('SELECT 1')
-          await expect(adapter.batch([ps])).rejects.toThrow(
-            /same adapter instance/,
-          )
+          await expect(adapter.batch([ps])).rejects.toThrow(/same adapter instance/)
         } finally {
           await otherTeardown()
         }
@@ -323,9 +281,7 @@ export function runD1ConformanceSuite(
         )
         expect(res.count).toBe(2)
         const probe = await adapter
-          .prepare(
-            "SELECT name FROM sqlite_master WHERE type='table' AND name='tags'",
-          )
+          .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='tags'")
           .first<{ name: string }>()
         expect(probe?.name).toBe('tags')
       })
@@ -338,10 +294,7 @@ export function runD1ConformanceSuite(
 
     describe('meta.served_by', () => {
       test('identifies the runtime in every result', async () => {
-        const run = await adapter
-          .prepare('INSERT INTO users(name) VALUES (?)')
-          .bind('x')
-          .run()
+        const run = await adapter.prepare('INSERT INTO users(name) VALUES (?)').bind('x').run()
         expect(run.meta.served_by).toMatch(/groundflare/)
         const all = await adapter.prepare('SELECT * FROM users').all()
         expect(all.meta.served_by).toMatch(/groundflare/)
@@ -361,9 +314,7 @@ export function runD1ConformanceSuite(
       test('batch handles mixed RETURNING + plain statements', async () => {
         const results = await adapter.batch<{ id: number; name: string }>([
           adapter.prepare('INSERT INTO users(name) VALUES (?)').bind('a'),
-          adapter
-            .prepare('INSERT INTO users(name) VALUES (?) RETURNING id, name')
-            .bind('b'),
+          adapter.prepare('INSERT INTO users(name) VALUES (?) RETURNING id, name').bind('b'),
         ])
         expect(results[0]?.results).toEqual([])
         expect(results[1]?.results.length).toBe(1)

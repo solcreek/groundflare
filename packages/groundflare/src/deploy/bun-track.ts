@@ -87,10 +87,7 @@ export function planBunStaging(opts: PlanBunStagingOptions): BunStagingPlan {
   // Dirs under groundflare ownership. artifact.stateDirs already
   // includes deployRoot as its first entry; we add the adapters subdir
   // explicitly.
-  const groundflareOwnedDirs = [
-    ...artifact.stateDirs,
-    `${deployRoot}/adapters`,
-  ]
+  const groundflareOwnedDirs = [...artifact.stateDirs, `${deployRoot}/adapters`]
 
   return {
     files,

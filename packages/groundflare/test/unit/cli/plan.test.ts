@@ -9,17 +9,10 @@
 
 import { describe, expect, it } from 'vitest'
 
-import {
-  buildDestroyPlan,
-  buildUpPlan,
-  renderPlan,
-} from '../../../src/cli/plan.js'
+import { buildDestroyPlan, buildUpPlan, renderPlan } from '../../../src/cli/plan.js'
 import type { WorkspaceWorker } from '../../../src/runtime/workspace/index.js'
 
-function worker(
-  name: string,
-  overrides: Partial<WorkspaceWorker> = {},
-): WorkspaceWorker {
+function worker(name: string, overrides: Partial<WorkspaceWorker> = {}): WorkspaceWorker {
   return {
     name,
     entryPath: `workers/${name}/code/current/index.js`,

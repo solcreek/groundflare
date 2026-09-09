@@ -119,16 +119,14 @@ export function workspaceWorkerFromConfig(
       // secret *names*, not values. We pass them through as if they
       // were the values; the deploy step swaps them out.
       if (gf?.access_key_id_secret !== undefined) spec.accessKeyId = gf.access_key_id_secret
-      if (gf?.secret_access_key_secret !== undefined) spec.secretAccessKey = gf.secret_access_key_secret
+      if (gf?.secret_access_key_secret !== undefined)
+        spec.secretAccessKey = gf.secret_access_key_secret
       if (gf?.public_path !== undefined) spec.publicPath = gf.public_path
       return spec
     })
   }
 
-  if (
-    wrangler.durable_objects?.bindings &&
-    wrangler.durable_objects.bindings.length > 0
-  ) {
+  if (wrangler.durable_objects?.bindings && wrangler.durable_objects.bindings.length > 0) {
     worker.durableObjects = wrangler.durable_objects.bindings.map((d) => {
       const spec: { binding: string; className: string; scriptName?: string } = {
         binding: d.name,

@@ -76,15 +76,11 @@ describe('rangeToS3Header', () => {
   })
 
   it('rangeHeader takes precedence over structured range', () => {
-    expect(
-      rangeToS3Header({ offset: 0, length: 99 }, 'bytes=10-20'),
-    ).toBe('bytes=10-20')
+    expect(rangeToS3Header({ offset: 0, length: 99 }, 'bytes=10-20')).toBe('bytes=10-20')
   })
 
   it('translates offset+length to closed range', () => {
-    expect(rangeToS3Header({ offset: 100, length: 50 }, undefined)).toBe(
-      'bytes=100-149',
-    )
+    expect(rangeToS3Header({ offset: 100, length: 50 }, undefined)).toBe('bytes=100-149')
   })
 
   it('translates offset only to open-ended range', () => {
@@ -100,8 +96,7 @@ describe('rangeToS3Header', () => {
   })
 
   it('suffix takes precedence over offset/length', () => {
-    expect(rangeToS3Header({ offset: 10, length: 20, suffix: 50 }, undefined))
-      .toBe('bytes=-50')
+    expect(rangeToS3Header({ offset: 10, length: 20, suffix: 50 }, undefined)).toBe('bytes=-50')
   })
 
   it('empty rangeHeader treated as absent', () => {
@@ -492,9 +487,9 @@ describe('r2OpToS3Request - createMultipartUpload', () => {
   })
 
   it('throws when object missing', () => {
-    expect(() =>
-      r2OpToS3Request({ method: 'createMultipartUpload' }, null, CTX),
-    ).toThrowError(/object must be a string/)
+    expect(() => r2OpToS3Request({ method: 'createMultipartUpload' }, null, CTX)).toThrowError(
+      /object must be a string/,
+    )
   })
 })
 
@@ -602,9 +597,9 @@ describe('r2OpToS3Request - abortMultipartUpload', () => {
 
 describe('r2OpToS3Request - unknown method', () => {
   it('throws TypeError for forward-compat methods we have not wired', () => {
-    expect(() =>
-      r2OpToS3Request({ method: 'futureOp', object: 'k' }, null, CTX),
-    ).toThrowError(/Unsupported R2 op method: futureOp/)
+    expect(() => r2OpToS3Request({ method: 'futureOp', object: 'k' }, null, CTX)).toThrowError(
+      /Unsupported R2 op method: futureOp/,
+    )
   })
 })
 
@@ -621,11 +616,7 @@ describe('s3ResponseToR2Meta', () => {
   })
 
   it('uses sizeOverride when provided', () => {
-    const m = s3ResponseToR2Meta(
-      makeResponse({ 'content-length': '0' }),
-      'k',
-      99,
-    )
+    const m = s3ResponseToR2Meta(makeResponse({ 'content-length': '0' }), 'k', 99)
     expect(m.size).toBe(99)
   })
 
@@ -689,18 +680,12 @@ describe('s3ResponseToR2Meta', () => {
       'k',
     )
     expect(withVersion.version).toBe('v123')
-    const withoutVersion = s3ResponseToR2Meta(
-      makeResponse({ etag: '"e"' }),
-      'k',
-    )
+    const withoutVersion = s3ResponseToR2Meta(makeResponse({ etag: '"e"' }), 'k')
     expect(withoutVersion.version).toBe('e')
   })
 
   it('attaches storage class when present', () => {
-    const m = s3ResponseToR2Meta(
-      makeResponse({ 'x-amz-storage-class': 'STANDARD_IA' }),
-      'k',
-    )
+    const m = s3ResponseToR2Meta(makeResponse({ 'x-amz-storage-class': 'STANDARD_IA' }), 'k')
     expect(m.storageClass).toBe('STANDARD_IA')
   })
 })
