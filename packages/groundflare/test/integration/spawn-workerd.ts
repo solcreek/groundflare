@@ -16,36 +16,21 @@
 import { spawn, type ChildProcess } from 'node:child_process'
 import { setTimeout as sleep } from 'node:timers/promises'
 import { mkdtemp, rm, writeFile, mkdir } from 'node:fs/promises'
-import { existsSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { createRequire } from 'node:module'
 import { join, dirname } from 'node:path'
 import { createServer } from 'node:net'
 import { request as httpRequestRaw, type OutgoingHttpHeaders } from 'node:http'
 
-// Resolve the workerd binary via require.resolve so the path stays
-// correct whether the npm install hoisted the package to the repo root
-// (monorepo workspace layout) or kept it inside packages/groundflare/
-// node_modules/.
-const WORKERD_BIN = (() => {
-  const req = createRequire(import.meta.url)
-  const platformPackage = process.platform === 'win32'
-    ? '@cloudflare/workerd-windows-64'
-    : process.platform === 'darwin'
-      ? (process.arch === 'arm64' ? '@cloudflare/workerd-darwin-arm64' : '@cloudflare/workerd-darwin-64')
-      : (process.arch === 'arm64' ? '@cloudflare/workerd-linux-arm64' : '@cloudflare/workerd-linux-64')
-  if (process.platform === 'win32') {
-    return req.resolve(`${platformPackage}/bin/workerd.exe`)
-  }
-  const wrapper = req.resolve('workerd/bin/workerd')
-  if (existsSync(wrapper)) return wrapper
-  return req.resolve(`${platformPackage}/bin/workerd`)
-})()
-// On Windows, launch the native executable directly. The npm wrapper uses
-// execFileSync(), which leaves a child process behind when the wrapper is
-// terminated and that child keeps the temporary workdir locked.
-const WORKERD_COMMAND = WORKERD_BIN
-const WORKERD_ARGS: string[] = []
+// The `workerd` npm package's main export is the absolute path of the
+// native binary for the current platform/arch (`bin/workerd.exe` on
+// Windows), resolved with the same logic its `bin/workerd` wrapper uses.
+// Spawning the native binary directly matters on Windows: the wrapper is
+// a Node script that execFileSync()s the real process, so killing the
+// wrapper orphans workerd and the orphan keeps the temp workdir locked.
+// Going through require() also keeps the path correct whether npm hoisted
+// the package to the repo root or kept it under packages/groundflare/.
+const WORKERD_BIN: string = createRequire(import.meta.url)('workerd').default
 
 async function removeWorkdir(workdir: string): Promise<void> {
   // Windows can briefly retain a file handle after workerd exits. fs.rm's
@@ -144,7 +129,7 @@ export async function spawnWorkerd(opts: SpawnWorkerdOptions): Promise<SpawnedWo
     throw err
   }
 
-  const proc: ChildProcess = spawn(WORKERD_COMMAND, [...WORKERD_ARGS, 'serve', 'worker.capnp'], {
+  const proc: ChildProcess = spawn(WORKERD_BIN, ['serve', 'worker.capnp'], {
     cwd: workdir,
     stdio: opts.verbose ? 'inherit' : ['ignore', 'pipe', 'pipe'],
   })
