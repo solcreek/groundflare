@@ -50,6 +50,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "lint": "oxlint src test",
+    "format": "oxfmt src test",
+    "format:check": "oxfmt --check src test",
     "prepublishOnly": "npm run check && npm run lint && npm run test && npm run build"
   },
   "dependencies": {

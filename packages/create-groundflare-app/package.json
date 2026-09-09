@@ -38,6 +38,8 @@
   "scripts": {
     "check": "tsc --noEmit",
     "lint": "oxlint src test",
+    "format": "oxfmt src test",
+    "format:check": "oxfmt --check src test",
     "test": "vitest run",
     "build": "tsc -p tsconfig.build.json",
     "prepublishOnly": "npm run check && npm run lint && npm run test && npm run build"

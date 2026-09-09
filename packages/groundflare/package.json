@@ -58,8 +58,8 @@
     "stress:workerd": "tsx src/poc/bench-bindings.ts",
     "coverage": "vitest run --coverage",
     "lint": "oxlint src test",
-    "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
-    "format:check": "prettier --check \"src/**/*.ts\" \"test/**/*.ts\"",
+    "format": "oxfmt src test",
+    "format:check": "oxfmt --check src test",
     "prepublishOnly": "npm run check && npm run lint && npm run test && npm run build"
   },
   "dependencies": {
