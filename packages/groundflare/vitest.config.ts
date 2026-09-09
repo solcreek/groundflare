@@ -30,20 +30,14 @@ export default defineConfig({
     // Longer timeout for conformance tests which manipulate real SQLite files;
     // integration tests set per-test 30s timeouts where they spawn workerd.
     testTimeout: 10_000,
-    // Run integration tests sequentially — spawning multiple workerd
-    // processes in parallel is fine but log output interleaves badly.
-    //
     // execArgv carries `--experimental-sqlite` into each worker so the
     // Node 22 D1 conformance tests don't blow up on `require('node:sqlite')`.
     // Node 24 will mark node:sqlite stable and this line becomes a no-op;
     // drop it once engines is bumped to >=24.
+    //
+    // Vitest 4 flattened `poolOptions.forks.*` into top-level options.
     pool: 'forks',
-    poolOptions: {
-      forks: {
-        singleFork: false,
-        execArgv: ['--experimental-sqlite'],
-      },
-    },
+    execArgv: ['--experimental-sqlite'],
     coverage: {
       provider: 'v8',
       reporter: ['text', 'html', 'lcov'],

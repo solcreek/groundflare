@@ -18,19 +18,31 @@ import { setTimeout as sleep } from 'node:timers/promises'
 import { mkdtemp, rm, writeFile, mkdir } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { createRequire } from 'node:module'
-import { join, dirname, resolve } from 'node:path'
+import { join, dirname } from 'node:path'
 import { createServer } from 'node:net'
 import { request as httpRequestRaw, type OutgoingHttpHeaders } from 'node:http'
 
-// Resolve the workerd binary via require.resolve so the path stays
-// correct whether the npm install hoisted the package to the repo root
-// (monorepo workspace layout) or kept it inside packages/groundflare/
-// node_modules/.
-const WORKERD_BIN = (() => {
-  const req = createRequire(import.meta.url)
-  const pkgPath = req.resolve('workerd/package.json')
-  return resolve(dirname(pkgPath), 'bin/workerd')
-})()
+// The `workerd` npm package's main export is the absolute path of the
+// native binary for the current platform/arch (`bin/workerd.exe` on
+// Windows), resolved with the same logic its `bin/workerd` wrapper uses.
+// Spawning the native binary directly matters on Windows: the wrapper is
+// a Node script that execFileSync()s the real process, so killing the
+// wrapper orphans workerd and the orphan keeps the temp workdir locked.
+// Going through require() also keeps the path correct whether npm hoisted
+// the package to the repo root or kept it under packages/groundflare/.
+const WORKERD_BIN: string = createRequire(import.meta.url)('workerd').default
+
+async function removeWorkdir(workdir: string): Promise<void> {
+  // Windows can briefly retain a file handle after workerd exits. fs.rm's
+  // retry options make cleanup deterministic without hiding a persistent
+  // failure indefinitely.
+  await rm(workdir, {
+    recursive: true,
+    force: true,
+    maxRetries: process.platform === 'win32' ? 10 : 0,
+    retryDelay: 100,
+  })
+}
 
 export interface SpawnWorkerdOptions {
   /** TCP port workerd will bind to (caller must have generated capnp pointing here). */
@@ -113,7 +125,7 @@ export async function spawnWorkerd(opts: SpawnWorkerdOptions): Promise<SpawnedWo
       await mkdir(join(workdir, dir), { recursive: true })
     }
   } catch (err) {
-    await rm(workdir, { recursive: true, force: true })
+    await removeWorkdir(workdir)
     throw err
   }
 
@@ -138,7 +150,7 @@ export async function spawnWorkerd(opts: SpawnWorkerdOptions): Promise<SpawnedWo
     await waitForWorkerd(opts.port, opts.healthTimeoutMs ?? 5000, () => exited)
   } catch (err) {
     proc.kill('SIGKILL')
-    await rm(workdir, { recursive: true, force: true })
+    await removeWorkdir(workdir)
     const reason = err instanceof Error ? err.message : String(err)
     const stderr = stderrChunks.join('').slice(-2000)
     throw new Error(
@@ -165,7 +177,7 @@ export async function spawnWorkerd(opts: SpawnWorkerdOptions): Promise<SpawnedWo
     },
     async stop() {
       if (exited) {
-        await rm(workdir, { recursive: true, force: true })
+        await removeWorkdir(workdir)
         return
       }
       proc.kill('SIGTERM')
@@ -175,7 +187,7 @@ export async function spawnWorkerd(opts: SpawnWorkerdOptions): Promise<SpawnedWo
           proc.kill('SIGKILL')
         }),
       ])
-      await rm(workdir, { recursive: true, force: true })
+      await removeWorkdir(workdir)
     },
   }
 }

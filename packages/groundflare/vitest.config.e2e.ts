@@ -17,15 +17,16 @@ export default defineConfig({
     hookTimeout: 360_000,
     // Sequential: each test spins up a container bound to a host port;
     // parallelism would tangle ports and amplify flakiness.
+    //
+    // Vitest 4 removed `poolOptions.forks.singleFork`; `fileParallelism:
+    // false` pins the pool to one worker and `isolate: false` keeps the
+    // old single-process semantics (no per-file module isolation).
     pool: 'forks',
-    poolOptions: {
-      forks: {
-        singleFork: true,
-        // Carry --experimental-sqlite into each worker (see main config
-        // for why). Drop when engines bumps to Node 24.
-        execArgv: ['--experimental-sqlite'],
-      },
-    },
+    fileParallelism: false,
+    isolate: false,
+    // Carry --experimental-sqlite into each worker (see main config for why).
+    // Drop when engines bumps to Node 24.
+    execArgv: ['--experimental-sqlite'],
     sequence: { concurrent: false },
   },
 })
