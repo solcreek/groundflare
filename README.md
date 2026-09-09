@@ -143,7 +143,8 @@ cd groundflare
 npm ci
 
 npm run check       # tsc --noEmit
-npm run lint        # eslint
+npm run lint        # oxlint
+npm run format:check # oxfmt (npm run format to write)
 npm test            # vitest (unit + integration + conformance)
 npm run test:bun    # bun:test against the bun:sqlite adapters
 npm run test:e2e    # Tier-3 Docker e2e (requires Docker)
