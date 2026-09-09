@@ -9,10 +9,10 @@
 import type { AnalysisReport } from '../analyze/index.js'
 
 export type PrepareActionKind =
-  | 'runtime-set-bun'       // wrangler.toml [groundflare].runtime flipped
-  | 'runtime-already-bun'   // no change needed; already on the Bun track
-  | 'runtime-appended'      // [groundflare] section created from scratch
-  | 'dry-run'               // --dry-run: would have written
+  | 'runtime-set-bun' // wrangler.toml [groundflare].runtime flipped
+  | 'runtime-already-bun' // no change needed; already on the Bun track
+  | 'runtime-appended' // [groundflare] section created from scratch
+  | 'dry-run' // --dry-run: would have written
 
 export interface PrepareAction {
   kind: PrepareActionKind

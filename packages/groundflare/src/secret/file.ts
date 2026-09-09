@@ -101,17 +101,10 @@ export class FileSecretStore implements SecretStore {
     try {
       parsed = JSON.parse(raw)
     } catch (err) {
-      throw new SecretStoreError(
-        `${this.path} is not valid JSON`,
-        'corrupt',
-        { cause: err },
-      )
+      throw new SecretStoreError(`${this.path} is not valid JSON`, 'corrupt', { cause: err })
     }
     if (!isSecretsFileShape(parsed)) {
-      throw new SecretStoreError(
-        `${this.path} does not match the expected schema`,
-        'corrupt',
-      )
+      throw new SecretStoreError(`${this.path} does not match the expected schema`, 'corrupt')
     }
     return parsed
   }
@@ -152,11 +145,9 @@ export class FileSecretStore implements SecretStore {
     try {
       await rename(tempPath, this.path)
     } catch (err) {
-      throw new SecretStoreError(
-        `failed to rename ${tempPath} -> ${this.path}`,
-        'io',
-        { cause: err },
-      )
+      throw new SecretStoreError(`failed to rename ${tempPath} -> ${this.path}`, 'io', {
+        cause: err,
+      })
     }
 
     // Re-apply mode in case the rename inherited a wider umask. On
@@ -175,8 +166,7 @@ export class FileSecretStore implements SecretStore {
 function validateKey(key: string): void {
   if (typeof key !== 'string' || !KEY_PATTERN.test(key)) {
     throw new SecretStoreError(
-      `invalid secret key ${JSON.stringify(key)}: ` +
-        `must match /${KEY_PATTERN.source}/`,
+      `invalid secret key ${JSON.stringify(key)}: ` + `must match /${KEY_PATTERN.source}/`,
       'invalid',
     )
   }

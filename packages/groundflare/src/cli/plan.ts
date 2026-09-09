@@ -22,12 +22,7 @@ import { consola } from 'consola'
 import type { ProviderName } from 'capstan'
 import type { WorkspaceWorker } from '../runtime/workspace/index.js'
 
-export type PlanActionKind =
-  | 'create'
-  | 'update'
-  | 'skip'
-  | 'destroy'
-  | 'data-loss'
+export type PlanActionKind = 'create' | 'update' | 'skip' | 'destroy' | 'data-loss'
 
 export interface PlanAction {
   readonly kind: PlanActionKind
@@ -107,8 +102,7 @@ export function buildUpPlan(input: UpPlanInput): Plan {
     actions.push({
       kind: 'create',
       resource: 'cloud-init setup',
-      detail:
-        'Caddy + workerd + SeaweedFS + systemd units (first boot ~2–5 min)',
+      detail: 'Caddy + workerd + SeaweedFS + systemd units (first boot ~2–5 min)',
     })
   } else {
     actions.push({
@@ -116,9 +110,7 @@ export function buildUpPlan(input: UpPlanInput): Plan {
       resource: 'VPS',
       detail: 'reusing existing droplet + SSH key from prior bootstrap',
     })
-    const pendingStages = BOOTSTRAP_STAGES.filter(
-      (s) => !input.completedStages.includes(s),
-    )
+    const pendingStages = BOOTSTRAP_STAGES.filter((s) => !input.completedStages.includes(s))
     if (pendingStages.length > 0) {
       actions.push({
         kind: 'update',
@@ -145,8 +137,7 @@ export function buildUpPlan(input: UpPlanInput): Plan {
         'no [groundflare].domain set AND preview disabled — Caddy will have no site; add a domain or re-enable preview',
       )
     } else {
-      const provider =
-        typeof input.preview === 'string' ? input.preview : 'sslip.io'
+      const provider = typeof input.preview === 'string' ? input.preview : 'sslip.io'
       warnings.push(
         `no [groundflare].domain — a ${provider} preview hostname will be derived from the VPS IP (set domain to override)`,
       )
@@ -272,20 +263,16 @@ export interface ConfirmPlanOptions {
  * Render the plan and (unless skip=true) block on user confirmation.
  * Returns true if the user said yes; false to abort.
  */
-export async function confirmPlan(
-  plan: Plan,
-  opts: ConfirmPlanOptions = {},
-): Promise<boolean> {
+export async function confirmPlan(plan: Plan, opts: ConfirmPlanOptions = {}): Promise<boolean> {
   process.stdout.write(renderPlan(plan))
   if (opts.skip === true) {
     process.stdout.write('  (auto-approved via --yes)\n\n')
     return true
   }
   if (opts.typeToConfirm !== undefined && opts.typeToConfirm !== '') {
-    const typed = await consola.prompt(
-      `Type ${JSON.stringify(opts.typeToConfirm)} to confirm:`,
-      { type: 'text' },
-    )
+    const typed = await consola.prompt(`Type ${JSON.stringify(opts.typeToConfirm)} to confirm:`, {
+      type: 'text',
+    })
     return typeof typed === 'string' && typed.trim() === opts.typeToConfirm
   }
   const answer = await consola.prompt('Proceed?', {

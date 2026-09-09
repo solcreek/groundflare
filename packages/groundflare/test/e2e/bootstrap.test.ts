@@ -100,10 +100,9 @@ describe.skipIf(!dockerAvailable)('e2e: runBootstrap end-to-end', () => {
       },
     })
 
-    const workerEnabled = await ssh.run(
-      'systemctl is-enabled groundflare-worker.service',
-      { timeoutMs: 10_000 },
-    )
+    const workerEnabled = await ssh.run('systemctl is-enabled groundflare-worker.service', {
+      timeoutMs: 10_000,
+    })
     expect(workerEnabled.stdout.trim()).toBe('enabled')
 
     // Caddy is expected to be active (it was restarted with the placeholder
@@ -118,10 +117,9 @@ describe.skipIf(!dockerAvailable)('e2e: runBootstrap end-to-end', () => {
     // makes the stage run the `mkdir` half? no — isComplete skipped the
     // whole stage). We check for the systemd unit file instead, which
     // install-services definitely installed.
-    const unitPresent = await ssh.run(
-      'test -f /etc/systemd/system/groundflare-worker.service',
-      { timeoutMs: 10_000 },
-    )
+    const unitPresent = await ssh.run('test -f /etc/systemd/system/groundflare-worker.service', {
+      timeoutMs: 10_000,
+    })
     expect(unitPresent.exitCode).toBe(0)
   }, 300_000)
 })

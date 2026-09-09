@@ -130,10 +130,7 @@ export class Counter<K extends string = never> {
   }
 
   render(): string {
-    const lines: string[] = [
-      `# HELP ${this.name} ${this.help}`,
-      `# TYPE ${this.name} counter`,
-    ]
+    const lines: string[] = [`# HELP ${this.name} ${this.help}`, `# TYPE ${this.name} counter`]
     for (const { labels, value } of this.series.values()) {
       lines.push(`${this.name}${formatLabels(labels)} ${formatValue(value)}`)
     }
@@ -182,10 +179,7 @@ export class Gauge<K extends string = never> {
     this.inc(labels, -n)
   }
 
-  private parseArgs(
-    arg1: Labels<K> | number,
-    arg2?: number,
-  ): { labels: Labels<K>; value: number } {
+  private parseArgs(arg1: Labels<K> | number, arg2?: number): { labels: Labels<K>; value: number } {
     if (typeof arg1 === 'number') {
       return { labels: {} as Labels<K>, value: arg1 }
     }
@@ -197,10 +191,7 @@ export class Gauge<K extends string = never> {
   }
 
   render(): string {
-    const lines: string[] = [
-      `# HELP ${this.name} ${this.help}`,
-      `# TYPE ${this.name} gauge`,
-    ]
+    const lines: string[] = [`# HELP ${this.name} ${this.help}`, `# TYPE ${this.name} gauge`]
     for (const { labels, value } of this.series.values()) {
       lines.push(`${this.name}${formatLabels(labels)} ${formatValue(value)}`)
     }
@@ -219,8 +210,7 @@ export const DEFAULT_LATENCY_BUCKETS: readonly number[] = [
   0.001, 0.002, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10,
 ]
 
-export interface HistogramDefinition<K extends string>
-  extends MetricDefinition<K> {
+export interface HistogramDefinition<K extends string> extends MetricDefinition<K> {
   readonly buckets?: readonly number[]
 }
 
@@ -292,26 +282,17 @@ export class Histogram<K extends string = never> {
   }
 
   render(): string {
-    const lines: string[] = [
-      `# HELP ${this.name} ${this.help}`,
-      `# TYPE ${this.name} histogram`,
-    ]
+    const lines: string[] = [`# HELP ${this.name} ${this.help}`, `# TYPE ${this.name} histogram`]
     for (const s of this.series.values()) {
       for (let i = 0; i < this.buckets.length; i++) {
         const bucketLabels = { ...s.labels, le: String(this.buckets[i]) }
-        lines.push(
-          `${this.name}_bucket${formatLabels(bucketLabels)} ${formatValue(s.counts[i]!)}`,
-        )
+        lines.push(`${this.name}_bucket${formatLabels(bucketLabels)} ${formatValue(s.counts[i]!)}`)
       }
       // +Inf bucket: always the total count.
       const infLabels = { ...s.labels, le: '+Inf' }
-      lines.push(
-        `${this.name}_bucket${formatLabels(infLabels)} ${formatValue(s.count)}`,
-      )
+      lines.push(`${this.name}_bucket${formatLabels(infLabels)} ${formatValue(s.count)}`)
       lines.push(`${this.name}_sum${formatLabels(s.labels)} ${formatValue(s.sum)}`)
-      lines.push(
-        `${this.name}_count${formatLabels(s.labels)} ${formatValue(s.count)}`,
-      )
+      lines.push(`${this.name}_count${formatLabels(s.labels)} ${formatValue(s.count)}`)
     }
     return lines.join('\n')
   }
@@ -319,10 +300,7 @@ export class Histogram<K extends string = never> {
 
 // ─── Registry ─────────────────────────────────────────────────────
 
-type AnyMetric =
-  | Counter<string>
-  | Gauge<string>
-  | Histogram<string>
+type AnyMetric = Counter<string> | Gauge<string> | Histogram<string>
 
 /**
  * Holds a collection of metrics and renders them all at once in the
@@ -386,5 +364,4 @@ export class MetricRegistry {
 }
 
 /** Prometheus content-type header for `/__metrics` responses. */
-export const PROMETHEUS_CONTENT_TYPE =
-  'text/plain; version=0.0.4; charset=utf-8'
+export const PROMETHEUS_CONTENT_TYPE = 'text/plain; version=0.0.4; charset=utf-8'

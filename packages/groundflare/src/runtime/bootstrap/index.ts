@@ -17,9 +17,5 @@ export type {
   WorkerUnitOptions,
 } from './systemd.js'
 
-export {
-  UnsupportedCronError,
-  cronToSystemdCalendar,
-  parseCron,
-} from './cron.js'
+export { UnsupportedCronError, cronToSystemdCalendar, parseCron } from './cron.js'
 export type { CronField, CronFields, WeekdayField } from './cron.js'

@@ -8,16 +8,10 @@ import {
   r2AdapterServiceName,
   tenantServiceName,
 } from '../../../../src/runtime/workspace/index.js'
-import type {
-  WorkspaceManifest,
-  WorkspaceWorker,
-} from '../../../../src/runtime/workspace/index.js'
+import type { WorkspaceManifest, WorkspaceWorker } from '../../../../src/runtime/workspace/index.js'
 import type { CapnpService, CapnpWorker } from '../../../../src/runtime/workerd/capnp/index.js'
 
-function worker(
-  name: string,
-  opts: Partial<WorkspaceWorker> = {},
-): WorkspaceWorker {
+function worker(name: string, opts: Partial<WorkspaceWorker> = {}): WorkspaceWorker {
   return {
     name,
     entryPath: `workers/${name}/code/current/index.js`,
@@ -42,7 +36,9 @@ function workerOf(service: CapnpService): CapnpWorker {
 
 describe('buildCapnpFromWorkspace — shape', () => {
   it('emits a router service + one service per worker', () => {
-    const config = buildCapnpFromWorkspace(manifest([worker('api', { domain: 'api.test' }), worker('admin', { domain: 'admin.test' })]))
+    const config = buildCapnpFromWorkspace(
+      manifest([worker('api', { domain: 'api.test' }), worker('admin', { domain: 'admin.test' })]),
+    )
     const names = config.services.map((s) => s.name).sort()
     expect(names).toEqual(['router', 'worker-admin', 'worker-api'])
   })
@@ -55,10 +51,9 @@ describe('buildCapnpFromWorkspace — shape', () => {
   })
 
   it('respects the listenAddress option', () => {
-    const config = buildCapnpFromWorkspace(
-      manifest([worker('a', { domain: 'a.test' })]),
-      { listenAddress: '127.0.0.1:7777' },
-    )
+    const config = buildCapnpFromWorkspace(manifest([worker('a', { domain: 'a.test' })]), {
+      listenAddress: '127.0.0.1:7777',
+    })
     expect(config.sockets[0]?.address).toBe('127.0.0.1:7777')
   })
 
@@ -146,25 +141,19 @@ describe('buildCapnpFromWorkspace — tenant service', () => {
 
 describe('buildCapnpFromWorkspace — variable bindings', () => {
   it('string vars become text bindings', () => {
-    const config = buildCapnpFromWorkspace(
-      manifest([worker('a', { vars: { GREETING: 'hello' } })]),
-    )
+    const config = buildCapnpFromWorkspace(manifest([worker('a', { vars: { GREETING: 'hello' } })]))
     const tenant = workerOf(findService(config, tenantServiceName('a')))
     expect(tenant.bindings).toContainEqual({ name: 'GREETING', kind: 'text', value: 'hello' })
   })
 
   it('number vars become json bindings', () => {
-    const config = buildCapnpFromWorkspace(
-      manifest([worker('a', { vars: { COUNT: 42 } })]),
-    )
+    const config = buildCapnpFromWorkspace(manifest([worker('a', { vars: { COUNT: 42 } })]))
     const tenant = workerOf(findService(config, tenantServiceName('a')))
     expect(tenant.bindings).toContainEqual({ name: 'COUNT', kind: 'json', value: '42' })
   })
 
   it('boolean vars become json bindings', () => {
-    const config = buildCapnpFromWorkspace(
-      manifest([worker('a', { vars: { ENABLED: true } })]),
-    )
+    const config = buildCapnpFromWorkspace(manifest([worker('a', { vars: { ENABLED: true } })]))
     const tenant = workerOf(findService(config, tenantServiceName('a')))
     expect(tenant.bindings).toContainEqual({ name: 'ENABLED', kind: 'json', value: 'true' })
   })
@@ -231,9 +220,7 @@ describe('buildCapnpFromWorkspace — binding mappings', () => {
   it('throws when D1 bindings are emitted with in-memory storage (SqlStorage requires localDisk)', () => {
     expect(() =>
       buildCapnpFromWorkspace(
-        manifest([
-          worker('api', { d1Databases: [{ binding: 'DB', databaseName: 'main' }] }),
-        ]),
+        manifest([worker('api', { d1Databases: [{ binding: 'DB', databaseName: 'main' }] })]),
         { stateBaseDir: 'in-memory' },
       ),
     ).toThrow(/inMemory mode does not support SqlStorage/)
@@ -266,9 +253,7 @@ describe('buildCapnpFromWorkspace — binding mappings', () => {
 
   it('throws when r2 bindings exist but r2AdapterSource is omitted', () => {
     expect(() =>
-      buildCapnpFromWorkspace(
-        manifest([worker('api', { r2Buckets: [{ binding: 'ASSETS' }] })]),
-      ),
+      buildCapnpFromWorkspace(manifest([worker('api', { r2Buckets: [{ binding: 'ASSETS' }] })])),
     ).toThrowError(/r2AdapterSource is missing/)
   })
 
@@ -308,9 +293,7 @@ describe('buildCapnpFromWorkspace — binding mappings', () => {
       manifest([
         worker('counters'),
         worker('reader', {
-          durableObjects: [
-            { binding: 'COUNTERS', className: 'Counter', scriptName: 'counters' },
-          ],
+          durableObjects: [{ binding: 'COUNTERS', className: 'Counter', scriptName: 'counters' }],
         }),
       ]),
     )
@@ -379,12 +362,8 @@ describe('buildCapnpFromWorkspace — validation', () => {
   })
 
   it('rejects worker names that do not match the identifier pattern', () => {
-    expect(() => buildCapnpFromWorkspace(manifest([worker('Api')]))).toThrow(
-      /Invalid worker name/,
-    )
-    expect(() => buildCapnpFromWorkspace(manifest([worker('1api')]))).toThrow(
-      /Invalid worker name/,
-    )
+    expect(() => buildCapnpFromWorkspace(manifest([worker('Api')]))).toThrow(/Invalid worker name/)
+    expect(() => buildCapnpFromWorkspace(manifest([worker('1api')]))).toThrow(/Invalid worker name/)
     expect(() => buildCapnpFromWorkspace(manifest([worker('api_name')]))).toThrow(
       /Invalid worker name/,
     )
@@ -406,9 +385,7 @@ describe('buildCapnpFromWorkspace — validation', () => {
   })
 
   it('accepts multiple workers with no domains (service-binding-only)', () => {
-    const config = buildCapnpFromWorkspace(
-      manifest([worker('a'), worker('b'), worker('c')]),
-    )
+    const config = buildCapnpFromWorkspace(manifest([worker('a'), worker('b'), worker('c')]))
     expect(config.services.length).toBe(4) // router + 3 tenants
   })
 })

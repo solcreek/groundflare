@@ -29,9 +29,7 @@ function streamFromBytes(bytes: Uint8Array): ReadableStream<Uint8Array> {
   })
 }
 
-function streamFromChunks(
-  chunks: readonly Uint8Array[],
-): ReadableStream<Uint8Array> {
+function streamFromChunks(chunks: readonly Uint8Array[]): ReadableStream<Uint8Array> {
   let i = 0
   return new ReadableStream({
     pull(c) {
@@ -432,9 +430,7 @@ describe('buildR2Response', () => {
     const payload = ENCODER.encode('hello')
     const res = await buildR2Response(meta, payload)
     const expectedMetaSize = ENCODER.encode(JSON.stringify(meta)).byteLength
-    expect(parseInt(res.headers.get(R2_HEADERS.metadataSize)!, 10)).toBe(
-      expectedMetaSize,
-    )
+    expect(parseInt(res.headers.get(R2_HEADERS.metadataSize)!, 10)).toBe(expectedMetaSize)
     const body = new Uint8Array(await res.arrayBuffer())
     expect(body.byteLength).toBe(expectedMetaSize + 5)
     expect(DECODER.decode(body.subarray(expectedMetaSize))).toBe('hello')
@@ -452,10 +448,7 @@ describe('buildR2Response', () => {
 
   it('streams multi-chunk payload', async () => {
     const meta = { name: 'k', size: 12 }
-    const payload = streamFromChunks([
-      ENCODER.encode('chunk-1-'),
-      ENCODER.encode('chunk2'),
-    ])
+    const payload = streamFromChunks([ENCODER.encode('chunk-1-'), ENCODER.encode('chunk2')])
     const res = await buildR2Response(meta, payload)
     const body = new Uint8Array(await res.arrayBuffer())
     const metaSize = parseInt(res.headers.get(R2_HEADERS.metadataSize)!, 10)

@@ -1,9 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 
-import {
-  fetchLinodePricing,
-  LinodePricingError,
-} from '../../../src/index.js'
+import { fetchLinodePricing, LinodePricingError } from '../../../src/index.js'
 
 /** Shaped like Linode's real /v4/linode/types response. */
 function mockTypesBody() {

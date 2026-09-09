@@ -77,8 +77,7 @@ describe('generateCloudInit — user and SSH', () => {
   })
 
   it('embeds each SSH key under the user block', () => {
-    const secondKey =
-      'ssh-rsa AAAAB3NzaC1yc2EAAAA_second_key_material second@laptop'
+    const secondKey = 'ssh-rsa AAAAB3NzaC1yc2EAAAA_second_key_material second@laptop'
     const out = generateCloudInit({
       sshAuthorizedKeys: [SAMPLE_KEY, secondKey],
     })
@@ -146,9 +145,7 @@ describe('generateCloudInit — unattended-upgrades', () => {
 
 describe('generateCloudInit — validation', () => {
   it('rejects empty SSH key list', () => {
-    expect(() => generateCloudInit({ sshAuthorizedKeys: [] })).toThrow(
-      /at least one public key/,
-    )
+    expect(() => generateCloudInit({ sshAuthorizedKeys: [] })).toThrow(/at least one public key/)
   })
 
   it('rejects keys containing newlines (would break YAML layout)', () => {
@@ -158,9 +155,9 @@ describe('generateCloudInit — validation', () => {
   })
 
   it('rejects keys that do not start with a known key type', () => {
-    expect(() =>
-      generateCloudInit({ sshAuthorizedKeys: ['not-a-key AAAA user@host'] }),
-    ).toThrow(/key type/)
+    expect(() => generateCloudInit({ sshAuthorizedKeys: ['not-a-key AAAA user@host'] })).toThrow(
+      /key type/,
+    )
   })
 
   it('accepts every common OpenSSH key type', () => {
@@ -172,9 +169,7 @@ describe('generateCloudInit — validation', () => {
       'sk-ssh-ed25519@openssh.com',
     ]
     for (const t of types) {
-      expect(() =>
-        generateCloudInit({ sshAuthorizedKeys: [`${t} AAAA user@host`] }),
-      ).not.toThrow()
+      expect(() => generateCloudInit({ sshAuthorizedKeys: [`${t} AAAA user@host`] })).not.toThrow()
     }
   })
 
@@ -215,9 +210,7 @@ describe('generateCloudInit — installBun', () => {
       sshAuthorizedKeys: [SAMPLE_KEY],
       installBun: true,
     })
-    expect(y).toContain(
-      '  - HOME=/root bash -c "curl -fsSL https://bun.sh/install | bash"',
-    )
+    expect(y).toContain('  - HOME=/root bash -c "curl -fsSL https://bun.sh/install | bash"')
     expect(y).toContain('  - ln -sf /root/.bun/bin/bun /usr/local/bin/bun')
   })
 

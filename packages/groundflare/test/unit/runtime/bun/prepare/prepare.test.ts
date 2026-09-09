@@ -1,8 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import {
-  prepareWorkspace,
-  type PrepareFs,
-} from '../../../../../src/runtime/bun/prepare/index.js'
+import { prepareWorkspace, type PrepareFs } from '../../../../../src/runtime/bun/prepare/index.js'
 import type { WranglerConfig } from '../../../../../src/config/schema.js'
 
 function memoryFs(opts: {

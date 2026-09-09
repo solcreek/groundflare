@@ -12,23 +12,13 @@
  * so unit tests don't touch the filesystem.
  */
 
-import {
-  analyzeWorkspace,
-  type AnalyzeFs,
-} from '../analyze/index.js'
+import { analyzeWorkspace, type AnalyzeFs } from '../analyze/index.js'
 import type { WranglerConfig } from '../../../config/schema.js'
 import { patchRuntimeInWranglerToml, TomlPatchError } from './toml-patch.js'
-import type {
-  PrepareAction,
-  PrepareActionKind,
-  PrepareResult,
-} from './types.js'
+import type { PrepareAction, PrepareActionKind, PrepareResult } from './types.js'
 
 export type { PrepareAction, PrepareActionKind, PrepareResult } from './types.js'
-export {
-  TomlPatchError,
-  patchRuntimeInWranglerToml,
-} from './toml-patch.js'
+export { TomlPatchError, patchRuntimeInWranglerToml } from './toml-patch.js'
 
 export interface PrepareFs extends AnalyzeFs {
   /** Read the wrangler config file as text (for TOML patching). */
@@ -49,9 +39,7 @@ export interface PrepareOptions {
   dryRun?: boolean
 }
 
-export async function prepareWorkspace(
-  opts: PrepareOptions,
-): Promise<PrepareResult> {
+export async function prepareWorkspace(opts: PrepareOptions): Promise<PrepareResult> {
   const analysis = await analyzeWorkspace({
     wrangler: opts.wrangler,
     sourceRoot: opts.sourceRoot,
@@ -120,11 +108,7 @@ function actionKindFor(patched: {
 
 type ConcretePatchKind = Exclude<PrepareActionKind, 'dry-run'>
 
-function describeAction(
-  kind: ConcretePatchKind,
-  previous: string | null,
-  dryRun: boolean,
-): string {
+function describeAction(kind: ConcretePatchKind, previous: string | null, dryRun: boolean): string {
   const prefix = dryRun ? '[dry-run] would ' : ''
   switch (kind) {
     case 'runtime-already-bun':

@@ -28,10 +28,7 @@ export class BootstrapOrchestrator {
     const seen = new Set<string>()
     for (const stage of stages) {
       if (seen.has(stage.id)) {
-        throw new BootstrapError(
-          `duplicate stage id ${JSON.stringify(stage.id)}`,
-          'prerequisite',
-        )
+        throw new BootstrapError(`duplicate stage id ${JSON.stringify(stage.id)}`, 'prerequisite')
       }
       seen.add(stage.id)
     }
@@ -39,13 +36,11 @@ export class BootstrapOrchestrator {
 
   async run(ctx: BootstrapContext): Promise<void> {
     for (const stage of this.stages) {
-      const log: LogFn = (level, message) =>
-        ctx.log(level, `[${stage.id}] ${message}`)
+      const log: LogFn = (level, message) => ctx.log(level, `[${stage.id}] ${message}`)
       log('info', stage.description)
 
       const skipBecauseRecorded = ctx.state.completedStages.includes(stage.id)
-      const skipBecauseCustom =
-        stage.isComplete !== undefined && (await stage.isComplete(ctx))
+      const skipBecauseCustom = stage.isComplete !== undefined && (await stage.isComplete(ctx))
       if (skipBecauseRecorded || skipBecauseCustom) {
         log('debug', 'already complete; skipping')
         if (!skipBecauseRecorded) {

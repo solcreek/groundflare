@@ -95,9 +95,7 @@ export interface HetznerLivePrices {
   readonly fetchedAt: string
 }
 
-export async function fetchHetznerPricing(
-  opts: FetchHetznerOptions,
-): Promise<HetznerLivePrices> {
+export async function fetchHetznerPricing(opts: FetchHetznerOptions): Promise<HetznerLivePrices> {
   const fetchFn = opts.fetchImpl ?? fetch
   const fx = opts.eurToUsd ?? EUR_TO_USD
 
@@ -125,10 +123,7 @@ export async function fetchHetznerPricing(
     )
   }
   if (!res.ok) {
-    throw new HetznerPricingError(
-      `Hetzner /v1/pricing returned HTTP ${res.status}`,
-      'network',
-    )
+    throw new HetznerPricingError(`Hetzner /v1/pricing returned HTTP ${res.status}`, 'network')
   }
 
   let body: unknown

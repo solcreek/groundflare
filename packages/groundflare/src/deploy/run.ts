@@ -22,10 +22,7 @@ import { join, resolve as resolvePath } from 'node:path'
 import { setTimeout as sleep } from 'node:timers/promises'
 
 import { resolveConfig } from '../config/index.js'
-import {
-  generateCaddyfile,
-  type CaddySite,
-} from '../runtime/bootstrap/index.js'
+import { generateCaddyfile, type CaddySite } from '../runtime/bootstrap/index.js'
 import { buildBunArtifact } from '../runtime/bun/build.js'
 import {
   buildCapnpFromWorkspace,
@@ -41,15 +38,9 @@ import type { SecretStore } from '../secret/index.js'
 import { bundleWorker } from './bundle.js'
 import { detectBuildCommand } from './detect-pm.js'
 import { resolveBuiltEntry } from './detect-built-entry.js'
-import {
-  derivePreviewHostname,
-  resolvePreviewProvider,
-} from './preview.js'
+import { derivePreviewHostname, resolvePreviewProvider } from './preview.js'
 import { planBunStaging } from './bun-track.js'
-import {
-  atomicInstall,
-  type AtomicInstallFile,
-} from './stage.js'
+import { atomicInstall, type AtomicInstallFile } from './stage.js'
 import {
   DeployError,
   type DeployResult,
@@ -99,8 +90,8 @@ export async function runDeploy(opts: RunDeployOptions): Promise<DeployResult> {
   // a build output), auto-detect the package manager and generate one.
   let buildCmd = wrangler.build?.command
   if (buildCmd === undefined || buildCmd.length === 0) {
-    const entryExists = await import('node:fs').then(
-      (fs) => fs.existsSync(resolvePath(cwd, wrangler.main!)),
+    const entryExists = await import('node:fs').then((fs) =>
+      fs.existsSync(resolvePath(cwd, wrangler.main!)),
     )
     if (!entryExists) {
       const detected = detectBuildCommand(cwd)
@@ -112,9 +103,7 @@ export async function runDeploy(opts: RunDeployOptions): Promise<DeployResult> {
   }
 
   if (buildCmd !== undefined && buildCmd.length > 0) {
-    const buildCwd = wrangler.build?.cwd
-      ? resolvePath(cwd, wrangler.build.cwd)
-      : cwd
+    const buildCwd = wrangler.build?.cwd ? resolvePath(cwd, wrangler.build.cwd) : cwd
     log('info', `running build command: ${buildCmd}`)
     try {
       execSync(buildCmd, {
@@ -124,14 +113,13 @@ export async function runDeploy(opts: RunDeployOptions): Promise<DeployResult> {
         env: { ...process.env, WRANGLER_COMMAND: 'deploy' },
       })
     } catch (err) {
-      const stderr = err instanceof Error && 'stderr' in err
-        ? String((err as { stderr: unknown }).stderr).slice(0, 2000)
-        : ''
-      throw new DeployError(
-        `build command failed: ${buildCmd}\n${stderr}`,
-        'bundle_failed',
-        { cause: err },
-      )
+      const stderr =
+        err instanceof Error && 'stderr' in err
+          ? String((err as { stderr: unknown }).stderr).slice(0, 2000)
+          : ''
+      throw new DeployError(`build command failed: ${buildCmd}\n${stderr}`, 'bundle_failed', {
+        cause: err,
+      })
     }
     log('info', 'build complete; re-bundling output via esbuild')
   }
@@ -142,10 +130,7 @@ export async function runDeploy(opts: RunDeployOptions): Promise<DeployResult> {
   // `dist/server/entry.mjs` etc. Detect this and use the built entry.
   const resolved = resolveBuiltEntry({ cwd, main: wrangler.main })
   if (resolved.source === 'framework-detected') {
-    log(
-      'info',
-      `detected ${resolved.framework} output: ${resolved.path}`,
-    )
+    log('info', `detected ${resolved.framework} output: ${resolved.path}`)
   }
   log('info', `bundling ${resolved.path}`)
   const bundle = await bundleWorker({ entry: resolved.path })
@@ -184,10 +169,7 @@ export async function runDeploy(opts: RunDeployOptions): Promise<DeployResult> {
         provider,
       })
       ;(worker as { domain?: string }).domain = previewHostname
-      log(
-        'info',
-        `preview hostname: ${previewHostname} (set [groundflare].domain to override)`,
-      )
+      log('info', `preview hostname: ${previewHostname} (set [groundflare].domain to override)`)
     }
   }
 
@@ -218,9 +200,7 @@ export async function runDeploy(opts: RunDeployOptions): Promise<DeployResult> {
     }
     bunArtifact = buildBunArtifact(manifest, {
       listenAddress: LISTEN_ADDRESS,
-      ...(opts.groundflareVersion !== undefined
-        ? { version: opts.groundflareVersion }
-        : {}),
+      ...(opts.groundflareVersion !== undefined ? { version: opts.groundflareVersion } : {}),
     })
   } else {
     // R2 bindings need (a) the bundled adapter Worker source and (b)
@@ -248,9 +228,7 @@ export async function runDeploy(opts: RunDeployOptions): Promise<DeployResult> {
   // Resolve assets directory for each worker (from wrangler [assets]).
   // On the VPS: /var/lib/groundflare/workers/<name>/assets/
   const hasAssets = wrangler.assets?.directory !== undefined
-  const assetsLocalDir = hasAssets
-    ? resolvePath(cwd, wrangler.assets!.directory!)
-    : undefined
+  const assetsLocalDir = hasAssets ? resolvePath(cwd, wrangler.assets!.directory!) : undefined
 
   const caddySites: CaddySite[] = manifest.workers
     .filter((w) => w.domain !== undefined)
@@ -268,9 +246,7 @@ export async function runDeploy(opts: RunDeployOptions): Promise<DeployResult> {
       return {
         hostname: w.domain!,
         upstream: LISTEN_ADDRESS,
-        ...(hasAssets
-          ? { assetsPath: `/var/lib/groundflare/workers/${w.name}/assets` }
-          : {}),
+        ...(hasAssets ? { assetsPath: `/var/lib/groundflare/workers/${w.name}/assets` } : {}),
         ...(r2PublicRoutes.length > 0 ? { r2PublicRoutes } : {}),
       }
     })
@@ -376,22 +352,26 @@ export async function runDeploy(opts: RunDeployOptions): Promise<DeployResult> {
       groundflareOwnedDirs: bunPlan.groundflareOwnedDirs,
     })
   } else if (capnpText !== null) {
-    log('info', `installing bundle + capnp + Caddyfile atomically on ${opts.bootstrapState.vps.ipv4}`)
+    log(
+      'info',
+      `installing bundle + capnp + Caddyfile atomically on ${opts.bootstrapState.vps.ipv4}`,
+    )
     // SHA-256 over the exact bytes we upload, so drift detection can
     // spot out-of-band edits to worker.capnp later (e.g. someone
     // vim'd the file on the VPS). Written alongside the capnp in the
     // same atomic batch → either both land or neither does.
     const capnpSha256 = createHash('sha256').update(capnpText, 'utf-8').digest('hex')
-    const deployedMarker = JSON.stringify(
-      {
-        marker: 1,
-        workspace: opts.workspace,
-        capnpSha256,
-        deployedAt: new Date().toISOString(),
-      },
-      null,
-      2,
-    ) + '\n'
+    const deployedMarker =
+      JSON.stringify(
+        {
+          marker: 1,
+          workspace: opts.workspace,
+          capnpSha256,
+          deployedAt: new Date().toISOString(),
+        },
+        null,
+        2,
+      ) + '\n'
     const filesToInstall: AtomicInstallFile[] = [
       ...manifest.workers.map((w) => ({
         content: bundle.code,
@@ -431,14 +411,10 @@ export async function runDeploy(opts: RunDeployOptions): Promise<DeployResult> {
       groundflareOwnedDirs.push(`/var/lib/groundflare/workers/${w.name}`)
       groundflareOwnedDirs.push(`/var/lib/groundflare/workers/${w.name}/code/current`)
       for (const d1 of w.d1Databases ?? []) {
-        groundflareOwnedDirs.push(
-          `/var/lib/groundflare/do-state/${w.name}/d1/${d1.databaseName}`,
-        )
+        groundflareOwnedDirs.push(`/var/lib/groundflare/do-state/${w.name}/d1/${d1.databaseName}`)
       }
       for (const kv of w.kvNamespaces ?? []) {
-        groundflareOwnedDirs.push(
-          `/var/lib/groundflare/do-state/${w.name}/kv/${kv.binding}`,
-        )
+        groundflareOwnedDirs.push(`/var/lib/groundflare/do-state/${w.name}/kv/${kv.binding}`)
       }
     }
     await atomicInstall(ssh, { files: filesToInstall, groundflareOwnedDirs })
@@ -490,7 +466,7 @@ export async function runDeploy(opts: RunDeployOptions): Promise<DeployResult> {
         await ssh.run(
           `if [ -d ${workerDir}/assets ] && [ ! -L ${workerDir}/assets ]; then ` +
             `mv ${workerDir}/assets ${workerDir}/assets-legacy-${legacyTs}; ` +
-          `fi`,
+            `fi`,
           { timeoutMs: 30_000 },
         )
 
@@ -531,15 +507,12 @@ export async function runDeploy(opts: RunDeployOptions): Promise<DeployResult> {
           `cd ${workerDir} && ` +
             `current=$(readlink assets); ` +
             `ls -d assets-v* assets-legacy-* 2>/dev/null | ` +
-              `grep -Fxv "$current" | sort -r | tail -n +2 | ` +
-              `xargs -r rm -rf`,
+            `grep -Fxv "$current" | sort -r | tail -n +2 | ` +
+            `xargs -r rm -rf`,
           { timeoutMs: 60_000 },
         )
         if (gc.exitCode !== 0) {
-          log(
-            'warn',
-            `asset GC returned ${gc.exitCode}: ${gc.stderr} (non-fatal)`,
-          )
+          log('warn', `asset GC returned ${gc.exitCode}: ${gc.stderr} (non-fatal)`)
         }
       }
     } finally {
@@ -593,7 +566,11 @@ export async function runDeploy(opts: RunDeployOptions): Promise<DeployResult> {
   // `{status:"ok",...}` body proves the whole workerd + router + capnp
   // pipeline loaded and is answering. No Host header needed — /__health
   // is public specifically so liveness checks can skip hostname setup.
-  const { status, durationMs: probeDuration, attempts } = await probeHealth({
+  const {
+    status,
+    durationMs: probeDuration,
+    attempts,
+  } = await probeHealth({
     ssh,
     listenAddress: LISTEN_ADDRESS,
     log,
@@ -602,7 +579,10 @@ export async function runDeploy(opts: RunDeployOptions): Promise<DeployResult> {
     sleep: opts.healthProbe?.sleep ?? ((ms) => sleep(ms)),
   })
 
-  log('info', `health ok: ${status} in ${probeDuration}ms (${attempts} attempt${attempts === 1 ? '' : 's'})`)
+  log(
+    'info',
+    `health ok: ${status} in ${probeDuration}ms (${attempts} attempt${attempts === 1 ? '' : 's'})`,
+  )
 
   return {
     workspace: opts.workspace,
@@ -666,10 +646,14 @@ async function probeHealth(
     }
 
     if (attempt < maxAttempts) {
-      const detail = probe.exitCode !== 0
-        ? `curl exit ${probe.exitCode}`
-        : `body ${JSON.stringify(probe.stdout.slice(0, 80))}`
-      log('info', `health probe attempt ${attempt}/${maxAttempts} not ready (${detail}); retrying in ${intervalMs}ms`)
+      const detail =
+        probe.exitCode !== 0
+          ? `curl exit ${probe.exitCode}`
+          : `body ${JSON.stringify(probe.stdout.slice(0, 80))}`
+      log(
+        'info',
+        `health probe attempt ${attempt}/${maxAttempts} not ready (${detail}); retrying in ${intervalMs}ms`,
+      )
       await opts.sleep(intervalMs)
     }
   }
@@ -699,9 +683,7 @@ async function probeHealth(
  * Returns null on any shape failure — callers treat that the same as
  * curl-level failure (retry, then give up with a parse error).
  */
-function parseHealthProbe(
-  stdout: string,
-): { status: number; ok: boolean } | null {
+function parseHealthProbe(stdout: string): { status: number; ok: boolean } | null {
   const trimmed = stdout.trimEnd()
   const nl = trimmed.lastIndexOf('\n')
   if (nl < 0) return null
@@ -796,9 +778,7 @@ function renderBunRuntimeEnvFile(manifest: WorkspaceManifest): string | null {
         lines.push(`${prefix}ACCESS_KEY_ID=${quoteEnvValue(r2.accessKeyId)}`)
       }
       if (r2.secretAccessKey !== undefined) {
-        lines.push(
-          `${prefix}SECRET_ACCESS_KEY=${quoteEnvValue(r2.secretAccessKey)}`,
-        )
+        lines.push(`${prefix}SECRET_ACCESS_KEY=${quoteEnvValue(r2.secretAccessKey)}`)
       }
     }
   }

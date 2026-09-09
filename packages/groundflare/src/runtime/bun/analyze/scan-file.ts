@@ -18,13 +18,11 @@ import type { Finding, FindingLocation } from './types.js'
 const NEW_BLOCKERS: Record<string, { kind: Finding['kind']; message: string }> = {
   HTMLRewriter: {
     kind: 'html-rewriter',
-    message:
-      'HTMLRewriter has no Bun equivalent (use linkedom or rewrite with cheerio)',
+    message: 'HTMLRewriter has no Bun equivalent (use linkedom or rewrite with cheerio)',
   },
   WebSocketPair: {
     kind: 'web-socket-pair',
-    message:
-      'WebSocketPair has no Bun equivalent (use Bun.serve websocket option)',
+    message: 'WebSocketPair has no Bun equivalent (use Bun.serve websocket option)',
   },
 }
 
@@ -32,8 +30,7 @@ const NEW_BLOCKERS: Record<string, { kind: Finding['kind']; message: string }> =
 const CLASS_BLOCKERS: Record<string, { kind: Finding['kind']; message: string }> = {
   DurableObject: {
     kind: 'durable-object-class',
-    message:
-      'class extends DurableObject — no Bun equivalent; stay on the Mirror track',
+    message: 'class extends DurableObject — no Bun equivalent; stay on the Mirror track',
   },
 }
 
@@ -77,8 +74,7 @@ export function scanFile(filePath: string, source: string): ScanResult {
   }
 
   const lineIndex = buildLineIndex(source)
-  const loc = (start: number): FindingLocation =>
-    locationOf(filePath, lineIndex, start)
+  const loc = (start: number): FindingLocation => locationOf(filePath, lineIndex, start)
 
   walk(parsed.program as unknown as Node, (node, parent) => {
     // ── env.<binding>.<method?>(...) — collect for classifier ───────
@@ -88,7 +84,7 @@ export function scanFile(filePath: string, source: string): ScanResult {
       isIdentifier((node as MemberExpr).object, 'env') &&
       isIdent((node as MemberExpr).property)
     ) {
-      const binding = (((node as MemberExpr).property) as IdentNode).name
+      const binding = ((node as MemberExpr).property as IdentNode).name
       envAccesses.push({ binding, location: loc((node as PosNode).start) })
     }
 
@@ -140,8 +136,7 @@ export function scanFile(filePath: string, source: string): ScanResult {
       findings.push({
         kind: 'cache-api',
         severity: 'review-needed',
-        message:
-          'caches.default — Bun has no built-in cache; supply an in-process LRU or skip',
+        message: 'caches.default — Bun has no built-in cache; supply an in-process LRU or skip',
         location: loc((node as PosNode).start),
       })
     }
@@ -210,13 +205,8 @@ function isIdentifier(node: unknown, name: string): boolean {
   return isIdent(node) && (node as IdentNode).name === name
 }
 
-function walk(
-  root: Node,
-  visit: (node: Node, parent: Node | null) => void,
-): void {
-  const stack: Array<{ node: Node; parent: Node | null }> = [
-    { node: root, parent: null },
-  ]
+function walk(root: Node, visit: (node: Node, parent: Node | null) => void): void {
+  const stack: Array<{ node: Node; parent: Node | null }> = [{ node: root, parent: null }]
   while (stack.length > 0) {
     const { node, parent } = stack.pop()!
     visit(node, parent)
@@ -248,11 +238,7 @@ function buildLineIndex(source: string): number[] {
   return offsets
 }
 
-function locationOf(
-  filePath: string,
-  lineIndex: number[],
-  offset: number,
-): FindingLocation {
+function locationOf(filePath: string, lineIndex: number[], offset: number): FindingLocation {
   // Binary search for the largest line-start <= offset.
   let lo = 0
   let hi = lineIndex.length - 1

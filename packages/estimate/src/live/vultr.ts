@@ -57,9 +57,9 @@ interface VultrPlansResponse {
 interface VultrPlan {
   id: string
   vcpu_count: number
-  ram: number          // MB
-  disk: number         // GB
-  bandwidth: number    // GB
+  ram: number // MB
+  disk: number // GB
+  bandwidth: number // GB
   monthly_cost: number // USD
   type: string
   locations: string[]
@@ -87,9 +87,7 @@ export interface VultrLivePrices {
   readonly fetchedAt: string
 }
 
-export async function fetchVultrPricing(
-  opts: FetchVultrPricingOptions,
-): Promise<VultrLivePrices> {
+export async function fetchVultrPricing(opts: FetchVultrPricingOptions): Promise<VultrLivePrices> {
   const fetchFn = opts.fetchImpl ?? fetch
 
   let res: Response
@@ -118,10 +116,7 @@ export async function fetchVultrPricing(
     )
   }
   if (!res.ok) {
-    throw new VultrPricingError(
-      `Vultr /v2/plans returned HTTP ${res.status}`,
-      'network',
-    )
+    throw new VultrPricingError(`Vultr /v2/plans returned HTTP ${res.status}`, 'network')
   }
 
   let body: unknown

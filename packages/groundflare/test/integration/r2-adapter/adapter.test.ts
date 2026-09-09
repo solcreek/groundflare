@@ -17,12 +17,7 @@
 
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 
-import {
-  listXml,
-  s3ObjectHeaders,
-  setupAdapterStack,
-  type AdapterStack,
-} from './harness.js'
+import { listXml, s3ObjectHeaders, setupAdapterStack, type AdapterStack } from './harness.js'
 
 let stack: AdapterStack
 

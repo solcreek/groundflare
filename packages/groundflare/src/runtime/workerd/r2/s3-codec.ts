@@ -170,7 +170,10 @@ function planHead(op: R2Op, ctx: S3CodecContext): S3RequestPlan {
 function planGet(op: R2Op, ctx: S3CodecContext): S3RequestPlan {
   const key = requireString(op.object, 'get.object')
   const headers: Record<string, string> = {}
-  const rangeHeader = rangeToS3Header(op.range as R2Range | undefined, op.rangeHeader as string | undefined)
+  const rangeHeader = rangeToS3Header(
+    op.range as R2Range | undefined,
+    op.rangeHeader as string | undefined,
+  )
   if (rangeHeader !== null) headers['range'] = rangeHeader
   Object.assign(headers, conditionalToS3Headers(op.onlyIf as R2Conditional | undefined))
   return {
@@ -469,10 +472,7 @@ export interface R2ErrorMapping {
  * an R2 error code mapping. Extracts the AWS error code if present
  * for clearer messages.
  */
-export function s3StatusToR2Error(
-  status: number,
-  errorBody: string,
-): R2ErrorMapping {
+export function s3StatusToR2Error(status: number, errorBody: string): R2ErrorMapping {
   const code = extractTag(errorBody, 'Code')
   const message = extractTag(errorBody, 'Message') ?? errorBody.slice(0, 200)
 
@@ -486,7 +486,8 @@ export function s3StatusToR2Error(
 
   if (status === 404) return { httpStatus: 404, v4code: 10007, message: message || 'NoSuchKey' }
   if (status === 403) return { httpStatus: 403, v4code: 10004, message: message || 'AccessDenied' }
-  if (status === 412) return { httpStatus: 412, v4code: 10031, message: message || 'PreconditionFailed' }
+  if (status === 412)
+    return { httpStatus: 412, v4code: 10031, message: message || 'PreconditionFailed' }
   if (status === 304) return { httpStatus: 304, v4code: 10032, message: message || 'NotModified' }
   if (status === 416) return { httpStatus: 416, v4code: 10039, message: message || 'InvalidRange' }
   if (status >= 500) return { httpStatus: 500, v4code: 10001, message: message || `S3 ${status}` }
@@ -519,9 +520,7 @@ const AWS_CODE_TO_R2: Record<string, number> = {
 
 // ─── Header / range / conditional translation ────────────────────
 
-export function httpFieldsToS3Headers(
-  fields: R2HttpFields | undefined,
-): Record<string, string> {
+export function httpFieldsToS3Headers(fields: R2HttpFields | undefined): Record<string, string> {
   const h: Record<string, string> = {}
   if (fields === undefined) return h
   if (fields.contentType !== undefined) h['content-type'] = fields.contentType
@@ -535,9 +534,7 @@ export function httpFieldsToS3Headers(
   return h
 }
 
-export function customFieldsToS3Headers(
-  fields: R2KV[] | undefined,
-): Record<string, string> {
+export function customFieldsToS3Headers(fields: R2KV[] | undefined): Record<string, string> {
   const h: Record<string, string> = {}
   if (!fields) return h
   for (const { k, v } of fields) {
@@ -547,18 +544,14 @@ export function customFieldsToS3Headers(
   return h
 }
 
-export function conditionalToS3Headers(
-  cond: R2Conditional | undefined,
-): Record<string, string> {
+export function conditionalToS3Headers(cond: R2Conditional | undefined): Record<string, string> {
   const h: Record<string, string> = {}
   if (cond === undefined) return h
   if (cond.etagMatches && cond.etagMatches.length > 0) {
     h['if-match'] = cond.etagMatches.map((e) => formatEtagMatcher(e)).join(', ')
   }
   if (cond.etagDoesNotMatch && cond.etagDoesNotMatch.length > 0) {
-    h['if-none-match'] = cond.etagDoesNotMatch
-      .map((e) => formatEtagMatcher(e))
-      .join(', ')
+    h['if-none-match'] = cond.etagDoesNotMatch.map((e) => formatEtagMatcher(e)).join(', ')
   }
   if (cond.uploadedAfter !== undefined) {
     h['if-modified-since'] = new Date(cond.uploadedAfter).toUTCString()
@@ -614,8 +607,7 @@ export function rangeToS3Header(
 
 // ─── Utilities ─────────────────────────────────────────────────────
 
-export const EMPTY_SHA256 =
-  'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855'
+export const EMPTY_SHA256 = 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855'
 
 function objectUrl(ctx: S3CodecContext, key: string): string {
   return `${ctx.endpoint}/${encodePathSegment(ctx.bucket)}/${encodeS3Key(key)}`

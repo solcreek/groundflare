@@ -24,14 +24,8 @@
  * a config-validation error at deploy time prevents this in practice.
  */
 
-import {
-  signRequest,
-  type SigV4Credentials,
-} from '../../bun/adapters/sigv4.js'
-import {
-  handleInternalMetrics,
-  recordR2Op,
-} from '../../metrics/r2-adapter-metrics.js'
+import { signRequest, type SigV4Credentials } from '../../bun/adapters/sigv4.js'
+import { handleInternalMetrics, recordR2Op } from '../../metrics/r2-adapter-metrics.js'
 
 import {
   R2WireProtocolError,
@@ -85,11 +79,7 @@ export default {
       if (e instanceof R2WireProtocolError) {
         return buildR2ErrorResponse(e.httpStatus, e.v4code, e.message)
       }
-      return buildR2ErrorResponse(
-        500,
-        10001,
-        `wire protocol error: ${asMessage(e)}`,
-      )
+      return buildR2ErrorResponse(500, 10001, `wire protocol error: ${asMessage(e)}`)
     }
     const workerName = env.GF_WORKER_NAME ?? 'unknown'
     const bindingName = env.GF_BINDING_NAME ?? 'unknown'
@@ -105,18 +95,8 @@ export default {
       )
       return response
     } catch (e) {
-      recordR2Op(
-        workerName,
-        bindingName,
-        parsed.op.method,
-        Date.now() - start,
-        false,
-      )
-      return buildR2ErrorResponse(
-        500,
-        10001,
-        `adapter: ${asMessage(e)}`,
-      )
+      recordR2Op(workerName, bindingName, parsed.op.method, Date.now() - start, false)
+      return buildR2ErrorResponse(500, 10001, `adapter: ${asMessage(e)}`)
     }
   },
 }

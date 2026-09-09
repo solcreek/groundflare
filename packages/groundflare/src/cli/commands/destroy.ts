@@ -26,10 +26,7 @@
 import { defineCommand } from 'citty'
 import { unlink } from 'node:fs/promises'
 
-import {
-  BootstrapStateStore,
-  type BootstrapState,
-} from '../../bootstrap/index.js'
+import { BootstrapStateStore, type BootstrapState } from '../../bootstrap/index.js'
 import { resolveConfig } from '../../config/index.js'
 import {
   ProviderError,
@@ -38,10 +35,7 @@ import {
   type Provider,
   type ProviderName,
 } from 'capstan'
-import {
-  workspaceWorkerFromConfig,
-  type WorkspaceWorker,
-} from '../../runtime/workspace/index.js'
+import { workspaceWorkerFromConfig, type WorkspaceWorker } from '../../runtime/workspace/index.js'
 import { FileSecretStore } from '../../secret/index.js'
 import { removeKnownHostsEntries } from '../../ssh/index.js'
 import { log } from '../log.js'
@@ -201,11 +195,12 @@ export async function cleanUpSshKey(opts: {
     await opts.provider.deleteSSHKey(opts.sshKey.providerId)
     log.success(`removed SSH key ${opts.sshKey.providerId} from provider`)
   } catch (err) {
-    const msg = err instanceof ProviderError
-      ? `${err.message} (${err.code})`
-      : err instanceof Error
-        ? err.message
-        : String(err)
+    const msg =
+      err instanceof ProviderError
+        ? `${err.message} (${err.code})`
+        : err instanceof Error
+          ? err.message
+          : String(err)
     log.warn(`could not delete SSH key ${opts.sshKey.providerId}: ${msg}`)
   }
 
@@ -223,9 +218,7 @@ export async function cleanUpSshKey(opts: {
   }
 }
 
-async function cleanUpKnownHosts(
-  vps: NonNullable<BootstrapState['vps']>,
-): Promise<void> {
+async function cleanUpKnownHosts(vps: NonNullable<BootstrapState['vps']>): Promise<void> {
   const hosts: string[] = []
   if (vps.ipv4 !== '') hosts.push(vps.ipv4)
   if (vps.ipv6 !== undefined && vps.ipv6 !== '') hosts.push(vps.ipv6)

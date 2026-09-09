@@ -72,11 +72,7 @@ export type R2PutValue = ArrayBuffer | ArrayBufferView | string | null
 export interface R2Adapter {
   get(key: string): Promise<R2ObjectBody | null>
   head(key: string): Promise<R2Object | null>
-  put(
-    key: string,
-    value: R2PutValue,
-    options?: R2PutOptions,
-  ): Promise<R2Object>
+  put(key: string, value: R2PutValue, options?: R2PutOptions): Promise<R2Object>
   delete(key: string | string[]): Promise<void>
   list(options?: R2ListOptions): Promise<R2Listed>
 }
@@ -146,9 +142,7 @@ export class BunR2Adapter implements R2Adapter {
     const hasAccessKey = Boolean(opts.accessKeyId)
     const hasSecret = Boolean(opts.secretAccessKey)
     if (hasAccessKey !== hasSecret) {
-      throw new TypeError(
-        'BunR2Adapter: accessKeyId and secretAccessKey must be set together',
-      )
+      throw new TypeError('BunR2Adapter: accessKeyId and secretAccessKey must be set together')
     }
     // Resolve endpoint precedence: explicit endpoint > accountId shortcut
     // > local SeaweedFS default. accountId + endpoint both set is a
@@ -157,9 +151,7 @@ export class BunR2Adapter implements R2Adapter {
     let defaultRegion: string
     if (opts.endpoint) {
       if (opts.accountId) {
-        throw new TypeError(
-          'BunR2Adapter: pass either endpoint or accountId, not both',
-        )
+        throw new TypeError('BunR2Adapter: pass either endpoint or accountId, not both')
       }
       root = opts.endpoint.replace(/\/$/, '')
       defaultRegion = 'us-east-1'
@@ -194,11 +186,7 @@ export class BunR2Adapter implements R2Adapter {
     return toObject(res, key)
   }
 
-  async put(
-    key: string,
-    value: R2PutValue,
-    options?: R2PutOptions,
-  ): Promise<R2Object> {
+  async put(key: string, value: R2PutValue, options?: R2PutOptions): Promise<R2Object> {
     if (value === null) {
       // CF R2 treats put(key, null) as writing a zero-byte object.
       value = new Uint8Array(0)
@@ -291,8 +279,7 @@ export class BunR2Adapter implements R2Adapter {
       })
     }
     const payloadHash =
-      init.payloadHash ??
-      (init.body ? await hexSha256Bytes(init.body) : EMPTY_SHA256)
+      init.payloadHash ?? (init.body ? await hexSha256Bytes(init.body) : EMPTY_SHA256)
     const signed = await signRequest({
       method,
       url,
@@ -313,8 +300,7 @@ export class BunR2Adapter implements R2Adapter {
 
 // ─── helpers ───────────────────────────────────────────────────────
 
-const EMPTY_SHA256 =
-  'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855'
+const EMPTY_SHA256 = 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855'
 
 function encodeKey(key: string): string {
   // Preserve '/', encode per RFC 3986 unreserved set — matches SigV4's
@@ -325,8 +311,7 @@ function encodeKey(key: string): string {
       seg.replace(/[^A-Za-z0-9\-._~]/g, (c) => {
         const bytes = new TextEncoder().encode(c)
         let out = ''
-        for (const b of bytes)
-          out += '%' + b.toString(16).toUpperCase().padStart(2, '0')
+        for (const b of bytes) out += '%' + b.toString(16).toUpperCase().padStart(2, '0')
         return out
       }),
     )
@@ -343,10 +328,7 @@ function toBytes(value: R2PutValue): Uint8Array {
   throw new TypeError('R2 put: unsupported value type')
 }
 
-function writeHttpMetadataHeaders(
-  headers: Record<string, string>,
-  m: R2HTTPMetadata,
-): void {
+function writeHttpMetadataHeaders(headers: Record<string, string>, m: R2HTTPMetadata): void {
   if (m.contentType) headers['content-type'] = m.contentType
   if (m.contentLanguage) headers['content-language'] = m.contentLanguage
   if (m.contentDisposition) headers['content-disposition'] = m.contentDisposition
@@ -423,20 +405,14 @@ function toObjectBody(res: Response, key: string): R2ObjectBody {
   }
 }
 
-async function toR2Error(
-  res: Response,
-  op: string,
-  key: string,
-): Promise<Error> {
+async function toR2Error(res: Response, op: string, key: string): Promise<Error> {
   let body = ''
   try {
     body = await res.text()
   } catch {
     // Body read failed — fall back to status/statusText below.
   }
-  const msg = body
-    ? body.replace(/\n+/g, ' ').slice(0, 400)
-    : `${res.status} ${res.statusText}`
+  const msg = body ? body.replace(/\n+/g, ' ').slice(0, 400) : `${res.status} ${res.statusText}`
   return new Error(`R2.${op}(${JSON.stringify(key)}) failed: ${msg}`)
 }
 

@@ -82,9 +82,7 @@ export interface BetterSqlite3Database {
   prepare(sql: string): Statement
   exec(sql: string): void
   pragma(name: string, opts?: { simple?: boolean }): unknown
-  transaction<Args extends unknown[], R>(
-    fn: (...args: Args) => R,
-  ): (...args: Args) => R
+  transaction<Args extends unknown[], R>(fn: (...args: Args) => R): (...args: Args) => R
   close(): void
 }
 
@@ -123,10 +121,7 @@ export function applyPrelude(
  * silently resolve to `memory` (not WAL) and `assertPrelude` must be
  * called with `allowMemoryJournal: true` to accept that.
  */
-export function openSqlite(
-  path: string,
-  opts: SqlitePreludeOptions = {},
-): BetterSqlite3Database {
+export function openSqlite(path: string, opts: SqlitePreludeOptions = {}): BetterSqlite3Database {
   const Ctor = getDatabaseSync()
   const db = new Ctor(path)
   const wrapped = wrapDatabase(db)
@@ -151,10 +146,7 @@ export function readState(db: BetterSqlite3Database): PreludeState {
  * listing every problem if not. Conformance tests call this after any
  * adapter opens a SQLite file.
  */
-export function assertPrelude(
-  db: BetterSqlite3Database,
-  opts: AssertPreludeOptions = {},
-): void {
+export function assertPrelude(db: BetterSqlite3Database, opts: AssertPreludeOptions = {}): void {
   assertPreludeApplied(readState(db), opts)
 }
 
@@ -224,8 +216,7 @@ function wrapStatement(stmt: StatementSync): Statement {
     run(...params) {
       const info = stmt.run(...(normaliseBindings(params) as never[]))
       return {
-        changes:
-          typeof info.changes === 'bigint' ? Number(info.changes) : info.changes,
+        changes: typeof info.changes === 'bigint' ? Number(info.changes) : info.changes,
         lastInsertRowid:
           typeof info.lastInsertRowid === 'bigint'
             ? Number(info.lastInsertRowid)
@@ -238,16 +229,14 @@ function wrapStatement(stmt: StatementSync): Statement {
       return row as Record<string, unknown>
     },
     all(...params) {
-      return stmt.all(
-        ...(normaliseBindings(params) as never[]),
-      ) as Record<string, unknown>[]
+      return stmt.all(...(normaliseBindings(params) as never[])) as Record<string, unknown>[]
     },
     raw() {
       return {
         all(...params) {
-          const rows = stmt.all(
-            ...(normaliseBindings(params) as never[]),
-          ) as Array<Record<string, unknown>>
+          const rows = stmt.all(...(normaliseBindings(params) as never[])) as Array<
+            Record<string, unknown>
+          >
           // Object key insertion order matches SELECT column order for
           // V8 + node:sqlite, so Object.values yields columns in order.
           return rows.map((row) => Object.values(row))
@@ -255,9 +244,9 @@ function wrapStatement(stmt: StatementSync): Statement {
       }
     },
     iterate(...params) {
-      return stmt.iterate(
-        ...(normaliseBindings(params) as never[]),
-      ) as IterableIterator<Record<string, unknown>>
+      return stmt.iterate(...(normaliseBindings(params) as never[])) as IterableIterator<
+        Record<string, unknown>
+      >
     },
   }
 }

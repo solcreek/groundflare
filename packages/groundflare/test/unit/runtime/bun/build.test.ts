@@ -1,8 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import {
-  buildBunArtifact,
-  isBunWorkspace,
-} from '../../../../src/runtime/bun/build.js'
+import { buildBunArtifact, isBunWorkspace } from '../../../../src/runtime/bun/build.js'
 import type { WorkspaceManifest } from '../../../../src/runtime/workspace/types.js'
 
 function manifest(
@@ -25,9 +22,7 @@ function manifest(
 
 describe('buildBunArtifact — validation', () => {
   it('throws when the manifest has no workers', () => {
-    expect(() =>
-      buildBunArtifact({ name: 'empty', workers: [] }),
-    ).toThrow(/at least one worker/)
+    expect(() => buildBunArtifact({ name: 'empty', workers: [] })).toThrow(/at least one worker/)
   })
 
   it('throws on multi-worker manifests with a Phase-2 migration hint', () => {
@@ -38,9 +33,7 @@ describe('buildBunArtifact — validation', () => {
         { name: 'b', entryPath: 'b.js' },
       ],
     }
-    expect(() => buildBunArtifact(m)).toThrow(
-      /multi-worker workspaces.*not yet supported/,
-    )
+    expect(() => buildBunArtifact(m)).toThrow(/multi-worker workspaces.*not yet supported/)
     expect(() => buildBunArtifact(m)).toThrow(/Phase 2/)
   })
 })
@@ -78,9 +71,7 @@ describe('buildBunArtifact — defaults', () => {
 
   it('systemd unit description embeds the workspace name', () => {
     const a = buildBunArtifact(manifest({}, { name: 'my-stack' }))
-    expect(a.systemdUnit).toContain(
-      'Description=groundflare Bun runtime for workspace my-stack',
-    )
+    expect(a.systemdUnit).toContain('Description=groundflare Bun runtime for workspace my-stack')
   })
 })
 
@@ -95,9 +86,7 @@ describe('buildBunArtifact — overrides', () => {
     expect(a.deployRoot).toBe('/srv/gf')
     expect(a.entryModulePath).toBe('/srv/gf/server.ts')
     expect(a.systemdUnit).toContain('WorkingDirectory=/srv/gf')
-    expect(a.systemdUnit).toContain(
-      'ExecStart=/usr/local/bin/bun run /srv/gf/server.ts',
-    )
+    expect(a.systemdUnit).toContain('ExecStart=/usr/local/bin/bun run /srv/gf/server.ts')
     expect(a.stateDirs).toContain('/srv/gf')
     expect(a.stateDirs).toContain('/srv/gf/kv')
   })
@@ -119,21 +108,14 @@ describe('buildBunArtifact — overrides', () => {
 
 describe('buildBunArtifact — binding wiring', () => {
   it('forwards [vars] into the shim', () => {
-    const a = buildBunArtifact(
-      manifest({ vars: { APP_NAME: 'demo', COUNT: 42 } }),
-    )
-    expect(a.serverSource).toContain(
-      'const VARS = {"APP_NAME":"demo","COUNT":42}',
-    )
+    const a = buildBunArtifact(manifest({ vars: { APP_NAME: 'demo', COUNT: 42 } }))
+    expect(a.serverSource).toContain('const VARS = {"APP_NAME":"demo","COUNT":42}')
   })
 
   it('forwards KV bindings with shard counts', () => {
     const a = buildBunArtifact(
       manifest({
-        kvNamespaces: [
-          { binding: 'CACHE', shards: 4 },
-          { binding: 'SESSIONS' },
-        ],
+        kvNamespaces: [{ binding: 'CACHE', shards: 4 }, { binding: 'SESSIONS' }],
       }),
     )
     expect(a.serverSource).toContain(
@@ -147,9 +129,7 @@ describe('buildBunArtifact — binding wiring', () => {
         d1Databases: [{ binding: 'DB', databaseName: 'prod' }],
       }),
     )
-    expect(a.serverSource).toContain(
-      'const D1_BINDINGS = {"DB":{"databaseName":"prod"}}',
-    )
+    expect(a.serverSource).toContain('const D1_BINDINGS = {"DB":{"databaseName":"prod"}}')
   })
 
   it('forwards R2 bindings', () => {
@@ -158,9 +138,7 @@ describe('buildBunArtifact — binding wiring', () => {
         r2Buckets: [{ binding: 'ASSETS' }],
       }),
     )
-    expect(a.serverSource).toContain(
-      'const R2_BINDINGS = {"ASSETS":{"bucketName":"ASSETS"}}',
-    )
+    expect(a.serverSource).toContain('const R2_BINDINGS = {"ASSETS":{"bucketName":"ASSETS"}}')
   })
 })
 
@@ -206,31 +184,23 @@ describe('buildBunArtifact — adapter sources', () => {
   it('always ships adapters/kv.ts alongside server.ts', () => {
     const a = buildBunArtifact(manifest())
     expect(a.adapterSources).toHaveProperty('adapters/kv.ts')
-    expect(a.adapterSources['adapters/kv.ts']).toContain(
-      'export class BunKVAdapter',
-    )
-    expect(a.adapterSources['adapters/kv.ts']).toContain('from \'bun:sqlite\'')
+    expect(a.adapterSources['adapters/kv.ts']).toContain('export class BunKVAdapter')
+    expect(a.adapterSources['adapters/kv.ts']).toContain("from 'bun:sqlite'")
   })
 
   it('always ships adapters/d1.ts alongside server.ts (Phase 2c+)', () => {
     const a = buildBunArtifact(manifest())
     expect(a.adapterSources).toHaveProperty('adapters/d1.ts')
-    expect(a.adapterSources['adapters/d1.ts']).toContain(
-      'export class BunD1Adapter',
-    )
-    expect(a.adapterSources['adapters/d1.ts']).toContain('from \'bun:sqlite\'')
+    expect(a.adapterSources['adapters/d1.ts']).toContain('export class BunD1Adapter')
+    expect(a.adapterSources['adapters/d1.ts']).toContain("from 'bun:sqlite'")
   })
 
   it('always ships adapters/r2.ts + adapters/sigv4.ts (Phase 2d+)', () => {
     const a = buildBunArtifact(manifest())
     expect(a.adapterSources).toHaveProperty('adapters/r2.ts')
     expect(a.adapterSources).toHaveProperty('adapters/sigv4.ts')
-    expect(a.adapterSources['adapters/r2.ts']).toContain(
-      'export class BunR2Adapter',
-    )
-    expect(a.adapterSources['adapters/sigv4.ts']).toContain(
-      'export async function signRequest',
-    )
+    expect(a.adapterSources['adapters/r2.ts']).toContain('export class BunR2Adapter')
+    expect(a.adapterSources['adapters/sigv4.ts']).toContain('export async function signRequest')
     expect(a.adapterSources['adapters/r2.ts']).toContain('./sigv4.ts')
   })
 

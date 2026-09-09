@@ -27,9 +27,7 @@ import { pickFreePort, spawnWorkerd, type SpawnedWorkerd } from './spawn-workerd
 const STATE_BASE = 'do-state'
 const HEALTH_TIMEOUT_MS = 15_000
 
-const EXAMPLE_ROOT = resolve(
-  fileURLToPath(new URL('../../examples/hono-api', import.meta.url)),
-)
+const EXAMPLE_ROOT = resolve(fileURLToPath(new URL('../../examples/hono-api', import.meta.url)))
 
 let bundle: string | null = null
 let wd: SpawnedWorkerd | null = null
@@ -77,10 +75,7 @@ beforeAll(async () => {
     port,
     capnp,
     modules: { 'user.js': bundle },
-    extraDirs: [
-      `${STATE_BASE}/hono/CACHE`,
-      `${STATE_BASE}/hono/d1/notes`,
-    ],
+    extraDirs: [`${STATE_BASE}/hono/CACHE`, `${STATE_BASE}/hono/d1/notes`],
     healthTimeoutMs: HEALTH_TIMEOUT_MS,
   })
 }, 60_000)
@@ -460,9 +455,7 @@ describe('hono-api: SQL injection resistance', () => {
     expect(body.notes.length).toBeGreaterThanOrEqual(1)
     // The "scary" title round-trips intact because parameter binding is
     // safe end-to-end.
-    expect(
-      body.notes.some((n: { title: string }) => n.title.includes('DROP TABLE')),
-    ).toBe(true)
+    expect(body.notes.some((n: { title: string }) => n.title.includes('DROP TABLE'))).toBe(true)
   })
 })
 

@@ -80,7 +80,10 @@ export type KVValue = string | ArrayBuffer | ArrayBufferView | Uint8Array
  * object matching this type, so Mirror/Bun/test adapters stay in lock-step.
  */
 export interface KVAdapter {
-  get(key: string, options?: KVGetType | KVGetOptions): Promise<string | ArrayBuffer | unknown | null>
+  get(
+    key: string,
+    options?: KVGetType | KVGetOptions,
+  ): Promise<string | ArrayBuffer | unknown | null>
 
   getWithMetadata<M = unknown>(
     key: string,
@@ -100,9 +103,7 @@ export interface NormalizedGetOptions {
   type: KVGetType
 }
 
-export function normalizeGetOptions(
-  options?: KVGetType | KVGetOptions,
-): NormalizedGetOptions {
+export function normalizeGetOptions(options?: KVGetType | KVGetOptions): NormalizedGetOptions {
   if (options === undefined) return { type: 'text' }
   if (typeof options === 'string') return { type: options }
   return { type: options.type ?? 'text' }

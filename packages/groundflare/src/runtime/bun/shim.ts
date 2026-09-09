@@ -270,7 +270,6 @@ const HEADER =
   '// Regenerated on every `groundflare deploy`; local edits will be lost.\n' +
   '// Entry for the Bun runtime track. See design/tracks.md.'
 
-
 function parseListen(address: string): { host: string; port: number } {
   // Accept `host:port` or `:port` (the latter is spelled `0.0.0.0:port`
   // when emitted — Bun requires a concrete hostname string).
@@ -284,9 +283,7 @@ function parseListen(address: string): { host: string; port: number } {
   const portStr = address.slice(idx + 1)
   const port = Number(portStr)
   if (!Number.isInteger(port) || port < 1 || port > 65535) {
-    throw new RangeError(
-      `Bun shim: port must be in [1, 65535] (got ${JSON.stringify(portStr)})`,
-    )
+    throw new RangeError(`Bun shim: port must be in [1, 65535] (got ${JSON.stringify(portStr)})`)
   }
   return { host, port }
 }

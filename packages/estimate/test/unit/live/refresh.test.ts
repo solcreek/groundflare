@@ -1,10 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 
-import {
-  BAKED_PRICES,
-  MemorySecretReader,
-  refreshPrices,
-} from '../../../src/index.js'
+import { BAKED_PRICES, MemorySecretReader, refreshPrices } from '../../../src/index.js'
 
 const MOCK_OK_BODY = {
   pricing: {

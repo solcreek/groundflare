@@ -41,8 +41,7 @@ export function sshKeyStage(opts: SshKeyStageOptions = {}): Stage {
       // Both the local files AND the provider record must exist; if either
       // is gone we re-run the stage to restore consistency.
       const haveBoth =
-        (await fileExists(recorded.localPath)) &&
-        (await fileExists(recorded.localPublicPath))
+        (await fileExists(recorded.localPath)) && (await fileExists(recorded.localPublicPath))
       if (!haveBoth) return false
       try {
         const remote = await ctx.provider.listSSHKeys()
@@ -63,8 +62,7 @@ export function sshKeyStage(opts: SshKeyStageOptions = {}): Stage {
 
       // Reuse the local key if it already exists (e.g. operator wiped
       // state but kept the keypair). Otherwise generate fresh.
-      const reuseExisting =
-        (await fileExists(privateKeyPath)) && (await fileExists(publicKeyPath))
+      const reuseExisting = (await fileExists(privateKeyPath)) && (await fileExists(publicKeyPath))
 
       let publicKeyOpenSsh: string
       let fingerprint: string

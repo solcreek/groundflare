@@ -98,11 +98,7 @@ export interface SshClient {
    * Run a command, streaming stdout + stderr line-by-line via the handler.
    * Resolves once the command exits. Useful for `groundflare tail`.
    */
-  stream(
-    command: string,
-    onLine: StreamLineHandler,
-    options?: RunOptions,
-  ): Promise<RunResult>
+  stream(command: string, onLine: StreamLineHandler, options?: RunOptions): Promise<RunResult>
 
   /** Upload a local file/directory to a remote path. */
   upload(localPath: string, remotePath: string, options?: UploadOptions): Promise<void>

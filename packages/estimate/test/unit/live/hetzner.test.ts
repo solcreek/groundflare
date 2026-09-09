@@ -1,9 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 
-import {
-  fetchHetznerPricing,
-  HetznerPricingError,
-} from '../../../src/index.js'
+import { fetchHetznerPricing, HetznerPricingError } from '../../../src/index.js'
 
 /** Minimal response shaped like Hetzner's actual /v1/pricing payload. */
 function mockPricingBody() {
@@ -57,10 +54,7 @@ function mockPricingBody() {
   }
 }
 
-function fakeFetch(
-  body: unknown,
-  init: { status?: number } = {},
-): typeof fetch {
+function fakeFetch(body: unknown, init: { status?: number } = {}): typeof fetch {
   return vi.fn(async () => {
     return new Response(typeof body === 'string' ? body : JSON.stringify(body), {
       status: init.status ?? 200,

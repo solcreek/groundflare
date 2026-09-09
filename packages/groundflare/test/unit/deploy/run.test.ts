@@ -146,9 +146,7 @@ describe('runDeploy', () => {
   })
 
   it('throws not_bootstrapped when state has no VPS', async () => {
-    await scaffoldWorker(
-      `name = "api"\nmain = "src/index.ts"\ncompatibility_date = "2026-04-01"\n`,
-    )
+    await scaffoldWorker(`name = "api"\nmain = "src/index.ts"\ncompatibility_date = "2026-04-01"\n`)
     const state = baseState()
     delete (state as unknown as { vps?: unknown }).vps
     await expect(
@@ -248,9 +246,7 @@ describe('runDeploy', () => {
   })
 
   it('atomic install leaves destinations untouched when staging scp fails', async () => {
-    await scaffoldWorker(
-      `name = "api"\nmain = "src/index.ts"\ncompatibility_date = "2026-04-01"\n`,
-    )
+    await scaffoldWorker(`name = "api"\nmain = "src/index.ts"\ncompatibility_date = "2026-04-01"\n`)
     const { client, runCalls, uploads } = mockSsh({
       uploadShouldThrow: new Error('scp: connection reset'),
     })
@@ -274,9 +270,7 @@ describe('runDeploy', () => {
   })
 
   it('propagates upload_failed when the atomic install script fails', async () => {
-    await scaffoldWorker(
-      `name = "api"\nmain = "src/index.ts"\ncompatibility_date = "2026-04-01"\n`,
-    )
+    await scaffoldWorker(`name = "api"\nmain = "src/index.ts"\ncompatibility_date = "2026-04-01"\n`)
     const { client } = mockSsh({
       runs: [{ exitCode: 1, stderr: 'permission denied' }], // atomic install fails
     })
@@ -293,9 +287,7 @@ describe('runDeploy', () => {
   })
 
   it('propagates restart_failed when systemctl exits non-zero', async () => {
-    await scaffoldWorker(
-      `name = "api"\nmain = "src/index.ts"\ncompatibility_date = "2026-04-01"\n`,
-    )
+    await scaffoldWorker(`name = "api"\nmain = "src/index.ts"\ncompatibility_date = "2026-04-01"\n`)
     const { client } = mockSsh({
       runs: [
         { exitCode: 0 }, // atomic install
@@ -315,9 +307,7 @@ describe('runDeploy', () => {
   })
 
   it('propagates health_failed when probe returns 500', async () => {
-    await scaffoldWorker(
-      `name = "api"\nmain = "src/index.ts"\ncompatibility_date = "2026-04-01"\n`,
-    )
+    await scaffoldWorker(`name = "api"\nmain = "src/index.ts"\ncompatibility_date = "2026-04-01"\n`)
     const { client } = mockSsh({
       runs: [
         { exitCode: 0 }, // atomic install
@@ -339,9 +329,7 @@ describe('runDeploy', () => {
   })
 
   it('propagates health_failed on curl non-zero exit (transport failure)', async () => {
-    await scaffoldWorker(
-      `name = "api"\nmain = "src/index.ts"\ncompatibility_date = "2026-04-01"\n`,
-    )
+    await scaffoldWorker(`name = "api"\nmain = "src/index.ts"\ncompatibility_date = "2026-04-01"\n`)
     const { client } = mockSsh({
       runs: [
         { exitCode: 0 }, // atomic install
@@ -365,9 +353,7 @@ describe('runDeploy', () => {
   it('health probe retries through transient 5xx / ECONNREFUSED until workerd is ready', async () => {
     // workerd cold-start: first two probes see ECONNREFUSED and 502,
     // third probe succeeds with 200. Deploy should succeed.
-    await scaffoldWorker(
-      `name = "api"\nmain = "src/index.ts"\ncompatibility_date = "2026-04-01"\n`,
-    )
+    await scaffoldWorker(`name = "api"\nmain = "src/index.ts"\ncompatibility_date = "2026-04-01"\n`)
     const { client, runCalls } = mockSsh({
       runs: [
         { exitCode: 0 }, // atomic install
@@ -393,9 +379,7 @@ describe('runDeploy', () => {
   })
 
   it('health probe exhausts attempts when 5xx never clears', async () => {
-    await scaffoldWorker(
-      `name = "api"\nmain = "src/index.ts"\ncompatibility_date = "2026-04-01"\n`,
-    )
+    await scaffoldWorker(`name = "api"\nmain = "src/index.ts"\ncompatibility_date = "2026-04-01"\n`)
     const { client, runCalls } = mockSsh({
       runs: [
         { exitCode: 0 }, // atomic install
@@ -421,11 +405,7 @@ describe('runDeploy', () => {
   })
 
   it('throws DeployError (not a different error type) for bundle failures', async () => {
-    await writeFile(
-      join(tmp, 'wrangler.toml'),
-      `name = "api"\nmain = "src/index.ts"\n`,
-      'utf-8',
-    )
+    await writeFile(join(tmp, 'wrangler.toml'), `name = "api"\nmain = "src/index.ts"\n`, 'utf-8')
     await mkdir(join(tmp, 'src'), { recursive: true })
     // Syntactically broken TypeScript
     await writeFile(join(tmp, 'src/index.ts'), 'const x = {{{', 'utf-8')
@@ -481,13 +461,9 @@ describe('runDeploy', () => {
   it('throws bundle_failed when [build].command exits non-zero', async () => {
     await writeFile(
       join(tmp, 'wrangler.toml'),
-      [
-        `name = "broken"`,
-        `main = "dist/worker.js"`,
-        ``,
-        `[build]`,
-        `command = "exit 1"`,
-      ].join('\n'),
+      [`name = "broken"`, `main = "dist/worker.js"`, ``, `[build]`, `command = "exit 1"`].join(
+        '\n',
+      ),
       'utf-8',
     )
     await expect(
@@ -524,7 +500,6 @@ describe('runDeploy', () => {
     ).rejects.toMatchObject({ code: 'bundle_failed' })
   })
 })
-
 
 describe('runDeploy — Bun track', () => {
   function bunWrangler(): string {
@@ -569,11 +544,7 @@ describe('runDeploy — Bun track', () => {
     //   2. systemctl restart
     //   3. curl health probe
     const { client, runCalls, uploads } = mockSsh({
-      runs: [
-        { exitCode: 0 },
-        { exitCode: 0 },
-        { exitCode: 0, stdout: HEALTH_OK_STDOUT },
-      ],
+      runs: [{ exitCode: 0 }, { exitCode: 0 }, { exitCode: 0, stdout: HEALTH_OK_STDOUT }],
     })
     const result = await runDeploy({
       workspace: 'demo',
@@ -602,11 +573,7 @@ describe('runDeploy — Bun track', () => {
   it('installs the Bun systemd unit at /etc/systemd/system/groundflare-worker.service as root', async () => {
     await scaffoldWorker(bunWrangler())
     const { client, runCalls } = mockSsh({
-      runs: [
-        { exitCode: 0 },
-        { exitCode: 0 },
-        { exitCode: 0, stdout: HEALTH_OK_STDOUT },
-      ],
+      runs: [{ exitCode: 0 }, { exitCode: 0 }, { exitCode: 0, stdout: HEALTH_OK_STDOUT }],
     })
     await runDeploy({
       workspace: 'demo',
@@ -817,8 +784,8 @@ describe('runDeploy — R2 bindings (workerd track)', () => {
       log: () => {},
     })
     // No curl PUT to weed — external endpoints are not our problem.
-    const bucketCalls = runCalls.filter((c) =>
-      c.command.includes('curl') && c.command.includes('http://127.0.0.1:8333'),
+    const bucketCalls = runCalls.filter(
+      (c) => c.command.includes('curl') && c.command.includes('http://127.0.0.1:8333'),
     )
     expect(bucketCalls).toHaveLength(0)
     // Capnp should still emit the adapter service, just pointed elsewhere.
@@ -943,8 +910,8 @@ describe('runDeploy — R2 bindings (workerd track)', () => {
       ssh: client,
       log: () => {},
     })
-    const bucketCalls = runCalls.filter((c) =>
-      c.command.includes('curl') && c.command.includes('http://127.0.0.1:8333'),
+    const bucketCalls = runCalls.filter(
+      (c) => c.command.includes('curl') && c.command.includes('http://127.0.0.1:8333'),
     )
     expect(bucketCalls).toHaveLength(1)
     expect(bucketCalls[0]?.command).toContain('http://127.0.0.1:8333/shared')
@@ -960,9 +927,8 @@ describe('runDeploy — Bun track R2 external endpoint', () => {
   function envFileOf(uploads: MockSshSetup['uploads']): string | undefined {
     // Caddyfile + env file both banner "# GENERATED by groundflare".
     // Only the env file contains R2_ KEY=VALUE lines, so anchor on that.
-    return uploads.find(
-      (u) => u.content?.startsWith('# GENERATED') && /^R2_/m.test(u.content),
-    )?.content
+    return uploads.find((u) => u.content?.startsWith('# GENERATED') && /^R2_/m.test(u.content))
+      ?.content
   }
 
   function bunWranglerWithR2(overrides: string[] = []): string {
@@ -1077,9 +1043,7 @@ describe('runDeploy — Bun track R2 external endpoint', () => {
     })
     // atomicInstall embeds install-m mode + owner in the single sh
     // script it runs under sudo. Look for the env file line.
-    expect(runCalls[0]?.opts?.stdin).toContain(
-      'install -m 0600 -o root -g root',
-    )
+    expect(runCalls[0]?.opts?.stdin).toContain('install -m 0600 -o root -g root')
     expect(runCalls[0]?.opts?.stdin).toContain('/etc/groundflare/environment')
   })
 
@@ -1179,11 +1143,7 @@ describe('runDeploy — Bun track R2 external endpoint', () => {
     await store.set('AK', 'key with spaces')
     await store.set('SK', 'secret"with"quotes')
     const { client, uploads } = mockSsh({
-      runs: [
-        { exitCode: 0 },
-        { exitCode: 0 },
-        { exitCode: 0, stdout: HEALTH_OK_STDOUT },
-      ],
+      runs: [{ exitCode: 0 }, { exitCode: 0 }, { exitCode: 0, stdout: HEALTH_OK_STDOUT }],
     })
     await runDeploy({
       workspace: 'demo',

@@ -101,10 +101,7 @@ const baseTarget: SshTarget = {
   privateKeyPath: '/keys/id_ed25519',
 }
 
-function makeClient(
-  spawnImpl: SpawnFn,
-  overrides: Partial<SshTarget> = {},
-): OpenSshClient {
+function makeClient(spawnImpl: SpawnFn, overrides: Partial<SshTarget> = {}): OpenSshClient {
   return new OpenSshClient({
     target: { ...baseTarget, ...overrides },
     spawnImpl,
@@ -220,7 +217,9 @@ describe('OpenSshClient: run', () => {
   })
 
   it('throws SshError(connect_failed) when spawn fails', async () => {
-    const { spawnImpl } = mockSpawn({ spawnError: Object.assign(new Error('ENOENT'), { code: 'ENOENT' }) })
+    const { spawnImpl } = mockSpawn({
+      spawnError: Object.assign(new Error('ENOENT'), { code: 'ENOENT' }),
+    })
     await expect(makeClient(spawnImpl).run('echo')).rejects.toMatchObject({
       name: 'SshError',
       code: 'connect_failed',
@@ -243,9 +242,9 @@ describe('OpenSshClient: run', () => {
 
   it('rejects malformed env var names', async () => {
     const { spawnImpl } = mockSpawn({ exitCode: 0 })
-    await expect(
-      makeClient(spawnImpl).run('echo', { env: { '1bad': 'x' } }),
-    ).rejects.toMatchObject({ code: 'command_failed' })
+    await expect(makeClient(spawnImpl).run('echo', { env: { '1bad': 'x' } })).rejects.toMatchObject(
+      { code: 'command_failed' },
+    )
   })
 })
 
@@ -270,9 +269,8 @@ describe('OpenSshClient: stream', () => {
       stdoutChunks: ['line1\nline2\n', 'line3\n'],
     })
     const lines: Array<{ line: string; source: string }> = []
-    const result = await makeClient(spawnImpl).stream(
-      'tail -F log',
-      (line, source) => lines.push({ line, source }),
+    const result = await makeClient(spawnImpl).stream('tail -F log', (line, source) =>
+      lines.push({ line, source }),
     )
     expect(lines).toEqual([
       { line: 'line1', source: 'stdout' },
@@ -309,9 +307,7 @@ describe('OpenSshClient: stream', () => {
       stderrChunks: ['err\n'],
     })
     const lines: Array<{ line: string; source: string }> = []
-    await makeClient(spawnImpl).stream('mixed', (line, source) =>
-      lines.push({ line, source }),
-    )
+    await makeClient(spawnImpl).stream('mixed', (line, source) => lines.push({ line, source }))
     expect(lines).toContainEqual({ line: 'out', source: 'stdout' })
     expect(lines).toContainEqual({ line: 'err', source: 'stderr' })
   })
@@ -340,9 +336,9 @@ describe('OpenSshClient: upload', () => {
 
   it('throws SshError(transfer_failed) on non-zero exit', async () => {
     const { spawnImpl } = mockSpawn({ exitCode: 1, stderrChunks: ['nope\n'] })
-    await expect(
-      makeClient(spawnImpl).upload('a', 'b'),
-    ).rejects.toMatchObject({ code: 'transfer_failed' })
+    await expect(makeClient(spawnImpl).upload('a', 'b')).rejects.toMatchObject({
+      code: 'transfer_failed',
+    })
   })
 })
 
@@ -361,8 +357,8 @@ describe('OpenSshClient: download', () => {
 describe('OpenSshClient: timeouts', () => {
   it('throws SshError(timeout) when the command exceeds timeoutMs', async () => {
     const { spawnImpl } = mockSpawn({ hold: true })
-    await expect(
-      makeClient(spawnImpl).run('sleep 10', { timeoutMs: 30 }),
-    ).rejects.toMatchObject({ code: 'timeout' })
+    await expect(makeClient(spawnImpl).run('sleep 10', { timeoutMs: 30 })).rejects.toMatchObject({
+      code: 'timeout',
+    })
   })
 })

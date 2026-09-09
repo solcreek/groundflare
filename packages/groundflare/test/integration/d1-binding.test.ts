@@ -67,24 +67,22 @@ async function withD1Workspace<T>(
 }
 
 describe('integration: D1 binding round-trip through real workerd', () => {
-  it(
-    'CREATE TABLE + INSERT + SELECT through prepare/run/all',
-    async () => {
-      await withD1Workspace(
-        {
-          manifest: {
-            name: 'e2e',
-            workers: [
-              {
-                name: 'api',
-                domain: 'api.test',
-                entryPath: 'user.js',
-                d1Databases: [{ binding: 'DB', databaseName: 'main' }],
-              },
-            ],
-          },
-          modules: {
-            'user.js': `
+  it('CREATE TABLE + INSERT + SELECT through prepare/run/all', async () => {
+    await withD1Workspace(
+      {
+        manifest: {
+          name: 'e2e',
+          workers: [
+            {
+              name: 'api',
+              domain: 'api.test',
+              entryPath: 'user.js',
+              d1Databases: [{ binding: 'DB', databaseName: 'main' }],
+            },
+          ],
+        },
+        modules: {
+          'user.js': `
               export default {
                 async fetch(request, env) {
                   const url = new URL(request.url)
@@ -107,48 +105,44 @@ describe('integration: D1 binding round-trip through real workerd', () => {
                 }
               }
             `,
-          },
         },
-        async (wd) => {
-          await wd.sendRequest({ host: 'api.test', path: '/setup' })
+      },
+      async (wd) => {
+        await wd.sendRequest({ host: 'api.test', path: '/setup' })
 
-          const insert = await wd.sendRequest({ host: 'api.test', path: '/insert' })
-          expect(insert.status).toBe(200)
-          const insertResult = JSON.parse(insert.body)
-          // workerd's `rowsWritten` includes implicit writes to internal
-          // tables like sqlite_sequence; for an AUTOINCREMENT table it
-          // reports 2 (1 user row + 1 sequence-table update). We assert
-          // "at least one row written" rather than the exact CF value.
-          expect(insertResult.changes).toBeGreaterThanOrEqual(1)
-          expect(insertResult.last_row_id).toBeGreaterThan(0)
+        const insert = await wd.sendRequest({ host: 'api.test', path: '/insert' })
+        expect(insert.status).toBe(200)
+        const insertResult = JSON.parse(insert.body)
+        // workerd's `rowsWritten` includes implicit writes to internal
+        // tables like sqlite_sequence; for an AUTOINCREMENT table it
+        // reports 2 (1 user row + 1 sequence-table update). We assert
+        // "at least one row written" rather than the exact CF value.
+        expect(insertResult.changes).toBeGreaterThanOrEqual(1)
+        expect(insertResult.last_row_id).toBeGreaterThan(0)
 
-          const select = await wd.sendRequest({ host: 'api.test', path: '/select' })
-          expect(select.status).toBe(200)
-          expect(JSON.parse(select.body)).toEqual([{ id: 1, name: 'alice' }])
+        const select = await wd.sendRequest({ host: 'api.test', path: '/select' })
+        expect(select.status).toBe(200)
+        expect(JSON.parse(select.body)).toEqual([{ id: 1, name: 'alice' }])
+      },
+    )
+  }, 60_000)
+
+  it('first() returns the first row or null', async () => {
+    await withD1Workspace(
+      {
+        manifest: {
+          name: 'e2e',
+          workers: [
+            {
+              name: 'api',
+              domain: 'api.test',
+              entryPath: 'user.js',
+              d1Databases: [{ binding: 'DB', databaseName: 'main' }],
+            },
+          ],
         },
-      )
-    },
-    60_000,
-  )
-
-  it(
-    'first() returns the first row or null',
-    async () => {
-      await withD1Workspace(
-        {
-          manifest: {
-            name: 'e2e',
-            workers: [
-              {
-                name: 'api',
-                domain: 'api.test',
-                entryPath: 'user.js',
-                d1Databases: [{ binding: 'DB', databaseName: 'main' }],
-              },
-            ],
-          },
-          modules: {
-            'user.js': `
+        modules: {
+          'user.js': `
               export default {
                 async fetch(request, env) {
                   const url = new URL(request.url)
@@ -174,43 +168,39 @@ describe('integration: D1 binding round-trip through real workerd', () => {
                 }
               }
             `,
-          },
         },
-        async (wd) => {
-          await wd.sendRequest({ host: 'api.test', path: '/setup' })
+      },
+      async (wd) => {
+        await wd.sendRequest({ host: 'api.test', path: '/setup' })
 
-          const row = await wd.sendRequest({ host: 'api.test', path: '/first-row' })
-          expect(JSON.parse(row.body)).toEqual({ name: 'first' })
+        const row = await wd.sendRequest({ host: 'api.test', path: '/first-row' })
+        expect(JSON.parse(row.body)).toEqual({ name: 'first' })
 
-          const col = await wd.sendRequest({ host: 'api.test', path: '/first-col' })
-          expect(JSON.parse(col.body)).toBe('first')
+        const col = await wd.sendRequest({ host: 'api.test', path: '/first-col' })
+        expect(JSON.parse(col.body)).toBe('first')
 
-          const empty = await wd.sendRequest({ host: 'api.test', path: '/first-empty' })
-          expect(JSON.parse(empty.body)).toBe(null)
+        const empty = await wd.sendRequest({ host: 'api.test', path: '/first-empty' })
+        expect(JSON.parse(empty.body)).toBe(null)
+      },
+    )
+  }, 60_000)
+
+  it('batch runs statements in order, atomic on failure', async () => {
+    await withD1Workspace(
+      {
+        manifest: {
+          name: 'e2e',
+          workers: [
+            {
+              name: 'api',
+              domain: 'api.test',
+              entryPath: 'user.js',
+              d1Databases: [{ binding: 'DB', databaseName: 'main' }],
+            },
+          ],
         },
-      )
-    },
-    60_000,
-  )
-
-  it(
-    'batch runs statements in order, atomic on failure',
-    async () => {
-      await withD1Workspace(
-        {
-          manifest: {
-            name: 'e2e',
-            workers: [
-              {
-                name: 'api',
-                domain: 'api.test',
-                entryPath: 'user.js',
-                d1Databases: [{ binding: 'DB', databaseName: 'main' }],
-              },
-            ],
-          },
-          modules: {
-            'user.js': `
+        modules: {
+          'user.js': `
               export default {
                 async fetch(request, env) {
                   const url = new URL(request.url)
@@ -250,48 +240,44 @@ describe('integration: D1 binding round-trip through real workerd', () => {
                 }
               }
             `,
-          },
         },
-        async (wd) => {
-          await wd.sendRequest({ host: 'api.test', path: '/setup' })
+      },
+      async (wd) => {
+        await wd.sendRequest({ host: 'api.test', path: '/setup' })
 
-          const ok = await wd.sendRequest({ host: 'api.test', path: '/batch-ok' })
-          expect(JSON.parse(ok.body)).toEqual({
-            changes_a: 1,
-            changes_b: 1,
-            count: 2,
-          })
+        const ok = await wd.sendRequest({ host: 'api.test', path: '/batch-ok' })
+        expect(JSON.parse(ok.body)).toEqual({
+          changes_a: 1,
+          changes_b: 1,
+          count: 2,
+        })
 
-          const fail = await wd.sendRequest({ host: 'api.test', path: '/batch-fail' })
-          expect(fail.body).toBe('threw')
+        const fail = await wd.sendRequest({ host: 'api.test', path: '/batch-fail' })
+        expect(fail.body).toBe('threw')
 
-          // Atomicity: the failed batch must not have inserted id=3 or id=4.
-          const all = await wd.sendRequest({ host: 'api.test', path: '/all' })
-          expect(JSON.parse(all.body)).toEqual(['a', 'b'])
+        // Atomicity: the failed batch must not have inserted id=3 or id=4.
+        const all = await wd.sendRequest({ host: 'api.test', path: '/all' })
+        expect(JSON.parse(all.body)).toEqual(['a', 'b'])
+      },
+    )
+  }, 60_000)
+
+  it('data persists across requests within the same workerd process', async () => {
+    await withD1Workspace(
+      {
+        manifest: {
+          name: 'e2e',
+          workers: [
+            {
+              name: 'api',
+              domain: 'api.test',
+              entryPath: 'user.js',
+              d1Databases: [{ binding: 'DB', databaseName: 'main' }],
+            },
+          ],
         },
-      )
-    },
-    60_000,
-  )
-
-  it(
-    'data persists across requests within the same workerd process',
-    async () => {
-      await withD1Workspace(
-        {
-          manifest: {
-            name: 'e2e',
-            workers: [
-              {
-                name: 'api',
-                domain: 'api.test',
-                entryPath: 'user.js',
-                d1Databases: [{ binding: 'DB', databaseName: 'main' }],
-              },
-            ],
-          },
-          modules: {
-            'user.js': `
+        modules: {
+          'user.js': `
               export default {
                 async fetch(request, env) {
                   const url = new URL(request.url)
@@ -309,17 +295,15 @@ describe('integration: D1 binding round-trip through real workerd', () => {
                 }
               }
             `,
-          },
         },
-        async (wd) => {
-          await wd.sendRequest({ host: 'api.test', path: '/init' })
-          for (let i = 1; i <= 5; i++) {
-            const r = await wd.sendRequest({ host: 'api.test', path: '/inc' })
-            expect(r.body).toBe(String(i))
-          }
-        },
-      )
-    },
-    60_000,
-  )
+      },
+      async (wd) => {
+        await wd.sendRequest({ host: 'api.test', path: '/init' })
+        for (let i = 1; i <= 5; i++) {
+          const r = await wd.sendRequest({ host: 'api.test', path: '/inc' })
+          expect(r.body).toBe(String(i))
+        }
+      },
+    )
+  }, 60_000)
 })

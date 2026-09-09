@@ -1,10 +1,6 @@
 import { describe, it, expect } from 'vitest'
 
-import {
-  aggregateByWorker,
-  parsePromText,
-  renderMetricsTable,
-} from '../../../src/cli/metrics.js'
+import { aggregateByWorker, parsePromText, renderMetricsTable } from '../../../src/cli/metrics.js'
 import { generateRouterJs } from '../../../src/runtime/workspace/index.js'
 
 // ─── Parser ─────────────────────────────────────────────────────────
@@ -29,9 +25,7 @@ describe('parsePromText', () => {
   })
 
   it('skips comment lines and blank lines', () => {
-    const out = parsePromText(
-      ['# HELP x a', '# TYPE x counter', '', 'x{w="a"} 7', ''].join('\n'),
-    )
+    const out = parsePromText(['# HELP x a', '# TYPE x counter', '', 'x{w="a"} 7', ''].join('\n'))
     expect(out).toHaveLength(1)
     expect(out[0]?.value).toBe(7)
   })
@@ -138,9 +132,7 @@ describe('aggregateByWorker', () => {
       { kind: 'd1', opCount: 2, errCount: 0 },
     ])
     const cdn = agg.find((w) => w.worker === 'cdn')!
-    expect(cdn.bindings).toEqual([
-      { kind: 'r2', opCount: 4, errCount: 0 },
-    ])
+    expect(cdn.bindings).toEqual([{ kind: 'r2', opCount: 4, errCount: 0 }])
   })
 
   it('skips series without a worker label', () => {
@@ -180,8 +172,7 @@ describe('aggregateByWorker', () => {
         fetch: async (): Promise<Response> => new Response('ok'),
       },
       WORKER_ADMIN: {
-        fetch: async (): Promise<Response> =>
-          new Response('nope', { status: 500 }),
+        fetch: async (): Promise<Response> => new Response('nope', { status: 500 }),
       },
     }
     await router.fetch(new Request('https://api.test/'), env, {})

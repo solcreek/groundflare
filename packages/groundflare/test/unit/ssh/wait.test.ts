@@ -31,9 +31,9 @@ function mockSocket(behaviour: MockSocketBehaviour) {
   return socket
 }
 
-function mockConnect(
-  behaviours: readonly MockSocketBehaviour[] | MockSocketBehaviour,
-): { connectImpl: ConnectFn } {
+function mockConnect(behaviours: readonly MockSocketBehaviour[] | MockSocketBehaviour): {
+  connectImpl: ConnectFn
+} {
   const queue = Array.isArray(behaviours) ? [...behaviours] : [behaviours]
   // Default to "connection refused immediately" so tests that assert
   // exhaustion-style behaviour (deadline expiration) don't accidentally
@@ -105,9 +105,7 @@ describe('waitForSshTcpReady', () => {
   it('treats a per-attempt timeout as a retryable failure, not a fatal one', async () => {
     // First attempt never resolves (simulates SYN drops); second succeeds.
     const { connectImpl } = mockConnect([
-      {
-        /* nothing — neither connect nor error emit */
-      },
+      {/* nothing — neither connect nor error emit */},
       { connectAfterMs: 0 },
     ])
     let now = 0

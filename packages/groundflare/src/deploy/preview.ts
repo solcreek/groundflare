@@ -39,9 +39,7 @@ export interface DerivePreviewHostnameOptions {
  * Throws on malformed IP so we fail fast rather than emit a hostname
  * that won't resolve.
  */
-export function derivePreviewHostname(
-  opts: DerivePreviewHostnameOptions,
-): string {
+export function derivePreviewHostname(opts: DerivePreviewHostnameOptions): string {
   const provider = opts.provider ?? 'sslip.io'
   const hyphenated = toHyphenatedIp(opts.ipv4)
   const base = `${hyphenated}.${provider}`
@@ -78,15 +76,11 @@ function toHyphenatedIp(ip: string): string {
   }
   for (const p of parts) {
     if (!/^\d+$/.test(p)) {
-      throw new TypeError(
-        `derivePreviewHostname: IPv4 octet ${JSON.stringify(p)} is not numeric`,
-      )
+      throw new TypeError(`derivePreviewHostname: IPv4 octet ${JSON.stringify(p)} is not numeric`)
     }
     const n = parseInt(p, 10)
     if (n < 0 || n > 255) {
-      throw new TypeError(
-        `derivePreviewHostname: IPv4 octet ${p} out of range (0-255)`,
-      )
+      throw new TypeError(`derivePreviewHostname: IPv4 octet ${p} out of range (0-255)`)
     }
   }
   return parts.join('-')

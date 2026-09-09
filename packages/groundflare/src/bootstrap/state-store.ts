@@ -85,12 +85,9 @@ export class BootstrapStateStore {
     try {
       await mkdir(dir, { recursive: true, mode: DIR_MODE })
     } catch (err) {
-      throw new BootstrapError(
-        `failed to create state directory ${dir}`,
-        'state_io',
-        undefined,
-        { cause: err },
-      )
+      throw new BootstrapError(`failed to create state directory ${dir}`, 'state_io', undefined, {
+        cause: err,
+      })
     }
     try {
       await chmod(dir, DIR_MODE)
@@ -104,23 +101,15 @@ export class BootstrapStateStore {
     try {
       await writeFile(tempPath, serialized, { mode: FILE_MODE, encoding: 'utf-8' })
     } catch (err) {
-      throw new BootstrapError(
-        `failed to write ${tempPath}`,
-        'state_io',
-        undefined,
-        { cause: err },
-      )
+      throw new BootstrapError(`failed to write ${tempPath}`, 'state_io', undefined, { cause: err })
     }
 
     try {
       await rename(tempPath, path)
     } catch (err) {
-      throw new BootstrapError(
-        `failed to rename ${tempPath} -> ${path}`,
-        'state_io',
-        undefined,
-        { cause: err },
-      )
+      throw new BootstrapError(`failed to rename ${tempPath} -> ${path}`, 'state_io', undefined, {
+        cause: err,
+      })
     }
 
     try {

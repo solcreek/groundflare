@@ -101,16 +101,8 @@ export class OpenSshClient implements SshClient {
     )
   }
 
-  async upload(
-    localPath: string,
-    remotePath: string,
-    opts: UploadOptions = {},
-  ): Promise<void> {
-    const args = [
-      ...this.commonScpOptions(opts),
-      localPath,
-      `${this.userHost()}:${remotePath}`,
-    ]
+  async upload(localPath: string, remotePath: string, opts: UploadOptions = {}): Promise<void> {
+    const args = [...this.commonScpOptions(opts), localPath, `${this.userHost()}:${remotePath}`]
     const result = await runWithCollection(
       this.spawnImpl,
       this.scpBinary,
@@ -126,16 +118,8 @@ export class OpenSshClient implements SshClient {
     }
   }
 
-  async download(
-    remotePath: string,
-    localPath: string,
-    opts: UploadOptions = {},
-  ): Promise<void> {
-    const args = [
-      ...this.commonScpOptions(opts),
-      `${this.userHost()}:${remotePath}`,
-      localPath,
-    ]
+  async download(remotePath: string, localPath: string, opts: UploadOptions = {}): Promise<void> {
+    const args = [...this.commonScpOptions(opts), `${this.userHost()}:${remotePath}`, localPath]
     const result = await runWithCollection(
       this.spawnImpl,
       this.scpBinary,
@@ -272,12 +256,7 @@ function runWithCollection(
     child.on('exit', (code, signal) => {
       cleanup()
       if (timedOut) {
-        rejectFn(
-          new SshError(
-            `${bin} timed out after ${timeoutMs}ms`,
-            'timeout',
-          ),
-        )
+        rejectFn(new SshError(`${bin} timed out after ${timeoutMs}ms`, 'timeout'))
         return
       }
       const exitCode = code ?? (signal !== null ? 128 : -1)

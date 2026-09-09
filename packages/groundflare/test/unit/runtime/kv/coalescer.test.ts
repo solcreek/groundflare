@@ -1,9 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import {
-  IMMEDIATE,
-  WriteCoalescer,
-  type PendingOp,
-} from '../../../../src/runtime/kv/coalescer.js'
+import { IMMEDIATE, WriteCoalescer, type PendingOp } from '../../../../src/runtime/kv/coalescer.js'
 
 beforeEach(() => {
   vi.useFakeTimers()

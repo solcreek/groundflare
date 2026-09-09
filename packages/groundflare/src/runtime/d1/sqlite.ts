@@ -15,12 +15,7 @@
 import type { BetterSqlite3Database, Statement } from '../sqlite/node.js'
 import { openSqlite } from '../sqlite/node.js'
 import type { SqlitePreludeOptions } from '../sqlite/prelude.js'
-import type {
-  D1Adapter,
-  D1ExecResult,
-  D1PreparedStatement,
-  D1Result,
-} from './types.js'
+import type { D1Adapter, D1ExecResult, D1PreparedStatement, D1Result } from './types.js'
 
 const SERVED_BY = 'groundflare-sqlite'
 
@@ -64,9 +59,7 @@ export class SqliteD1Adapter implements D1Adapter {
 
     for (const s of statements) {
       if (!(s instanceof SqlitePreparedStatement) || s.adapter !== this) {
-        throw new TypeError(
-          'D1.batch: every entry must come from the same adapter instance',
-        )
+        throw new TypeError('D1.batch: every entry must come from the same adapter instance')
       }
     }
 
@@ -112,9 +105,7 @@ export class SqliteD1Adapter implements D1Adapter {
   }
 }
 
-class SqlitePreparedStatement<T = Record<string, unknown>>
-  implements D1PreparedStatement
-{
+class SqlitePreparedStatement<T = Record<string, unknown>> implements D1PreparedStatement {
   constructor(
     /** @internal — readable by the owning adapter for batch ownership checks */
     readonly adapter: SqliteD1Adapter,
@@ -131,7 +122,7 @@ class SqlitePreparedStatement<T = Record<string, unknown>>
     const row = stmt.get(...this.args) as Record<string, unknown> | undefined
     if (!row) return null
     if (column !== undefined) {
-      return ((row[column] ?? null) as U | null)
+      return (row[column] ?? null) as U | null
     }
     return row as unknown as U
   }
@@ -155,7 +146,11 @@ class SqlitePreparedStatement<T = Record<string, unknown>>
     // SELECT / WITH / PRAGMA / RETURNING go through all(), everything else
     // through run(). Good enough for typical D1 use.
     const leading = this.sql.trimStart().slice(0, 6).toUpperCase()
-    if (leading.startsWith('SELECT') || leading.startsWith('WITH ') || leading.startsWith('PRAGMA')) {
+    if (
+      leading.startsWith('SELECT') ||
+      leading.startsWith('WITH ') ||
+      leading.startsWith('PRAGMA')
+    ) {
       return this.allSync() as D1Result<T>
     }
     // INSERT/UPDATE/DELETE ... RETURNING also needs to collect rows.

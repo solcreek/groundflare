@@ -22,7 +22,10 @@
  */
 
 export class UnsupportedCronError extends Error {
-  constructor(message: string, public readonly expression: string) {
+  constructor(
+    message: string,
+    public readonly expression: string,
+  ) {
     super(`Unsupported cron expression ${JSON.stringify(expression)}: ${message}`)
     this.name = 'UnsupportedCronError'
   }
@@ -77,20 +80,14 @@ function parseSimpleField(
   if (stepMatch) {
     const step = Number(stepMatch[1])
     if (!Number.isInteger(step) || step <= 0 || step > max) {
-      throw new UnsupportedCronError(
-        `step value out of range for ${name}: ${spec}`,
-        expr,
-      )
+      throw new UnsupportedCronError(`step value out of range for ${name}: ${spec}`, expr)
     }
     return { kind: 'step', step }
   }
   if (/^\d+$/.test(spec)) {
     const value = Number(spec)
     if (value < min || value > max) {
-      throw new UnsupportedCronError(
-        `${name} value ${value} out of range [${min}, ${max}]`,
-        expr,
-      )
+      throw new UnsupportedCronError(`${name} value ${value} out of range [${min}, ${max}]`, expr)
     }
     return { kind: 'value', value }
   }
@@ -107,10 +104,7 @@ function parseWeekdayField(spec: string, expr: string): WeekdayField {
   if (stepMatch) {
     const step = Number(stepMatch[1])
     if (!Number.isInteger(step) || step <= 0 || step > 7) {
-      throw new UnsupportedCronError(
-        `weekday step out of range: ${spec}`,
-        expr,
-      )
+      throw new UnsupportedCronError(`weekday step out of range: ${spec}`, expr)
     }
     return { kind: 'step', step }
   }

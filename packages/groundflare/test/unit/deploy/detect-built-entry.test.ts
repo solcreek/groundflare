@@ -70,9 +70,9 @@ describe('resolveBuiltEntry', () => {
   })
 
   it('throws when mustExist + nothing found', () => {
-    expect(() =>
-      resolveBuiltEntry({ cwd: tmp, main: 'missing.js', mustExist: true }),
-    ).toThrow(/no built entry found/)
+    expect(() => resolveBuiltEntry({ cwd: tmp, main: 'missing.js', mustExist: true })).toThrow(
+      /no built entry found/,
+    )
   })
 
   it('treats dist/*.js as built (not source)', async () => {

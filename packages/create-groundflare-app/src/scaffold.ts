@@ -100,10 +100,7 @@ export interface ScaffoldResult {
 export class ScaffoldError extends Error {
   constructor(
     message: string,
-    public readonly code:
-      | 'target_exists'
-      | 'template_empty'
-      | 'invalid_name',
+    public readonly code: 'target_exists' | 'template_empty' | 'invalid_name',
   ) {
     super(message)
     this.name = 'ScaffoldError'
@@ -112,9 +109,7 @@ export class ScaffoldError extends Error {
 
 const VALID_PROJECT_NAME = /^[a-z0-9][a-z0-9-_]*$/
 
-export async function scaffoldProject(
-  opts: ScaffoldOptions,
-): Promise<ScaffoldResult> {
+export async function scaffoldProject(opts: ScaffoldOptions): Promise<ScaffoldResult> {
   if (!VALID_PROJECT_NAME.test(opts.projectName)) {
     throw new ScaffoldError(
       `project name must match /^[a-z0-9][a-z0-9-_]*$/ (got ${JSON.stringify(opts.projectName)})`,
@@ -181,10 +176,7 @@ export async function scaffoldProject(
 
 // ─── helpers ───────────────────────────────────────────────────────
 
-export function applySubstitutions(
-  source: string,
-  substitutions: Record<string, string>,
-): string {
+export function applySubstitutions(source: string, substitutions: Record<string, string>): string {
   return source.replace(/\{\{\s*([a-z_][a-z0-9_]*)\s*\}\}/gi, (match, key) => {
     if (typeof key === 'string' && key in substitutions) {
       return substitutions[key]!

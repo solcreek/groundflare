@@ -218,9 +218,7 @@ describe.skipIf(!dockerAvailable)('e2e: framework-shaped deploy', () => {
     expect(isSymlink.stdout.trim()).toBe('symlink')
 
     const target = await container!.exec(`readlink ${remoteWorkerDir}/assets`)
-    expect(target.stdout.trim()).toMatch(
-      /^assets-v\d{8}T\d{6}-[0-9a-f]{6}$/,
-    )
+    expect(target.stdout.trim()).toMatch(/^assets-v\d{8}T\d{6}-[0-9a-f]{6}$/)
 
     // ─── Redeploy: swap + GC ─────────────────────────────────────
     // Rewrite build.sh to emit a different style.css (the original
@@ -267,13 +265,9 @@ describe.skipIf(!dockerAvailable)('e2e: framework-shaped deploy', () => {
     })
     expect(second.healthCheck!.status).toBe(200)
 
-    const targetAfter = await container!.exec(
-      `readlink ${remoteWorkerDir}/assets`,
-    )
+    const targetAfter = await container!.exec(`readlink ${remoteWorkerDir}/assets`)
     expect(targetAfter.stdout.trim()).not.toBe(target.stdout.trim())
-    expect(targetAfter.stdout.trim()).toMatch(
-      /^assets-v\d{8}T\d{6}-[0-9a-f]{6}$/,
-    )
+    expect(targetAfter.stdout.trim()).toMatch(/^assets-v\d{8}T\d{6}-[0-9a-f]{6}$/)
 
     // Prior version kept for rollback:
     const priorStillThere = await container!.exec(
@@ -282,9 +276,7 @@ describe.skipIf(!dockerAvailable)('e2e: framework-shaped deploy', () => {
     expect(priorStillThere.stdout.trim()).toBe('kept')
 
     // New content served through the new target:
-    const newCss = await container!.exec(
-      `cat ${remoteWorkerDir}/assets/style.css`,
-    )
+    const newCss = await container!.exec(`cat ${remoteWorkerDir}/assets/style.css`)
     expect(newCss.stdout).toContain('goldenrod')
   }, 240_000)
 })

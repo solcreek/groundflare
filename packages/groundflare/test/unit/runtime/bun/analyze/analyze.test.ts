@@ -1,8 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import {
-  analyzeWorkspace,
-  type AnalyzeFs,
-} from '../../../../../src/runtime/bun/analyze/index.js'
+import { analyzeWorkspace, type AnalyzeFs } from '../../../../../src/runtime/bun/analyze/index.js'
 import type { WranglerConfig } from '../../../../../src/config/schema.js'
 
 function memoryFs(files: Record<string, string>): AnalyzeFs {

@@ -108,9 +108,7 @@ describe('classifyBindings — unknown env access', () => {
         ...baseConfig,
         kv_namespaces: [{ binding: 'CACHE', id: '...' }],
       },
-      envAccesses: [
-        { binding: 'CACHE', location: { file: 'w.ts', line: 1, column: 1 } },
-      ],
+      envAccesses: [{ binding: 'CACHE', location: { file: 'w.ts', line: 1, column: 1 } }],
     })
     expect(out.filter((f) => f.kind === 'unknown-env-access')).toEqual([])
   })

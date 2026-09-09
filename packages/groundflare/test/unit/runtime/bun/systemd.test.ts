@@ -25,9 +25,7 @@ describe('generateBunSystemdUnit', () => {
 
   it('wires ExecStart to bun run <entryPath> with default binary path', () => {
     const unit = generateBunSystemdUnit(base)
-    expect(unit).toContain(
-      'ExecStart=/usr/local/bin/bun run /var/lib/groundflare/server.js',
-    )
+    expect(unit).toContain('ExecStart=/usr/local/bin/bun run /var/lib/groundflare/server.js')
   })
 
   it('respects custom bunBinary', () => {
@@ -96,24 +94,24 @@ describe('generateBunSystemdUnit', () => {
   })
 
   it('rejects memoryMaxPercent outside (0, 100]', () => {
-    expect(() =>
-      generateBunSystemdUnit({ ...base, memoryMaxPercent: 0 }),
-    ).toThrow('memoryMaxPercent')
-    expect(() =>
-      generateBunSystemdUnit({ ...base, memoryMaxPercent: 101 }),
-    ).toThrow('memoryMaxPercent')
-    expect(() =>
-      generateBunSystemdUnit({ ...base, memoryMaxPercent: NaN }),
-    ).toThrow('memoryMaxPercent')
+    expect(() => generateBunSystemdUnit({ ...base, memoryMaxPercent: 0 })).toThrow(
+      'memoryMaxPercent',
+    )
+    expect(() => generateBunSystemdUnit({ ...base, memoryMaxPercent: 101 })).toThrow(
+      'memoryMaxPercent',
+    )
+    expect(() => generateBunSystemdUnit({ ...base, memoryMaxPercent: NaN })).toThrow(
+      'memoryMaxPercent',
+    )
   })
 
   it('rejects cpuQuotaPercent outside (0, 100]', () => {
-    expect(() =>
-      generateBunSystemdUnit({ ...base, cpuQuotaPercent: -1 }),
-    ).toThrow('cpuQuotaPercent')
-    expect(() =>
-      generateBunSystemdUnit({ ...base, cpuQuotaPercent: 200 }),
-    ).toThrow('cpuQuotaPercent')
+    expect(() => generateBunSystemdUnit({ ...base, cpuQuotaPercent: -1 })).toThrow(
+      'cpuQuotaPercent',
+    )
+    expect(() => generateBunSystemdUnit({ ...base, cpuQuotaPercent: 200 })).toThrow(
+      'cpuQuotaPercent',
+    )
   })
 
   it('uses Restart=on-failure with 5 second delay by default', () => {
@@ -137,10 +135,7 @@ describe('generateBunSystemdUnit', () => {
   it('appends extraServiceLines verbatim before closing [Install]', () => {
     const unit = generateBunSystemdUnit({
       ...base,
-      extraServiceLines: [
-        'NoNewPrivileges=yes',
-        'ProtectSystem=strict',
-      ],
+      extraServiceLines: ['NoNewPrivileges=yes', 'ProtectSystem=strict'],
     })
     expect(unit).toContain('NoNewPrivileges=yes')
     expect(unit).toContain('ProtectSystem=strict')
@@ -160,8 +155,6 @@ describe('generateBunSystemdUnit', () => {
       ...base,
       description: 'groundflare Bun runtime for example-workspace',
     })
-    expect(unit).toContain(
-      'Description=groundflare Bun runtime for example-workspace',
-    )
+    expect(unit).toContain('Description=groundflare Bun runtime for example-workspace')
   })
 })

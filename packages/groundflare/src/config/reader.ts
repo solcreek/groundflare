@@ -67,9 +67,7 @@ export async function readConfigFile(path: string): Promise<ReadConfigResult> {
 
   const groundflareRaw = parsed.groundflare
   const groundflare: GroundflareSection =
-    groundflareRaw === undefined
-      ? {}
-      : validateGroundflareSection(groundflareRaw, path)
+    groundflareRaw === undefined ? {} : validateGroundflareSection(groundflareRaw, path)
 
   // Strip the extension key so the wrangler view only sees fields wrangler
   // itself would recognize.

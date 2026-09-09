@@ -20,9 +20,7 @@
 
 import { z } from 'zod'
 
-import type {
-  GroundflareSection,
-} from './schema.js'
+import type { GroundflareSection } from './schema.js'
 
 export class ConfigValidationError extends Error {
   constructor(
@@ -30,10 +28,7 @@ export class ConfigValidationError extends Error {
     public readonly configPath: readonly string[],
     message: string,
   ) {
-    const loc =
-      configPath.length > 0
-        ? `groundflare.${configPath.join('.')}`
-        : 'groundflare'
+    const loc = configPath.length > 0 ? `groundflare.${configPath.join('.')}` : 'groundflare'
     super(`${file}: [${loc}] ${message}`)
     this.name = 'ConfigValidationError'
   }
@@ -44,19 +39,9 @@ export class ConfigValidationError extends Error {
 const bindingConfigSchema = z
   .object({
     adapter: z
-      .enum([
-        'sqlite',
-        'redis',
-        'memory',
-        'libsql',
-        'postgres',
-        'passthrough',
-        's3',
-      ])
+      .enum(['sqlite', 'redis', 'memory', 'libsql', 'postgres', 'passthrough', 's3'])
       .optional(),
-    backend: z
-      .enum(['seaweedfs', 'rustfs', 'aws-s3', 'b2', 'custom'])
-      .optional(),
+    backend: z.enum(['seaweedfs', 'rustfs', 'aws-s3', 'b2', 'custom']).optional(),
     path: z.string().optional(),
     url: z.string().optional(),
     endpoint: z.string().optional(),
@@ -95,9 +80,7 @@ const observabilitySchema = z
 // entry here.
 
 const sectionFields = {
-  provider: z
-    .enum(['hetzner', 'digitalocean', 'linode', 'vultr'])
-    .optional(),
+  provider: z.enum(['hetzner', 'digitalocean', 'linode', 'vultr']).optional(),
   region: z.string().optional(),
   size: z.string().optional(),
   domain: z.string().optional(),
@@ -132,24 +115,17 @@ const errorMap: z.core.$ZodErrorMap = (issue) => {
   }
   if (issue.code === 'invalid_value') {
     const valid = issue.values.map((v) => JSON.stringify(v)).join(', ')
-    const got =
-      issue.input === undefined ? '' : ` ${JSON.stringify(issue.input)}`
+    const got = issue.input === undefined ? '' : ` ${JSON.stringify(issue.input)}`
     return `invalid value${got}; valid: ${valid}`
   }
   if (issue.code === 'invalid_type') {
-    const got =
-      issue.input === undefined
-        ? ''
-        : ` (received ${describeInput(issue.input)})`
+    const got = issue.input === undefined ? '' : ` (received ${describeInput(issue.input)})`
     return `expected ${issue.expected}${got}`
   }
   return undefined
 }
 
-export function validateGroundflareSection(
-  raw: unknown,
-  file: string,
-): GroundflareSection {
+export function validateGroundflareSection(raw: unknown, file: string): GroundflareSection {
   const result = topLevelSchema.safeParse(raw, { error: errorMap })
   if (!result.success) {
     const first = result.error.issues[0]!

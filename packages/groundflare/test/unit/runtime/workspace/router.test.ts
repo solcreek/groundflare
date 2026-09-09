@@ -6,10 +6,7 @@ import {
 } from '../../../../src/runtime/workspace/index.js'
 import type { WorkspaceWorker } from '../../../../src/runtime/workspace/index.js'
 
-function worker(
-  name: string,
-  opts: Partial<WorkspaceWorker> = {},
-): WorkspaceWorker {
+function worker(name: string, opts: Partial<WorkspaceWorker> = {}): WorkspaceWorker {
   return {
     name,
     entryPath: `workers/${name}/code/current/index.js`,
@@ -105,10 +102,7 @@ describe('generateRouterJs', () => {
   })
 
   it('is deterministic for equivalent inputs', () => {
-    const ws = [
-      worker('a', { domain: 'a.test' }),
-      worker('b', { domain: 'b.test' }),
-    ]
+    const ws = [worker('a', { domain: 'a.test' }), worker('b', { domain: 'b.test' })]
     expect(generateRouterJs(ws)).toBe(generateRouterJs(ws))
   })
 })
@@ -140,11 +134,7 @@ describe('generated router body — executes correctly in V8', () => {
         },
       },
     }
-    const response = await router.fetch(
-      new Request('https://api.example.com/foo'),
-      env,
-      {},
-    )
+    const response = await router.fetch(new Request('https://api.example.com/foo'), env, {})
     expect(response.status).toBe(200)
     expect(called).toBe('/foo')
   })
@@ -154,21 +144,13 @@ describe('generated router body — executes correctly in V8', () => {
     const env = {
       WORKER_API: { fetch: async () => new Response('ok') },
     }
-    const response = await router.fetch(
-      new Request('https://API.EXAMPLE.COM/'),
-      env,
-      {},
-    )
+    const response = await router.fetch(new Request('https://API.EXAMPLE.COM/'), env, {})
     expect(response.status).toBe(200)
   })
 
   it('returns 404 for unknown host', async () => {
     const router = loadRouter([worker('api', { domain: 'api.example.com' })])
-    const response = await router.fetch(
-      new Request('https://other.example.com/'),
-      {},
-      {},
-    )
+    const response = await router.fetch(new Request('https://other.example.com/'), {}, {})
     expect(response.status).toBe(404)
     expect(await response.text()).toContain('no Worker matches host')
   })
@@ -283,21 +265,14 @@ describe('generated router body — executes correctly in V8', () => {
 
   describe('/__health', () => {
     it('returns 200 JSON with status=ok and the configured version', async () => {
-      const source = generateRouterJs(
-        [worker('api', { domain: 'api.test' })],
-        { version: '0.6.2' },
-      )
+      const source = generateRouterJs([worker('api', { domain: 'api.test' })], { version: '0.6.2' })
       const body = source.replace(/export default (\{[\s\S]*\})\s*$/, 'return $1')
       const factory = new Function('Response', 'URL', body)
       const router = factory(Response, URL) as {
         fetch: (req: Request, env: unknown, ctx: unknown) => Promise<Response>
       }
 
-      const response = await router.fetch(
-        new Request('http://any.host/__health'),
-        {},
-        {},
-      )
+      const response = await router.fetch(new Request('http://any.host/__health'), {}, {})
       expect(response.status).toBe(200)
       expect(response.headers.get('content-type')).toMatch(/application\/json/)
       const payload = (await response.json()) as {
@@ -312,11 +287,7 @@ describe('generated router body — executes correctly in V8', () => {
 
     it('defaults version to "unknown" when not supplied', async () => {
       const router = loadRouter([])
-      const response = await router.fetch(
-        new Request('http://whatever/__health'),
-        {},
-        {},
-      )
+      const response = await router.fetch(new Request('http://whatever/__health'), {}, {})
       const payload = (await response.json()) as { version: string }
       expect(payload.version).toBe('unknown')
     })
@@ -332,11 +303,7 @@ describe('generated router body — executes correctly in V8', () => {
           },
         },
       }
-      const response = await router.fetch(
-        new Request('https://api.test/__health'),
-        env,
-        {},
-      )
+      const response = await router.fetch(new Request('https://api.test/__health'), env, {})
       expect(response.status).toBe(200)
       expect(called).toBe(false)
     })
@@ -347,25 +314,15 @@ describe('generated router body — executes correctly in V8', () => {
   describe('/__metrics', () => {
     it('requires loopback hostname — external Host returns 404', async () => {
       const router = loadRouter([worker('api', { domain: 'api.test' })])
-      const response = await router.fetch(
-        new Request('https://api.test/__metrics'),
-        {},
-        {},
-      )
+      const response = await router.fetch(new Request('https://api.test/__metrics'), {}, {})
       expect(response.status).toBe(404)
     })
 
     it('serves Prometheus text on loopback', async () => {
       const router = loadRouter([worker('api', { domain: 'api.test' })])
-      const response = await router.fetch(
-        new Request('http://127.0.0.1:8080/__metrics'),
-        {},
-        {},
-      )
+      const response = await router.fetch(new Request('http://127.0.0.1:8080/__metrics'), {}, {})
       expect(response.status).toBe(200)
-      expect(response.headers.get('content-type')).toMatch(
-        /text\/plain; version=0\.0\.4/,
-      )
+      expect(response.headers.get('content-type')).toMatch(/text\/plain; version=0\.0\.4/)
       const text = await response.text()
       expect(text).toContain('# HELP groundflare_worker_requests_total')
       expect(text).toContain('# TYPE groundflare_worker_requests_total counter')
@@ -390,9 +347,7 @@ describe('generated router body — executes correctly in V8', () => {
       expect(metrics).toMatch(
         /groundflare_worker_requests_total\{status_class="2xx",worker="api"\} 2/,
       )
-      expect(metrics).toContain(
-        'groundflare_worker_request_duration_seconds_count{worker="api"} 2',
-      )
+      expect(metrics).toContain('groundflare_worker_request_duration_seconds_count{worker="api"} 2')
     })
 
     it('records an error counter when the tenant handler throws', async () => {
@@ -404,17 +359,13 @@ describe('generated router body — executes correctly in V8', () => {
           },
         },
       }
-      await expect(
-        router.fetch(new Request('https://api.test/'), env, {}),
-      ).rejects.toThrow(/boom/)
+      await expect(router.fetch(new Request('https://api.test/'), env, {})).rejects.toThrow(/boom/)
 
       const metrics = await router
         .fetch(new Request('http://127.0.0.1:8080/__metrics'), {}, {})
         .then((r) => r.text())
 
-      expect(metrics).toMatch(
-        /groundflare_worker_errors_total\{kind="uncaught",worker="api"\} 1/,
-      )
+      expect(metrics).toMatch(/groundflare_worker_errors_total\{kind="uncaught",worker="api"\} 1/)
       // The thrown request still counts as a 5xx in the request total.
       expect(metrics).toMatch(
         /groundflare_worker_requests_total\{status_class="5xx",worker="api"\} 1/,

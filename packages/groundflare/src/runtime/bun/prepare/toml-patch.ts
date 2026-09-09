@@ -50,8 +50,7 @@ export function patchRuntimeInWranglerToml(
   const headerIdx = findGroundflareHeader(lines)
   if (headerIdx === -1) {
     const trailing = source.endsWith('\n') ? '' : newline
-    const block =
-      `${trailing}${newline}[groundflare]${newline}runtime = ${JSON.stringify(runtime)}${newline}`
+    const block = `${trailing}${newline}[groundflare]${newline}runtime = ${JSON.stringify(runtime)}${newline}`
     return { content: source + block, kind: 'appended', previous: null }
   }
 

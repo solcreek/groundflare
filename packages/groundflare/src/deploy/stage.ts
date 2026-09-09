@@ -41,10 +41,7 @@ export interface AtomicInstallOptions {
   readonly groundflareOwnedDirs: readonly string[]
 }
 
-export async function atomicInstall(
-  ssh: SshClient,
-  opts: AtomicInstallOptions,
-): Promise<void> {
+export async function atomicInstall(ssh: SshClient, opts: AtomicInstallOptions): Promise<void> {
   const runId = randomBytes(6).toString('hex')
   const stagedPaths = opts.files.map((_, i) => `/tmp/gf-stage-${runId}-${i}`)
 
@@ -79,9 +76,7 @@ export async function atomicInstall(
   } catch (err) {
     // Best-effort cleanup of the staging area so repeated deploys
     // don't accumulate /tmp junk. Failures here are ignored.
-    await ssh
-      .run(`rm -f ${stagedPaths.join(' ')}`, { timeoutMs: 10_000 })
-      .catch(() => {})
+    await ssh.run(`rm -f ${stagedPaths.join(' ')}`, { timeoutMs: 10_000 }).catch(() => {})
     throw err
   }
 }

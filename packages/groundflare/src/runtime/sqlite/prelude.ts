@@ -72,8 +72,7 @@ export function preludeStatements(opts: SqlitePreludeOptions = {}): string[] {
   const cacheSize = -(opts.cacheSizeKb ?? PRELUDE_DEFAULTS.cacheSizeKb)
   const mmapSize = opts.mmapSizeBytes ?? PRELUDE_DEFAULTS.mmapSizeBytes
   const busyTimeout = opts.busyTimeoutMs ?? PRELUDE_DEFAULTS.busyTimeoutMs
-  const walCheckpoint =
-    opts.walAutocheckpointPages ?? PRELUDE_DEFAULTS.walAutocheckpointPages
+  const walCheckpoint = opts.walAutocheckpointPages ?? PRELUDE_DEFAULTS.walAutocheckpointPages
 
   return [
     'PRAGMA journal_mode = WAL',
@@ -162,10 +161,7 @@ export interface AssertPreludeOptions extends SqlitePreludeOptions {
  * call this after adapter setup so a missing PRAGMA can't silently
  * cripple production throughput.
  */
-export function assertPreludeApplied(
-  state: PreludeState,
-  opts: AssertPreludeOptions = {},
-): void {
+export function assertPreludeApplied(state: PreludeState, opts: AssertPreludeOptions = {}): void {
   const problems: string[] = []
 
   const validJournal = opts.allowMemoryJournal ? ['wal', 'memory'] : ['wal']
@@ -173,15 +169,12 @@ export function assertPreludeApplied(
     problems.push(`journal_mode=${state.journal_mode}, want ${validJournal.join('|')}`)
   }
 
-  const expectedCheckpoint =
-    opts.walAutocheckpointPages ?? PRELUDE_DEFAULTS.walAutocheckpointPages
+  const expectedCheckpoint = opts.walAutocheckpointPages ?? PRELUDE_DEFAULTS.walAutocheckpointPages
   // wal_autocheckpoint reads back as 0 on :memory: DBs (no WAL file);
   // skip the check there for the same reason we skip mmap.
   const skipCheckpoint = opts.allowMemoryJournal === true && state.journal_mode === 'memory'
   if (!skipCheckpoint && state.wal_autocheckpoint !== expectedCheckpoint) {
-    problems.push(
-      `wal_autocheckpoint=${state.wal_autocheckpoint}, want ${expectedCheckpoint}`,
-    )
+    problems.push(`wal_autocheckpoint=${state.wal_autocheckpoint}, want ${expectedCheckpoint}`)
   }
 
   if (state.synchronous !== 1) {

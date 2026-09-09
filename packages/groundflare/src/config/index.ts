@@ -6,10 +6,7 @@ export {
   stripJsonComments,
 } from './reader.js'
 
-export {
-  ConfigValidationError,
-  validateGroundflareSection,
-} from './validate.js'
+export { ConfigValidationError, validateGroundflareSection } from './validate.js'
 
 export {
   BINDING_DEFAULTS,

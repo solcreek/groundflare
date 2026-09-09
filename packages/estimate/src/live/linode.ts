@@ -56,9 +56,9 @@ interface LinodeType {
   id: string
   label: string
   vcpus: number
-  memory: number      // MB
-  disk: number        // MB
-  transfer: number    // GB
+  memory: number // MB
+  disk: number // MB
+  transfer: number // GB
   price: { hourly: number; monthly: number }
   class?: string
 }
@@ -108,16 +108,10 @@ export async function fetchLinodePricing(
   }
 
   if (res.status === 401 || res.status === 403) {
-    throw new LinodePricingError(
-      `Linode rejected the token (HTTP ${res.status})`,
-      'auth',
-    )
+    throw new LinodePricingError(`Linode rejected the token (HTTP ${res.status})`, 'auth')
   }
   if (!res.ok) {
-    throw new LinodePricingError(
-      `Linode /v4/linode/types returned HTTP ${res.status}`,
-      'network',
-    )
+    throw new LinodePricingError(`Linode /v4/linode/types returned HTTP ${res.status}`, 'network')
   }
 
   let body: unknown

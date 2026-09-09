@@ -28,9 +28,9 @@ interface DOSizeResponse {
 interface DOSize {
   slug: string
   vcpus: number
-  memory: number       // MB
-  disk: number         // GB
-  transfer: number     // TB
+  memory: number // MB
+  disk: number // GB
+  transfer: number // TB
   price_monthly: number
   available: boolean
 }
@@ -57,9 +57,7 @@ export interface DOLivePrices {
   readonly fetchedAt: string
 }
 
-export async function fetchDOPricing(
-  opts: FetchDOPricingOptions,
-): Promise<DOLivePrices> {
+export async function fetchDOPricing(opts: FetchDOPricingOptions): Promise<DOLivePrices> {
   const fetchFn = opts.fetchImpl ?? fetch
 
   let res: Response
@@ -80,16 +78,10 @@ export async function fetchDOPricing(
   }
 
   if (res.status === 401 || res.status === 403) {
-    throw new DOPricingError(
-      `DigitalOcean rejected the token (HTTP ${res.status})`,
-      'auth',
-    )
+    throw new DOPricingError(`DigitalOcean rejected the token (HTTP ${res.status})`, 'auth')
   }
   if (!res.ok) {
-    throw new DOPricingError(
-      `DigitalOcean /v2/sizes returned HTTP ${res.status}`,
-      'network',
-    )
+    throw new DOPricingError(`DigitalOcean /v2/sizes returned HTTP ${res.status}`, 'network')
   }
 
   let body: unknown

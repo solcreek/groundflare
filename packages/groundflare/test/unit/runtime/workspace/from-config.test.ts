@@ -1,5 +1,8 @@
 import { describe, it, expect } from 'vitest'
-import { detectUnsupportedBindings, workspaceWorkerFromConfig } from '../../../../src/runtime/workspace/index.js'
+import {
+  detectUnsupportedBindings,
+  workspaceWorkerFromConfig,
+} from '../../../../src/runtime/workspace/index.js'
 import type { GroundflareSection, WranglerConfig } from '../../../../src/config/index.js'
 
 function minimalWrangler(overrides: Partial<WranglerConfig> = {}): WranglerConfig {
@@ -29,9 +32,7 @@ describe('workspaceWorkerFromConfig', () => {
   it('reads domain from routes with custom_domain: true', () => {
     const w = workspaceWorkerFromConfig(
       minimalWrangler({
-        routes: [
-          { pattern: 'shop.example.com', custom_domain: true },
-        ],
+        routes: [{ pattern: 'shop.example.com', custom_domain: true }],
       }),
       {},
     )
@@ -41,9 +42,7 @@ describe('workspaceWorkerFromConfig', () => {
   it('[groundflare].domain takes precedence over routes', () => {
     const w = workspaceWorkerFromConfig(
       minimalWrangler({
-        routes: [
-          { pattern: 'shop.example.com', custom_domain: true },
-        ],
+        routes: [{ pattern: 'shop.example.com', custom_domain: true }],
       }),
       { domain: 'override.example.com' },
     )
@@ -53,10 +52,7 @@ describe('workspaceWorkerFromConfig', () => {
   it('ignores routes without custom_domain: true', () => {
     const w = workspaceWorkerFromConfig(
       minimalWrangler({
-        routes: [
-          { pattern: 'example.com/*' },
-          'other.example.com/*',
-        ],
+        routes: [{ pattern: 'example.com/*' }, 'other.example.com/*'],
       }),
       {},
     )
@@ -99,10 +95,7 @@ describe('workspaceWorkerFromConfig', () => {
   })
 
   it('omits vars when [vars] is empty', () => {
-    const w = workspaceWorkerFromConfig(
-      minimalWrangler({ vars: {} }),
-      {},
-    )
+    const w = workspaceWorkerFromConfig(minimalWrangler({ vars: {} }), {})
     expect(w.vars).toBeUndefined()
   })
 
@@ -110,7 +103,7 @@ describe('workspaceWorkerFromConfig', () => {
     expect(() =>
       workspaceWorkerFromConfig(
         minimalWrangler({
-          vars: { NESTED: ({ a: 1 } as unknown) as string },
+          vars: { NESTED: { a: 1 } as unknown as string },
         }),
         {},
       ),
@@ -133,9 +126,7 @@ describe('workspaceWorkerFromConfig', () => {
   it('maps D1 databases keyed by database_name', () => {
     const w = workspaceWorkerFromConfig(
       minimalWrangler({
-        d1_databases: [
-          { binding: 'DB', database_name: 'production', database_id: 'd1-1' },
-        ],
+        d1_databases: [{ binding: 'DB', database_name: 'production', database_id: 'd1-1' }],
       }),
       {},
     )
@@ -171,9 +162,13 @@ describe('workspaceWorkerFromConfig', () => {
   })
 
   it('deployedEntryName override changes the file name in entryPath', () => {
-    const w = workspaceWorkerFromConfig(minimalWrangler(), {}, {
-      deployedEntryName: 'bundle.mjs',
-    })
+    const w = workspaceWorkerFromConfig(
+      minimalWrangler(),
+      {},
+      {
+        deployedEntryName: 'bundle.mjs',
+      },
+    )
     expect(w.entryPath).toBe('workers/api/code/current/bundle.mjs')
   })
 

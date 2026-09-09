@@ -1,17 +1,10 @@
 import { describe, expect, it } from 'vitest'
 
-import {
-  BAKED_PRICES,
-  computeEstimate,
-  renderEstimate,
-  USAGE_DEFAULTS,
-} from '../../src/index.js'
+import { BAKED_PRICES, computeEstimate, renderEstimate, USAGE_DEFAULTS } from '../../src/index.js'
 
 describe('renderEstimate', () => {
   it('produces a multi-line ASCII box', () => {
-    const out = renderEstimate(
-      computeEstimate(USAGE_DEFAULTS, BAKED_PRICES, { confidence: 'low' }),
-    )
+    const out = renderEstimate(computeEstimate(USAGE_DEFAULTS, BAKED_PRICES, { confidence: 'low' }))
     expect(out.split('\n').length).toBeGreaterThan(10)
     expect(out).toMatch(/^\+-+\+$/m)
   })
@@ -52,11 +45,9 @@ describe('renderEstimate', () => {
   })
 
   it('lists warnings when present', () => {
-    const e = computeEstimate(
-      { ...USAGE_DEFAULTS, usesWorkersAI: true },
-      BAKED_PRICES,
-      { confidence: 'low' },
-    )
+    const e = computeEstimate({ ...USAGE_DEFAULTS, usesWorkersAI: true }, BAKED_PRICES, {
+      confidence: 'low',
+    })
     const out = renderEstimate(e)
     expect(out).toContain('Warnings')
     expect(out).toContain('Workers AI')

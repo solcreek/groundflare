@@ -24,9 +24,7 @@ describe('preludeStatements', () => {
   })
 
   it('accepts custom busy_timeout', () => {
-    expect(preludeStatements({ busyTimeoutMs: 10000 })).toContain(
-      'PRAGMA busy_timeout = 10000',
-    )
+    expect(preludeStatements({ busyTimeoutMs: 10000 })).toContain('PRAGMA busy_timeout = 10000')
   })
 
   it('uses default wal_autocheckpoint of 10000 pages', () => {
@@ -50,9 +48,7 @@ describe('preludeStatements', () => {
   })
 
   it('encodes custom cacheSizeKb as negative', () => {
-    expect(preludeStatements({ cacheSizeKb: 128_000 })).toContain(
-      'PRAGMA cache_size = -128000',
-    )
+    expect(preludeStatements({ cacheSizeKb: 128_000 })).toContain('PRAGMA cache_size = -128000')
   })
 
   it('uses default mmap_size of 256 MB', () => {
@@ -173,9 +169,7 @@ describe('assertPreludeApplied', () => {
   })
 
   it('flags synchronous != 1 (NORMAL)', () => {
-    expect(() => assertPreludeApplied({ ...happy, synchronous: 2 })).toThrow(
-      /synchronous=2/,
-    )
+    expect(() => assertPreludeApplied({ ...happy, synchronous: 2 })).toThrow(/synchronous=2/)
   })
 
   it('flags cache_size mismatch using negative-KB convention', () => {
@@ -193,9 +187,7 @@ describe('assertPreludeApplied', () => {
   })
 
   it('flags foreign_keys off', () => {
-    expect(() => assertPreludeApplied({ ...happy, foreign_keys: 0 })).toThrow(
-      /foreign_keys=0/,
-    )
+    expect(() => assertPreludeApplied({ ...happy, foreign_keys: 0 })).toThrow(/foreign_keys=0/)
   })
 
   it('reports all problems in one error, not just the first', () => {

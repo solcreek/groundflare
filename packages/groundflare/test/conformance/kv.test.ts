@@ -16,10 +16,7 @@ import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { SqliteKVAdapter } from '../../src/runtime/kv/index.js'
-import {
-  runKvConformanceSuite,
-  type KvFixture,
-} from './shared/kv-spec.js'
+import { runKvConformanceSuite, type KvFixture } from './shared/kv-spec.js'
 
 const sqliteFixture: KvFixture = {
   name: 'sqlite (better-sqlite3)',
@@ -39,10 +36,7 @@ const sqliteFixture: KvFixture = {
   },
 }
 
-runKvConformanceSuite(
-  { describe, test, expect, beforeEach, afterEach } as never,
-  sqliteFixture,
-)
+runKvConformanceSuite({ describe, test, expect, beforeEach, afterEach } as never, sqliteFixture)
 
 describe('SqliteKVAdapter internals', () => {
   test('upperBoundFor is unique across simple prefixes', async () => {

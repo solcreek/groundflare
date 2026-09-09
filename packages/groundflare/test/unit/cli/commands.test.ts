@@ -37,9 +37,7 @@ describe('main command', () => {
   it('wires up all expected subcommands', async () => {
     const main = await buildMain()
     const subs =
-      typeof main.subCommands === 'function'
-        ? await main.subCommands()
-        : main.subCommands
+      typeof main.subCommands === 'function' ? await main.subCommands() : main.subCommands
     expect(Object.keys(subs ?? {}).sort()).toEqual(
       [
         'bun',

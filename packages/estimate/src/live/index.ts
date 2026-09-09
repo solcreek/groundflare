@@ -34,9 +34,7 @@ export interface RefreshedPrices {
   readonly sources: readonly PriceSource[]
 }
 
-export async function refreshPrices(
-  opts: RefreshPricesOptions,
-): Promise<RefreshedPrices> {
+export async function refreshPrices(opts: RefreshPricesOptions): Promise<RefreshedPrices> {
   const sources: PriceSource[] = []
   let prices = opts.baked
 

@@ -256,9 +256,7 @@ describe('Stage: system.install-services', () => {
       'sudo install -m 0644 -o root -g root /tmp/groundflare-r2.service.upload /etc/systemd/system/groundflare-r2.service',
     )
     // R2 unit gets enable --now so it's running before workerd needs it.
-    expect(runCalls[4]?.command).toContain(
-      'sudo systemctl enable --now groundflare-r2.service',
-    )
+    expect(runCalls[4]?.command).toContain('sudo systemctl enable --now groundflare-r2.service')
   })
 
   it('throws when the systemctl reload fails', async () => {

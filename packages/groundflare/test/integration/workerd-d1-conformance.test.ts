@@ -24,11 +24,7 @@ import {
   type WorkspaceManifest,
 } from '../../src/runtime/workspace/index.js'
 import { renderCapnpConfig } from '../../src/runtime/workerd/capnp/index.js'
-import {
-  pickFreePort,
-  spawnWorkerd,
-  type SpawnedWorkerd,
-} from './spawn-workerd.js'
+import { pickFreePort, spawnWorkerd, type SpawnedWorkerd } from './spawn-workerd.js'
 
 const D1_WORKER_SOURCE = `
 export default {
@@ -114,9 +110,7 @@ class WorkerdD1Proxy {
     return new WorkerdD1Statement(this.wd, this.host, sql, [])
   }
 
-  async batch(
-    statements: WorkerdD1Statement[],
-  ): Promise<D1ProxyResult[]> {
+  async batch(statements: WorkerdD1Statement[]): Promise<D1ProxyResult[]> {
     const body = {
       statements: statements.map((s) => ({
         sql: s._sql,
@@ -144,9 +138,7 @@ class WorkerdD1Proxy {
     })
     if (res.status !== 200) {
       const parsed = tryJson(res.body)
-      throw new Error(
-        parsed?.error ?? `workerd ${path} failed: ${res.status} ${res.body}`,
-      )
+      throw new Error(parsed?.error ?? `workerd ${path} failed: ${res.status} ${res.body}`)
     }
     return JSON.parse(res.body)
   }
@@ -161,10 +153,7 @@ class WorkerdD1Statement {
   ) {}
 
   bind(...values: unknown[]): WorkerdD1Statement {
-    return new WorkerdD1Statement(this.wd, this.host, this._sql, [
-      ...this._params,
-      ...values,
-    ])
+    return new WorkerdD1Statement(this.wd, this.host, this._sql, [...this._params, ...values])
   }
 
   async first<U = unknown>(column?: string): Promise<U | null> {
@@ -210,9 +199,7 @@ class WorkerdD1Statement {
     })
     if (res.status !== 200) {
       const parsed = tryJson(res.body)
-      throw new Error(
-        parsed?.error ?? `workerd ${path} failed: ${res.status} ${res.body}`,
-      )
+      throw new Error(parsed?.error ?? `workerd ${path} failed: ${res.status} ${res.body}`)
     }
     return JSON.parse(res.body)
   }
@@ -243,245 +230,200 @@ let d1: WorkerdD1Proxy | null = null
 
 const STATE_BASE = 'do-state'
 
-describe(
-  'D1 conformance [workerd (DO-backed)]',
-  () => {
-    beforeAll(async () => {
-      const port = await pickFreePort()
-      const config = buildCapnpFromWorkspace(MANIFEST, {
-        listenAddress: `127.0.0.1:${port}`,
-        stateBaseDir: STATE_BASE,
-      })
-      const capnp = renderCapnpConfig(config)
-      wd = await spawnWorkerd({
-        port,
-        capnp,
-        modules: { 'user.js': D1_WORKER_SOURCE },
-        extraDirs: [`${STATE_BASE}/api/d1/d1conf`],
-        healthTimeoutMs: 15_000,
-      })
-      d1 = new WorkerdD1Proxy(wd, 'api.test')
+describe('D1 conformance [workerd (DO-backed)]', () => {
+  beforeAll(async () => {
+    const port = await pickFreePort()
+    const config = buildCapnpFromWorkspace(MANIFEST, {
+      listenAddress: `127.0.0.1:${port}`,
+      stateBaseDir: STATE_BASE,
+    })
+    const capnp = renderCapnpConfig(config)
+    wd = await spawnWorkerd({
+      port,
+      capnp,
+      modules: { 'user.js': D1_WORKER_SOURCE },
+      extraDirs: [`${STATE_BASE}/api/d1/d1conf`],
+      healthTimeoutMs: 15_000,
+    })
+    d1 = new WorkerdD1Proxy(wd, 'api.test')
 
-      await d1.exec(
-        `CREATE TABLE IF NOT EXISTS users (
+    await d1.exec(
+      `CREATE TABLE IF NOT EXISTS users (
            id INTEGER PRIMARY KEY AUTOINCREMENT,
            name TEXT NOT NULL,
            email TEXT UNIQUE,
            age INTEGER
          )`,
-      )
-    }, 30_000)
+    )
+  }, 30_000)
 
-    afterAll(async () => {
-      if (wd) await wd.stop()
+  afterAll(async () => {
+    if (wd) await wd.stop()
+  })
+
+  describe('prepare + bind + first/all/run', () => {
+    it('run INSERT returns success + meta with changes', async () => {
+      const result = await d1!
+        .prepare('INSERT INTO users(name, email) VALUES (?, ?)')
+        .bind('alice', 'alice@conformance.test')
+        .run()
+      expect(result.success).toBe(true)
+      expect(result.meta.changes).toBeGreaterThanOrEqual(1)
     })
 
-    describe('prepare + bind + first/all/run', () => {
-      it('run INSERT returns success + meta with changes', async () => {
-        const result = await d1!
-          .prepare('INSERT INTO users(name, email) VALUES (?, ?)')
-          .bind('alice', 'alice@conformance.test')
-          .run()
-        expect(result.success).toBe(true)
-        expect(result.meta.changes).toBeGreaterThanOrEqual(1)
-      })
-
-      it('all() returns rows matching CF shape', async () => {
-        await d1!
-          .prepare('INSERT INTO users(name, email) VALUES (?, ?)')
-          .bind('x-all1', 'x1@c.t')
-          .run()
-        await d1!
-          .prepare('INSERT INTO users(name, email) VALUES (?, ?)')
-          .bind('x-all2', 'x2@c.t')
-          .run()
-        const res = await d1!
-          .prepare(
-            "SELECT name, email FROM users WHERE email LIKE '%@c.t' ORDER BY name",
-          )
-          .all()
-        expect(res.success).toBe(true)
-        expect(res.results.length).toBe(2)
-      })
-
-      it('first() returns only the first row', async () => {
-        await d1!
-          .prepare('INSERT INTO users(name) VALUES (?)')
-          .bind('first-test')
-          .run()
-        const row = await d1!
-          .prepare("SELECT name FROM users WHERE name = 'first-test'")
-          .first<{ name: string }>()
-        expect(row).toEqual({ name: 'first-test' })
-      })
-
-      it('first() with column name returns that value', async () => {
-        const name = await d1!
-          .prepare("SELECT name FROM users WHERE name = 'first-test'")
-          .first<string>('name')
-        expect(name).toBe('first-test')
-      })
-
-      it('first() returns null for no rows', async () => {
-        const row = await d1!
-          .prepare("SELECT * FROM users WHERE name = 'nobody'")
-          .first()
-        expect(row).toBe(null)
-      })
-
-      it('bind() creates a fresh statement', async () => {
-        const ps = d1!.prepare('INSERT INTO users(name) VALUES (?)')
-        await ps.bind('bind-a').run()
-        await ps.bind('bind-b').run()
-        const res = await d1!
-          .prepare(
-            "SELECT name FROM users WHERE name LIKE 'bind-%' ORDER BY name",
-          )
-          .all()
-        expect(
-          (res.results as { name: string }[]).map((r) => r.name),
-        ).toEqual(['bind-a', 'bind-b'])
-      })
+    it('all() returns rows matching CF shape', async () => {
+      await d1!
+        .prepare('INSERT INTO users(name, email) VALUES (?, ?)')
+        .bind('x-all1', 'x1@c.t')
+        .run()
+      await d1!
+        .prepare('INSERT INTO users(name, email) VALUES (?, ?)')
+        .bind('x-all2', 'x2@c.t')
+        .run()
+      const res = await d1!
+        .prepare("SELECT name, email FROM users WHERE email LIKE '%@c.t' ORDER BY name")
+        .all()
+      expect(res.success).toBe(true)
+      expect(res.results.length).toBe(2)
     })
 
-    describe('data types', () => {
-      it('NULL is preserved', async () => {
-        await d1!
-          .prepare('INSERT INTO users(name, age) VALUES (?, ?)')
-          .bind('null-test', null)
-          .run()
-        const row = await d1!
-          .prepare("SELECT age FROM users WHERE name = 'null-test'")
-          .first<{ age: number | null }>()
-        expect(row?.age).toBe(null)
-      })
-
-      it('INTEGER round-trips', async () => {
-        await d1!
-          .prepare('INSERT INTO users(name, age) VALUES (?, ?)')
-          .bind('int-test', 42)
-          .run()
-        const row = await d1!
-          .prepare("SELECT age FROM users WHERE name = 'int-test'")
-          .first<{ age: number }>()
-        expect(row?.age).toBe(42)
-      })
-
-      it('TEXT with unicode round-trips', async () => {
-        await d1!
-          .prepare('INSERT INTO users(name) VALUES (?)')
-          .bind('小明')
-          .run()
-        const row = await d1!
-          .prepare("SELECT name FROM users WHERE name = '小明'")
-          .first<{ name: string }>()
-        expect(row?.name).toBe('小明')
-      })
+    it('first() returns only the first row', async () => {
+      await d1!.prepare('INSERT INTO users(name) VALUES (?)').bind('first-test').run()
+      const row = await d1!
+        .prepare("SELECT name FROM users WHERE name = 'first-test'")
+        .first<{ name: string }>()
+      expect(row).toEqual({ name: 'first-test' })
     })
 
-    describe('raw()', () => {
-      it('returns arrays instead of objects', async () => {
-        await d1!
-          .prepare('INSERT INTO users(name, age) VALUES (?, ?)')
-          .bind('raw-a', 1)
-          .run()
-        await d1!
-          .prepare('INSERT INTO users(name, age) VALUES (?, ?)')
-          .bind('raw-b', 2)
-          .run()
-        const rows = await d1!
-          .prepare(
-            "SELECT name, age FROM users WHERE name LIKE 'raw-%' ORDER BY name",
-          )
-          .raw<[string, number]>()
-        expect(rows).toEqual([
-          ['raw-a', 1],
-          ['raw-b', 2],
+    it('first() with column name returns that value', async () => {
+      const name = await d1!
+        .prepare("SELECT name FROM users WHERE name = 'first-test'")
+        .first<string>('name')
+      expect(name).toBe('first-test')
+    })
+
+    it('first() returns null for no rows', async () => {
+      const row = await d1!.prepare("SELECT * FROM users WHERE name = 'nobody'").first()
+      expect(row).toBe(null)
+    })
+
+    it('bind() creates a fresh statement', async () => {
+      const ps = d1!.prepare('INSERT INTO users(name) VALUES (?)')
+      await ps.bind('bind-a').run()
+      await ps.bind('bind-b').run()
+      const res = await d1!
+        .prepare("SELECT name FROM users WHERE name LIKE 'bind-%' ORDER BY name")
+        .all()
+      expect((res.results as { name: string }[]).map((r) => r.name)).toEqual(['bind-a', 'bind-b'])
+    })
+  })
+
+  describe('data types', () => {
+    it('NULL is preserved', async () => {
+      await d1!.prepare('INSERT INTO users(name, age) VALUES (?, ?)').bind('null-test', null).run()
+      const row = await d1!
+        .prepare("SELECT age FROM users WHERE name = 'null-test'")
+        .first<{ age: number | null }>()
+      expect(row?.age).toBe(null)
+    })
+
+    it('INTEGER round-trips', async () => {
+      await d1!.prepare('INSERT INTO users(name, age) VALUES (?, ?)').bind('int-test', 42).run()
+      const row = await d1!
+        .prepare("SELECT age FROM users WHERE name = 'int-test'")
+        .first<{ age: number }>()
+      expect(row?.age).toBe(42)
+    })
+
+    it('TEXT with unicode round-trips', async () => {
+      await d1!.prepare('INSERT INTO users(name) VALUES (?)').bind('小明').run()
+      const row = await d1!
+        .prepare("SELECT name FROM users WHERE name = '小明'")
+        .first<{ name: string }>()
+      expect(row?.name).toBe('小明')
+    })
+  })
+
+  describe('raw()', () => {
+    it('returns arrays instead of objects', async () => {
+      await d1!.prepare('INSERT INTO users(name, age) VALUES (?, ?)').bind('raw-a', 1).run()
+      await d1!.prepare('INSERT INTO users(name, age) VALUES (?, ?)').bind('raw-b', 2).run()
+      const rows = await d1!
+        .prepare("SELECT name, age FROM users WHERE name LIKE 'raw-%' ORDER BY name")
+        .raw<[string, number]>()
+      expect(rows).toEqual([
+        ['raw-a', 1],
+        ['raw-b', 2],
+      ])
+    })
+  })
+
+  describe('batch()', () => {
+    it('runs statements in order', async () => {
+      const results = await d1!.batch([
+        d1!.prepare('INSERT INTO users(name) VALUES (?)').bind('batch-a'),
+        d1!.prepare('INSERT INTO users(name) VALUES (?)').bind('batch-b'),
+        d1!.prepare("SELECT COUNT(*) AS n FROM users WHERE name LIKE 'batch-%'"),
+      ])
+      expect(results.length).toBe(3)
+      // CF D1's meta.changes may aggregate across the batch; only
+      // assert the SELECT result which is deterministic.
+      expect((results[2]?.results[0] as { n: number })?.n).toBe(2)
+    })
+
+    it('rolls back on statement failure', async () => {
+      await d1!.prepare('INSERT INTO users(name) VALUES (?)').bind('pre-batch-fail').run()
+      try {
+        await d1!.batch([
+          d1!.prepare('INSERT INTO users(name) VALUES (?)').bind('batch-fail-a'),
+          d1!.prepare('INSERT INTO users(name) VALUES (?)').bind(null),
         ])
-      })
+      } catch {
+        // expected
+      }
+      const row = await d1!
+        .prepare("SELECT COUNT(*) AS n FROM users WHERE name = 'batch-fail-a'")
+        .first<{ n: number }>()
+      expect(row?.n).toBe(0)
     })
 
-    describe('batch()', () => {
-      it('runs statements in order', async () => {
-        const results = await d1!.batch([
-          d1!.prepare('INSERT INTO users(name) VALUES (?)').bind('batch-a'),
-          d1!.prepare('INSERT INTO users(name) VALUES (?)').bind('batch-b'),
-          d1!
-            .prepare(
-              "SELECT COUNT(*) AS n FROM users WHERE name LIKE 'batch-%'",
-            ),
-        ])
-        expect(results.length).toBe(3)
-        // CF D1's meta.changes may aggregate across the batch; only
-        // assert the SELECT result which is deterministic.
-        expect((results[2]?.results[0] as { n: number })?.n).toBe(2)
-      })
-
-      it('rolls back on statement failure', async () => {
-        await d1!
-          .prepare('INSERT INTO users(name) VALUES (?)')
-          .bind('pre-batch-fail')
-          .run()
-        try {
-          await d1!.batch([
-            d1!
-              .prepare('INSERT INTO users(name) VALUES (?)')
-              .bind('batch-fail-a'),
-            d1!.prepare('INSERT INTO users(name) VALUES (?)').bind(null),
-          ])
-        } catch {
-          // expected
-        }
-        const row = await d1!
-          .prepare(
-            "SELECT COUNT(*) AS n FROM users WHERE name = 'batch-fail-a'",
-          )
-          .first<{ n: number }>()
-        expect(row?.n).toBe(0)
-      })
-
-      it('empty batch returns empty array', async () => {
-        const results = await d1!.batch([])
-        expect(results).toEqual([])
-      })
+    it('empty batch returns empty array', async () => {
+      const results = await d1!.batch([])
+      expect(results).toEqual([])
     })
+  })
 
-    describe('exec()', () => {
-      it('runs multi-statement migration', async () => {
-        const res = await d1!.exec(
-          `CREATE TABLE IF NOT EXISTS tags (id INTEGER PRIMARY KEY, label TEXT);
+  describe('exec()', () => {
+    it('runs multi-statement migration', async () => {
+      const res = await d1!.exec(
+        `CREATE TABLE IF NOT EXISTS tags (id INTEGER PRIMARY KEY, label TEXT);
            CREATE INDEX IF NOT EXISTS tags_label ON tags(label);`,
-        )
-        expect(res.count).toBe(2)
-      })
-
-      it('trailing semicolons not counted', async () => {
-        const res = await d1!.exec('SELECT 1;;;')
-        expect(res.count).toBe(1)
-      })
+      )
+      expect(res.count).toBe(2)
     })
 
-    describe('meta.served_by', () => {
-      it('identifies the runtime', async () => {
-        const run = await d1!
-          .prepare('INSERT INTO users(name) VALUES (?)')
-          .bind('served-by')
-          .run()
-        expect(run.meta.served_by).toBeDefined()
-        expect(typeof run.meta.served_by).toBe('string')
-      })
+    it('trailing semicolons not counted', async () => {
+      const res = await d1!.exec('SELECT 1;;;')
+      expect(res.count).toBe(1)
     })
+  })
 
-    describe('RETURNING clause', () => {
-      it('INSERT ... RETURNING delivers rows via all()', async () => {
-        const res = await d1!
-          .prepare('INSERT INTO users(name) VALUES (?) RETURNING id, name')
-          .bind('ret-test')
-          .all()
-        expect(res.results.length).toBe(1)
-        expect((res.results[0] as { name: string })?.name).toBe('ret-test')
-      })
+  describe('meta.served_by', () => {
+    it('identifies the runtime', async () => {
+      const run = await d1!.prepare('INSERT INTO users(name) VALUES (?)').bind('served-by').run()
+      expect(run.meta.served_by).toBeDefined()
+      expect(typeof run.meta.served_by).toBe('string')
     })
-  },
-  120_000,
-)
+  })
+
+  describe('RETURNING clause', () => {
+    it('INSERT ... RETURNING delivers rows via all()', async () => {
+      const res = await d1!
+        .prepare('INSERT INTO users(name) VALUES (?) RETURNING id, name')
+        .bind('ret-test')
+        .all()
+      expect(res.results.length).toBe(1)
+      expect((res.results[0] as { name: string })?.name).toBe('ret-test')
+    })
+  })
+}, 120_000)

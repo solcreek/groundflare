@@ -9,12 +9,7 @@
  * collaborator is overridable via options.
  */
 
-import {
-  UnknownProviderError,
-  createProvider,
-  type Provider,
-  type ProviderName,
-} from 'capstan'
+import { UnknownProviderError, createProvider, type Provider, type ProviderName } from 'capstan'
 import { FileSecretStore, type SecretStore } from '../secret/index.js'
 
 import { BootstrapOrchestrator } from './orchestrator.js'
@@ -133,9 +128,7 @@ export async function runBootstrap(opts: RunBootstrapOptions): Promise<Bootstrap
     provisionStage({
       size: opts.size,
       region: opts.region,
-      ...(opts.hostnameOverride !== undefined
-        ? { hostnameOverride: opts.hostnameOverride }
-        : {}),
+      ...(opts.hostnameOverride !== undefined ? { hostnameOverride: opts.hostnameOverride } : {}),
       ...(opts.image !== undefined ? { image: opts.image } : {}),
       notifyEmail: opts.acmeEmail,
       ...(opts.runtime !== undefined ? { runtime: opts.runtime } : {}),
@@ -171,10 +164,7 @@ export async function runBootstrap(opts: RunBootstrapOptions): Promise<Bootstrap
   return ctx.state
 }
 
-async function constructProvider(
-  name: ProviderName,
-  secrets: SecretStore,
-): Promise<Provider> {
+async function constructProvider(name: ProviderName, secrets: SecretStore): Promise<Provider> {
   const tokenKey = `provider.${name}.token`
   const token = await secrets.get(tokenKey)
   if (token === null || token.length === 0) {

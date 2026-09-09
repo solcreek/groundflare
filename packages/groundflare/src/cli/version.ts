@@ -10,9 +10,7 @@ import { fileURLToPath } from 'node:url'
 
 export async function resolveCliVersion(): Promise<string> {
   try {
-    const pkgPath = fileURLToPath(
-      new URL('../../package.json', import.meta.url),
-    )
+    const pkgPath = fileURLToPath(new URL('../../package.json', import.meta.url))
     const raw = await readFile(pkgPath, 'utf-8')
     const parsed = JSON.parse(raw) as { version?: unknown }
     if (typeof parsed.version === 'string' && parsed.version.length > 0) {

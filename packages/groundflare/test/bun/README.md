@@ -31,4 +31,4 @@ test/bun/
 - Anything about the workerd track → use `test/conformance` or `test/integration` with vitest.
 - Generator output assertions (string shape of generated shim) → `test/unit/runtime/bun/*.test.ts` with vitest; the generators run as Node code.
 
-Only the code that actually *executes inside Bun on the VPS* belongs here.
+Only the code that actually _executes inside Bun on the VPS_ belongs here.

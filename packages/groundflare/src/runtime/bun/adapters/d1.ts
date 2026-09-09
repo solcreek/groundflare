@@ -50,9 +50,7 @@ export interface D1PreparedStatement {
 
 export interface D1Adapter {
   prepare(sql: string): D1PreparedStatement
-  batch<T = Record<string, unknown>>(
-    statements: D1PreparedStatement[],
-  ): Promise<D1Result<T>[]>
+  batch<T = Record<string, unknown>>(statements: D1PreparedStatement[]): Promise<D1Result<T>[]>
   exec(sql: string): Promise<D1ExecResult>
 }
 
@@ -84,10 +82,7 @@ export class BunD1Adapter implements D1Adapter {
   private readonly ownsConnection: boolean
   private readonly stmtCache = new Map<string, Statement>()
 
-  constructor(
-    db: Database,
-    opts: { now?: () => number; ownsConnection?: boolean } = {},
-  ) {
+  constructor(db: Database, opts: { now?: () => number; ownsConnection?: boolean } = {}) {
     this.db = db
     this.now = opts.now ?? Date.now
     this.ownsConnection = opts.ownsConnection ?? false
@@ -115,9 +110,7 @@ export class BunD1Adapter implements D1Adapter {
 
     for (const s of statements) {
       if (!(s instanceof BunPreparedStatement) || s.adapter !== this) {
-        throw new TypeError(
-          'D1.batch: every entry must come from the same adapter instance',
-        )
+        throw new TypeError('D1.batch: every entry must come from the same adapter instance')
       }
     }
 
@@ -163,9 +156,7 @@ export class BunD1Adapter implements D1Adapter {
   }
 }
 
-class BunPreparedStatement<T = Record<string, unknown>>
-  implements D1PreparedStatement
-{
+class BunPreparedStatement<T = Record<string, unknown>> implements D1PreparedStatement {
   constructor(
     /** @internal — readable by the owning adapter for batch ownership checks */
     readonly adapter: BunD1Adapter,
@@ -174,17 +165,12 @@ class BunPreparedStatement<T = Record<string, unknown>>
   ) {}
 
   bind(...values: unknown[]): D1PreparedStatement {
-    return new BunPreparedStatement(this.adapter, this.sql, [
-      ...this.args,
-      ...values,
-    ])
+    return new BunPreparedStatement(this.adapter, this.sql, [...this.args, ...values])
   }
 
   async first<U = unknown>(column?: string): Promise<U | null> {
     const stmt = this.adapter._prepareCached(this.sql)
-    const row = stmt.get(...(this.args as unknown[])) as
-      | Record<string, unknown>
-      | null
+    const row = stmt.get(...(this.args as unknown[])) as Record<string, unknown> | null
     if (!row) return null
     if (column !== undefined) return (row[column] ?? null) as U | null
     return row as unknown as U

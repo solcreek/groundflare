@@ -47,9 +47,7 @@ export interface SignedHeaders {
   readonly xAmzSecurityToken?: string
 }
 
-export async function signRequest(
-  opts: SignOptions,
-): Promise<Record<string, string>> {
+export async function signRequest(opts: SignOptions): Promise<Record<string, string>> {
   const now = opts.nowMs ?? Date.now()
   const { date, dateTime } = formatAmzDate(now)
   const url = new URL(opts.url)
@@ -123,10 +121,7 @@ function formatAmzDate(now: number): { date: string; dateTime: string } {
 }
 
 export async function hexSha256(input: string): Promise<string> {
-  const buf = await crypto.subtle.digest(
-    'SHA-256',
-    new TextEncoder().encode(input),
-  )
+  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(input))
   return toHex(new Uint8Array(buf))
 }
 
@@ -143,18 +138,11 @@ async function hexHmac(key: Uint8Array, message: string): Promise<string> {
     false,
     ['sign'],
   )
-  const sig = await crypto.subtle.sign(
-    'HMAC',
-    k,
-    new TextEncoder().encode(message),
-  )
+  const sig = await crypto.subtle.sign('HMAC', k, new TextEncoder().encode(message))
   return toHex(new Uint8Array(sig))
 }
 
-async function hmacRaw(
-  key: Uint8Array,
-  message: string,
-): Promise<Uint8Array> {
+async function hmacRaw(key: Uint8Array, message: string): Promise<Uint8Array> {
   const k = await crypto.subtle.importKey(
     'raw',
     key as BufferSource,
@@ -162,11 +150,7 @@ async function hmacRaw(
     false,
     ['sign'],
   )
-  const sig = await crypto.subtle.sign(
-    'HMAC',
-    k,
-    new TextEncoder().encode(message),
-  )
+  const sig = await crypto.subtle.sign('HMAC', k, new TextEncoder().encode(message))
   return new Uint8Array(sig)
 }
 
@@ -207,12 +191,7 @@ function canonicalizeQuery(params: URLSearchParams): string {
   pairs.sort(([ak, av], [bk, bv]) =>
     ak === bk ? (av < bv ? -1 : av > bv ? 1 : 0) : ak < bk ? -1 : 1,
   )
-  return pairs
-    .map(
-      ([k, v]) =>
-        `${encodeRFC3986(k)}=${encodeRFC3986(v)}`,
-    )
-    .join('&')
+  return pairs.map(([k, v]) => `${encodeRFC3986(k)}=${encodeRFC3986(v)}`).join('&')
 }
 
 function encodeRFC3986(s: string): string {

@@ -8,28 +8,23 @@
 
 import { describe, expect, it } from 'vitest'
 
-import {
-  derivePreviewHostname,
-  resolvePreviewProvider,
-} from '../../../src/deploy/preview.js'
+import { derivePreviewHostname, resolvePreviewProvider } from '../../../src/deploy/preview.js'
 
 describe('derivePreviewHostname', () => {
   it('dash-separates an IPv4 for sslip.io', () => {
-    expect(derivePreviewHostname({ ipv4: '203.0.113.10' })).toBe(
-      '203-0-113-10.sslip.io',
-    )
+    expect(derivePreviewHostname({ ipv4: '203.0.113.10' })).toBe('203-0-113-10.sslip.io')
   })
 
   it('honours an explicit nip.io provider', () => {
-    expect(
-      derivePreviewHostname({ ipv4: '203.0.113.10', provider: 'nip.io' }),
-    ).toBe('203-0-113-10.nip.io')
+    expect(derivePreviewHostname({ ipv4: '203.0.113.10', provider: 'nip.io' })).toBe(
+      '203-0-113-10.nip.io',
+    )
   })
 
   it('prepends an optional subdomain prefix (multi-worker workspaces)', () => {
-    expect(
-      derivePreviewHostname({ ipv4: '203.0.113.10', prefix: 'api' }),
-    ).toBe('api.203-0-113-10.sslip.io')
+    expect(derivePreviewHostname({ ipv4: '203.0.113.10', prefix: 'api' })).toBe(
+      'api.203-0-113-10.sslip.io',
+    )
   })
 
   it('rejects non-IPv4 input rather than emit a broken hostname', () => {
@@ -39,12 +34,8 @@ describe('derivePreviewHostname', () => {
   })
 
   it('rejects out-of-range octets', () => {
-    expect(() => derivePreviewHostname({ ipv4: '10.0.0.999' })).toThrow(
-      /out of range/,
-    )
-    expect(() => derivePreviewHostname({ ipv4: '300.0.0.1' })).toThrow(
-      /out of range/,
-    )
+    expect(() => derivePreviewHostname({ ipv4: '10.0.0.999' })).toThrow(/out of range/)
+    expect(() => derivePreviewHostname({ ipv4: '300.0.0.1' })).toThrow(/out of range/)
   })
 
   it('rejects non-numeric octets', () => {

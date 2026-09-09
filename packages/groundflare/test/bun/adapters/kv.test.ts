@@ -12,14 +12,8 @@
  */
 
 import { describe, test, expect, beforeEach, afterEach } from 'bun:test'
-import {
-  BunKVAdapter,
-  upperBoundFor,
-} from '../../../src/runtime/bun/adapters/kv.ts'
-import {
-  runKvConformanceSuite,
-  type KvFixture,
-} from '../../conformance/shared/kv-spec.ts'
+import { BunKVAdapter, upperBoundFor } from '../../../src/runtime/bun/adapters/kv.ts'
+import { runKvConformanceSuite, type KvFixture } from '../../conformance/shared/kv-spec.ts'
 
 const bunFixture: KvFixture = {
   name: 'sqlite (bun:sqlite)',
@@ -37,18 +31,13 @@ const bunFixture: KvFixture = {
   },
 }
 
-runKvConformanceSuite(
-  { describe, test, expect, beforeEach, afterEach } as never,
-  bunFixture,
-)
+runKvConformanceSuite({ describe, test, expect, beforeEach, afterEach } as never, bunFixture)
 
 describe('BunKVAdapter — unsupported value types', () => {
   test('rejects numeric value', async () => {
     const a = BunKVAdapter.open(':memory:')
     try {
-      await expect(
-        a.put('k', 42 as unknown as string),
-      ).rejects.toThrow(/unsupported/)
+      await expect(a.put('k', 42 as unknown as string)).rejects.toThrow(/unsupported/)
     } finally {
       a.close()
     }

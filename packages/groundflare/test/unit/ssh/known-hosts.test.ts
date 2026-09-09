@@ -13,10 +13,7 @@ import { Readable, Writable } from 'node:stream'
 
 import { describe, expect, it, vi } from 'vitest'
 
-import {
-  removeKnownHostsEntries,
-  type SpawnFn,
-} from '../../../src/ssh/known-hosts.js'
+import { removeKnownHostsEntries, type SpawnFn } from '../../../src/ssh/known-hosts.js'
 
 interface MockChildConfig {
   exitCode?: number
@@ -72,10 +69,7 @@ function mockSpawn(configs: readonly MockChildConfig[]): {
 describe('removeKnownHostsEntries', () => {
   it('passes each host through to `ssh-keygen -R <host>`', async () => {
     const { spawnImpl, calls } = mockSpawn([{}, {}])
-    const result = await removeKnownHostsEntries(
-      ['203.0.113.10', '2001:db8::1'],
-      { spawnImpl },
-    )
+    const result = await removeKnownHostsEntries(['203.0.113.10', '2001:db8::1'], { spawnImpl })
     expect(calls).toEqual([
       { command: 'ssh-keygen', args: ['-R', '203.0.113.10'] },
       { command: 'ssh-keygen', args: ['-R', '2001:db8::1'] },
@@ -101,10 +95,7 @@ describe('removeKnownHostsEntries', () => {
         stderrChunks: ['Unable to read known_hosts: Permission denied\n'],
       },
     ])
-    const result = await removeKnownHostsEntries(
-      ['203.0.113.10', '203.0.113.20'],
-      { spawnImpl },
-    )
+    const result = await removeKnownHostsEntries(['203.0.113.10', '203.0.113.20'], { spawnImpl })
     expect(result.removed).toEqual(['203.0.113.10'])
     expect(result.errors).toHaveLength(1)
     expect(result.errors[0]?.host).toBe('203.0.113.20')
@@ -127,10 +118,7 @@ describe('removeKnownHostsEntries', () => {
       ['203.0.113.10', '', '203.0.113.10', '[203.0.113.10]:2222'],
       { spawnImpl },
     )
-    expect(calls.map((c) => c.args[1])).toEqual([
-      '203.0.113.10',
-      '[203.0.113.10]:2222',
-    ])
+    expect(calls.map((c) => c.args[1])).toEqual(['203.0.113.10', '[203.0.113.10]:2222'])
     expect(result.removed).toEqual(['203.0.113.10', '[203.0.113.10]:2222'])
   })
 

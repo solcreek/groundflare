@@ -28,7 +28,9 @@ export interface KvAdapterInSpec {
     },
   ): Promise<void>
   get(key: string, type?: KVGetTypeInSpec): Promise<unknown>
-  getWithMetadata<M = unknown>(key: string): Promise<{
+  getWithMetadata<M = unknown>(
+    key: string,
+  ): Promise<{
     value: unknown
     metadata: M | null
   }>
@@ -79,10 +81,7 @@ export interface KvTestDeps {
   afterEach: (fn: () => void | Promise<void>) => void
 }
 
-export function runKvConformanceSuite(
-  deps: KvTestDeps,
-  fixture: KvFixture,
-): void {
+export function runKvConformanceSuite(deps: KvTestDeps, fixture: KvFixture): void {
   const { describe, test, expect, beforeEach, afterEach } = deps
 
   describe(`KV conformance [${fixture.name}]`, () => {
@@ -218,12 +217,8 @@ export function runKvConformanceSuite(
       })
 
       test('put rejects non-positive expirationTtl', async () => {
-        await expect(
-          adapter.put('k', 'v', { expirationTtl: 0 }),
-        ).rejects.toThrow(/expirationTtl/)
-        await expect(
-          adapter.put('k', 'v', { expirationTtl: -5 }),
-        ).rejects.toThrow(/expirationTtl/)
+        await expect(adapter.put('k', 'v', { expirationTtl: 0 })).rejects.toThrow(/expirationTtl/)
+        await expect(adapter.put('k', 'v', { expirationTtl: -5 })).rejects.toThrow(/expirationTtl/)
       })
     })
 

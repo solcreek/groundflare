@@ -115,12 +115,7 @@ export function installServicesStage(opts: InstallServicesStageOptions): Stage {
           },
         ],
       })
-      await uploadAsRoot(
-        ctx,
-        caddyfile,
-        '/tmp/Caddyfile.upload',
-        caddyfileTarget,
-      )
+      await uploadAsRoot(ctx, caddyfile, '/tmp/Caddyfile.upload', caddyfileTarget)
       ctx.log('info', `installed ${caddyfileTarget}`)
 
       // ─── systemd: reload + enable (don't start workerd yet) ──────
@@ -129,9 +124,7 @@ export function installServicesStage(opts: InstallServicesStageOptions): Stage {
       // an R2 binding. weed without traffic uses ~50 MB so the cost is
       // bounded.
       const enableR2 =
-        weedProbe.exitCode === 0
-          ? 'sudo systemctl enable --now groundflare-r2.service && '
-          : ''
+        weedProbe.exitCode === 0 ? 'sudo systemctl enable --now groundflare-r2.service && ' : ''
       const reload = await ctx.ssh.run(
         'sudo systemctl daemon-reload && ' +
           'sudo systemctl enable groundflare-worker.service && ' +
