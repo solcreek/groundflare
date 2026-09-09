@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { mkdtemp, rm, writeFile, readFile, chmod, stat } from 'node:fs/promises'
-import { tmpdir, platform } from 'node:os'
+import { tmpdir, platform, homedir } from 'node:os'
 import { join } from 'node:path'
 import {
   FileSecretStore,
@@ -213,7 +213,9 @@ describe('FileSecretStore.defaultPath', () => {
     const original = process.env.XDG_CONFIG_HOME
     process.env.XDG_CONFIG_HOME = '/custom/xdg'
     try {
-      expect(FileSecretStore.defaultPath()).toBe('/custom/xdg/groundflare/secrets.json')
+      expect(FileSecretStore.defaultPath()).toBe(
+        join('/custom/xdg', 'groundflare', 'secrets.json'),
+      )
     } finally {
       if (original === undefined) delete process.env.XDG_CONFIG_HOME
       else process.env.XDG_CONFIG_HOME = original
@@ -224,8 +226,9 @@ describe('FileSecretStore.defaultPath', () => {
     const original = process.env.XDG_CONFIG_HOME
     delete process.env.XDG_CONFIG_HOME
     try {
-      const path = FileSecretStore.defaultPath()
-      expect(path.endsWith('/.config/groundflare/secrets.json')).toBe(true)
+      expect(FileSecretStore.defaultPath()).toBe(
+        join(homedir(), '.config', 'groundflare', 'secrets.json'),
+      )
     } finally {
       if (original !== undefined) process.env.XDG_CONFIG_HOME = original
     }

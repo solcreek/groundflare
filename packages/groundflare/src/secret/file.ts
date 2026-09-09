@@ -18,7 +18,6 @@
 
 import { mkdir, readFile, rename, stat, writeFile, chmod } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
-import { join as posixJoin } from 'node:path/posix'
 import { homedir } from 'node:os'
 import { randomBytes } from 'node:crypto'
 
@@ -43,13 +42,13 @@ export class FileSecretStore implements SecretStore {
   readonly path: string
 
   constructor(opts: FileSecretStoreOptions = {}) {
-    this.path = normalizePortablePath(opts.path ?? FileSecretStore.defaultPath())
+    this.path = opts.path ?? FileSecretStore.defaultPath()
   }
 
   static defaultPath(): string {
     const xdg = process.env.XDG_CONFIG_HOME
-    if (xdg) return posixJoin(xdg.replaceAll('\\', '/'), 'groundflare', 'secrets.json')
-    return posixJoin(homedir().replaceAll('\\', '/'), '.config', 'groundflare', 'secrets.json')
+    if (xdg) return join(xdg, 'groundflare', 'secrets.json')
+    return join(homedir(), '.config', 'groundflare', 'secrets.json')
   }
 
   async get(key: string): Promise<string | null> {
@@ -214,10 +213,6 @@ function isPermissionDenied(err: unknown): boolean {
   if (typeof err !== 'object' || err === null || !('code' in err)) return false
   const code = (err as { code: unknown }).code
   return code === 'EACCES' || code === 'EPERM'
-}
-
-function normalizePortablePath(path: string): string {
-  return path.replaceAll('\\', '/')
 }
 
 /**

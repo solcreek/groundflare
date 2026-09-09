@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { mkdtemp, rm, writeFile, stat } from 'node:fs/promises'
-import { tmpdir, platform } from 'node:os'
+import { tmpdir, platform, homedir } from 'node:os'
 import { join } from 'node:path'
 
 import { BootstrapStateStore, BootstrapError } from '../../../src/bootstrap/index.js'
@@ -101,7 +101,9 @@ describe('BootstrapStateStore.defaultDirectory', () => {
     const original = process.env.XDG_CONFIG_HOME
     process.env.XDG_CONFIG_HOME = '/custom/xdg'
     try {
-      expect(BootstrapStateStore.defaultDirectory()).toBe('/custom/xdg/groundflare/state')
+      expect(BootstrapStateStore.defaultDirectory()).toBe(
+        join('/custom/xdg', 'groundflare', 'state'),
+      )
     } finally {
       if (original === undefined) delete process.env.XDG_CONFIG_HOME
       else process.env.XDG_CONFIG_HOME = original
@@ -112,8 +114,8 @@ describe('BootstrapStateStore.defaultDirectory', () => {
     const original = process.env.XDG_CONFIG_HOME
     delete process.env.XDG_CONFIG_HOME
     try {
-      expect(BootstrapStateStore.defaultDirectory()).toMatch(
-        /\/\.config\/groundflare\/state$/,
+      expect(BootstrapStateStore.defaultDirectory()).toBe(
+        join(homedir(), '.config', 'groundflare', 'state'),
       )
     } finally {
       if (original !== undefined) process.env.XDG_CONFIG_HOME = original
