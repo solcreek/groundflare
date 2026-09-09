@@ -77,7 +77,7 @@ to a local SeaweedFS sidecar installed by cloud-init. If you'd rather
 back the bucket with B2 / Wasabi / real R2 / anything S3-compatible,
 add a `groundflare` block inside the r2_buckets entry — see
 [`../r2-smoke/wrangler.toml`](../r2-smoke/wrangler.toml) and the root
-[CHANGELOG](../../CHANGELOG.md#v050--self-host-r2-end-to-end) for
+[CHANGELOG](../../CHANGELOG.md#050---2026-04-17) for
 credential wiring.
 
 ## Known limitations

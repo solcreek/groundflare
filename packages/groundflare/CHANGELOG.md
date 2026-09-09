@@ -1,6 +1,48 @@
 # Changelog
 
-## v0.5.5 — Bun track `/__health` fix + provider abstraction split
+All notable changes to `groundflare` are documented here. The format follows
+[Keep a Changelog 1.1.0](https://keepachangelog.com/en/1.1.0/) and the
+project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+Entries from 0.5.5 and earlier predate the switch and keep their original
+prose; only their headings were normalised.
+
+## [Unreleased]
+
+### Changed
+
+- Declared minimum Node.js is now 22.13.0 (`engines.node`). Nothing new
+  requires it: `oxc-parser`, a runtime dependency since 0.5.x, already needed
+  >=22.12 and the lint toolchain 22.13, so `>=22` was never installable on
+  22.0–22.12. ([#3](https://github.com/solcreek/groundflare/pull/3))
+- Test runner upgraded from Vitest 2 to Vitest 5.
+  ([#3](https://github.com/solcreek/groundflare/pull/3),
+  [#5](https://github.com/solcreek/groundflare/pull/5))
+- Lint and format tooling moved from ESLint + Prettier to
+  [oxlint](https://oxc.rs/docs/guide/usage/linter.html) +
+  [oxfmt](https://oxc.rs/docs/guide/usage/formatter.html), with the same rule
+  set and formatting options. `npm run lint`, `npm run format` and
+  `npm run format:check` keep their names and now work from the repo root.
+  The source tree was reformatted once to match the committed options, so
+  `git blame` on most files points at that commit — use `git blame -w`.
+  ([#5](https://github.com/solcreek/groundflare/pull/5))
+- CI runs the check matrix on Windows for every package and fails on
+  unformatted code; line endings are pinned to LF via `.gitattributes`.
+  ([#3](https://github.com/solcreek/groundflare/pull/3),
+  [#4](https://github.com/solcreek/groundflare/pull/4),
+  [#5](https://github.com/solcreek/groundflare/pull/5))
+
+### Fixed
+
+- Integration test harness on Windows: the native `workerd` binary is spawned
+  directly so killing it cannot orphan a child that keeps the temp workdir
+  locked, temp-dir removal retries on lingering file handles, and the one unit
+  test that assumed `/` path separators. Contributed by
+  [@czenzel](https://github.com/czenzel).
+  ([#3](https://github.com/solcreek/groundflare/pull/3))
+
+## [0.5.5] - 2026-05-20
+
+_Bun track `/__health` fix + provider abstraction split_
 
 Two changes. One is a fix for a Bun-track regression that had been
 silently broken since the track shipped. The other is a refactor with
@@ -85,7 +127,9 @@ shipped an `exports` map for those paths): switch to
 `import { HetznerProvider } from 'capstan'`. The types and class
 shapes are identical; only the import specifier changed.
 
-## v0.5.4 — Drift detection hardening + destroy paper-cuts
+## [0.5.4] - 2026-04-17
+
+_Drift detection hardening + destroy paper-cuts_
 
 Four small improvements bundled after live-testing v0.5.2 on DO +
 Hetzner. No API / config changes.
@@ -168,7 +212,14 @@ launched. Drop the execArgv line when `engines.node` bumps to
 
 ---
 
-## v0.5.2 — Plan / apply, sslip.io previews, drift detection
+## [0.5.3] - 2026-04-17
+
+Committed in git but never published to npm; superseded by 0.5.4 the same
+day.
+
+## [0.5.2] - 2026-04-17
+
+_Plan / apply, sslip.io previews, drift detection_
 
 Minor UX release. Non-breaking for existing workflows — every new
 surface is opt-in via flags or config sections. Focus was closing
@@ -266,7 +317,9 @@ isn't at hand.
 
 ---
 
-## v0.5.1 — R2 follow-ups + Bun track parity
+## [0.5.1] - 2026-04-17
+
+_R2 follow-ups + Bun track parity_
 
 Patch release that finishes the v0.5 R2 work. Non-breaking: existing
 workerd-track deploys don't need any config changes. Bun-track
@@ -360,7 +413,9 @@ runtime RAM footprint.
 
 Totals: 1001 unit + integration, 85 bun. **1086 tests green.**
 
-## v0.5.0 — Self-host R2 end-to-end
+## [0.5.0] - 2026-04-17
+
+_Self-host R2 end-to-end_
 
 The headline: **R2 bindings work on self-hosted boxes with zero config.**
 A fresh `groundflare up` provisions a VPS that ships with a SeaweedFS
@@ -477,7 +532,9 @@ directly; see Deferred below).
   but a future revision will add chunked signing for operators who
   need end-to-end payload integrity over untrusted paths.
 
-## v0.4.0 — DigitalOcean provider, framework support, WorkerLoader
+## [0.4.0] - 2026-04-16
+
+_DigitalOcean provider, framework support, WorkerLoader_
 
 The headline: **groundflare deploys real-world frameworks now.** Astro
 SSR sites with custom build commands and static assets work end-to-end,
@@ -595,7 +652,9 @@ fixed:
   deploy, WorkerLoader, custom domain via routes)
 - 824 unit + integration tests pass
 
-## v0.3.0 — drop better-sqlite3, minimum Node 22
+## [0.3.0] - 2026-04-15
+
+_drop better-sqlite3, minimum Node 22_
 
 **Breaking**: `engines.node` bumps from `>=20` to `>=22`.
 
@@ -622,7 +681,9 @@ Implementation notes:
   normalises those to a fresh `new Uint8Array(0)` which the driver
   accepts. Tracked as a Node-side quirk; revisit on Node 24 LTS.
 
-## v0.2.1 — packaging fix
+## [0.2.1] - 2026-04-15
+
+_packaging fix_
 
 Fix a packaging bug in v0.2.0 that made `npx groundflare` fail with
 `ERR_MODULE_NOT_FOUND` immediately. `esbuild` (used by the deploy
@@ -632,7 +693,9 @@ bundler), `better-sqlite3` (Mirror-track KV/D1 driver), and `workerd`
 
 No behavioural changes; v0.2.0 is deprecated on npm.
 
-## v0.2.0 — parallel release with the Bun track
+## [0.2.0] - 2026-04-15
+
+_parallel release with the Bun track_
 
 v0.2 ships two runtime tracks from the same CLI: the Mirror track
 (workerd, zero source changes) and a new Bun track (`Bun.serve` with
@@ -695,3 +758,15 @@ None — pre-1.0 development; v0.2 is a net additive release.
 ### Test counts
 
 786 vitest + 81 bun:test + 6 Tier-3 e2e = 873 automated checks.
+
+[Unreleased]: https://github.com/solcreek/groundflare/compare/groundflare@v0.5.5...HEAD
+[0.5.5]: https://github.com/solcreek/groundflare/compare/groundflare@v0.5.4...groundflare@v0.5.5
+[0.5.4]: https://github.com/solcreek/groundflare/compare/groundflare@v0.5.2...groundflare@v0.5.4
+[0.5.3]: https://github.com/solcreek/groundflare/commit/d8d272a
+[0.5.2]: https://github.com/solcreek/groundflare/compare/groundflare@v0.5.1...groundflare@v0.5.2
+[0.5.1]: https://github.com/solcreek/groundflare/compare/groundflare@v0.5.0...groundflare@v0.5.1
+[0.5.0]: https://github.com/solcreek/groundflare/compare/groundflare@v0.4.0...groundflare@v0.5.0
+[0.4.0]: https://github.com/solcreek/groundflare/compare/3d79bbd...groundflare@v0.4.0
+[0.3.0]: https://github.com/solcreek/groundflare/commit/3d79bbd
+[0.2.1]: https://github.com/solcreek/groundflare/commit/db1c6b6
+[0.2.0]: https://github.com/solcreek/groundflare/commit/bb1f52d
